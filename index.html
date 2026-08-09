@@ -6,6 +6,8 @@
 <title>Maintenance Board — Live Task Status</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <style>
   :root{
     --deck:#F3F1EA;
@@ -34,12 +36,22 @@
   h1{font-family:'Archivo',sans-serif;font-weight:800;font-size:clamp(24px,6vw,34px);line-height:1;margin:0 0 4px;letter-spacing:-0.01em;}
   .sub{color:var(--ink-soft);font-size:13.5px;margin:0;}
 
+  .setup-banner{
+    display:none;margin-top:14px;padding:14px 16px;border:1.5px solid var(--amber);background:var(--amber-bg);
+    border-radius:8px;font-size:13px;line-height:1.55;color:#5c3f0f;
+  }
+  .setup-banner h3{margin:0 0 6px;font-family:'Archivo',sans-serif;font-size:14.5px;color:#5c3f0f;}
+  .setup-banner code{background:#F3E2BE;padding:1px 5px;border-radius:4px;font-family:'IBM Plex Mono',monospace;font-size:12px;}
+
   .me-row{display:flex;gap:8px;align-items:center;margin-top:14px;}
   .me-row input{flex:1;}
   .me-badge{
     font-family:'IBM Plex Mono',monospace;font-size:11px;background:var(--teal);color:#fff;
     padding:9px 12px;border-radius:6px;white-space:nowrap;
   }
+  .conn-dot{width:8px;height:8px;border-radius:50%;background:var(--line);flex:0 0 auto;}
+  .conn-dot.live{background:var(--moss);}
+  .conn-dot.err{background:#B0472A;}
 
   input,select,textarea{
     font-family:'Public Sans',sans-serif;font-size:14.5px;color:var(--ink);
@@ -158,38 +170,25 @@
 </style>
 </head>
 <body>
-<script type="module">
-  // Import the functions you need from the SDKs you need
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-analytics.js";
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
-
-  // Your web app's Firebase configuration
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-  const firebaseConfig = {
-    apiKey: "AIzaSyANFCZbvRGO9aMRtG9MF_qONO3FL85CzSo",
-    authDomain: "maintenance-board-f931a.firebaseapp.com",
-    projectId: "maintenance-board-f931a",
-    storageBucket: "maintenance-board-f931a.firebasestorage.app",
-    messagingSenderId: "169864970579",
-    appId: "1:169864970579:web:bfb7490d0aebcfed17e1a6",
-    measurementId: "G-HYG264NKP4"
-  };
-
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
-</script>
-
 <div class="wrap">
 
   <header>
     <div class="eyebrow">Multi-Outlet · Live Task Status</div>
     <h1>Maintenance Board</h1>
     <p class="sub">See what's done, what's claimed, and what's still open — across every team.</p>
+
+    <div class="setup-banner" id="setup-banner">
+      <h3>One-time setup needed</h3>
+      This board syncs through Firebase, and it isn't connected yet. Open this file, find the
+      <code>firebaseConfig</code> object near the top of the script, and paste in the config values from your
+      Firebase project (Project settings → General → Your apps → SDK setup and configuration). Also make sure
+      Firestore's rules allow read/write (see the setup guide provided alongside this file). Once saved and
+      re-uploaded, this banner disappears and the board goes live.
+    </div>
+
     <div class="me-row">
       <input id="f-me" type="text" placeholder="Your name (so your work shows on the board)">
+      <span class="conn-dot" id="conn-dot" title="Connection status"></span>
       <span class="me-badge" id="me-badge" style="display:none;"></span>
     </div>
   </header>
@@ -238,12 +237,23 @@
     <div id="archive-list"></div>
   </div>
 
-  <footer class="note">Everyone who opens this board sees the same live status — claim a task before starting it so two teams don't do the same thing twice. The board refreshes automatically every 20 seconds, or reopen it to refresh instantly.</footer>
+  <footer class="note">Everyone who opens this board sees the same live status, updated instantly — claim a task before starting it so two teams don't do the same thing twice.</footer>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script>
+// ── Paste your Firebase project config here (Project settings → General → Your apps) ──
+const firebaseConfig = {
+  apiKey: "AIzaSyANFCZbvRGO9aMRtG9MF_qONO3FL85CzSo",
+  authDomain: "maintenance-board-f931a.firebaseapp.com",
+  projectId: "maintenance-board-f931a",
+  storageBucket: "maintenance-board-f931a.firebasestorage.app",
+  messagingSenderId: "169864970579",
+  appId: "1:169864970579:web:bfb7490d0aebcfed17e1a6"
+};
+// ─────────────────────────────────────────────────────────────────────────────────────
+
 const DATA = {
   CC: { label: 'CC', daily: [
   {id:'CC_d1',t:30,x:'Backwash (Floortrap toilet women)'},
@@ -530,28 +540,17 @@ const DATA = {
 };
 
 const CAT_LABEL = { daily: 'Daily Task', check: 'Checking List' };
+const NOT_CONFIGURED = firebaseConfig.apiKey === 'YOUR_API_KEY';
 
+let db = null;
 let me = '';
 let curOutlet = 'CC';
 let curCat = 'daily';
 let curFilter = 'all';
 let curSearch = '';
-let state = {};        // {taskId: {status, claimedBy, claimedAt, doneBy, doneAt, remark}}
-let noteOpen = {};      // {taskId: bool} local UI toggle
-let pollTimer = null;
-
-function stateKey(outlet, cat){ return `state:${outlet}:${cat}`; }
-function activityKey(outlet){ return `activity:${outlet}`; }
-function archiveKey(outlet){ return `archive:${outlet}`; }
-
-function timeAgo(ts){
-  if(!ts) return '';
-  const s = Math.floor((Date.now() - ts) / 1000);
-  if(s < 60) return 'just now';
-  if(s < 3600) return Math.floor(s/60) + 'm ago';
-  if(s < 86400) return Math.floor(s/3600) + 'h ago';
-  return Math.floor(s/86400) + 'd ago';
-}
+let state = {};        // {taskId: {status, claimedBy, claimedAt, doneBy, doneAt, actualMs, remark}}
+let noteOpen = {};      // local UI toggle only
+let unsubState = null, unsubActivity = null, unsubArchive = null;
 
 function formatClock(ms){
   const totalSec = Math.max(0, Math.floor(ms / 1000));
@@ -562,9 +561,15 @@ function formatClock(ms){
   const ss = String(s).padStart(2,'0');
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
+function formatMins(ms){ return Math.round(ms / 60000); }
 
-function formatMins(ms){
-  return Math.round(ms / 60000);
+function timeAgo(ts){
+  if(!ts) return '';
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if(s < 60) return 'just now';
+  if(s < 3600) return Math.floor(s/60) + 'm ago';
+  if(s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
 }
 
 function toast(msg){
@@ -572,7 +577,12 @@ function toast(msg){
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toast._tm);
-  toast._tm = setTimeout(()=>t.classList.remove('show'), 2200);
+  toast._tm = setTimeout(()=>t.classList.remove('show'), 2400);
+}
+
+function setConn(status){ // 'live' | 'err' | ''
+  const dot = document.getElementById('conn-dot');
+  dot.className = 'conn-dot' + (status ? ' ' + status : '');
 }
 
 function renderTabs(){
@@ -582,7 +592,7 @@ function renderTabs(){
     const el = document.createElement('div');
     el.className = 'tab' + (key===curOutlet ? ' active' : '');
     el.textContent = DATA[key].label;
-    el.addEventListener('click', ()=>{ curOutlet = key; loadAndRender(); });
+    el.addEventListener('click', ()=>{ curOutlet = key; subscribeAll(); });
     ot.appendChild(el);
   });
 
@@ -592,14 +602,16 @@ function renderTabs(){
     const el = document.createElement('div');
     el.className = 'subtab' + (cat===curCat ? ' active' : '');
     el.textContent = CAT_LABEL[cat];
-    el.addEventListener('click', ()=>{ curCat = cat; loadAndRender(); });
+    el.addEventListener('click', ()=>{ curCat = cat; subscribeAll(); });
     ct.appendChild(el);
   });
 }
 
 function items(){ return DATA[curOutlet][curCat]; }
-
 function getRecord(id){ return state[id] || {status:'open'}; }
+function stateDocRef(){ return db.collection('maintenance_state').doc(`${curOutlet}_${curCat}`); }
+function activityColRef(){ return db.collection('activity').doc(curOutlet).collection('events'); }
+function archiveColRef(){ return db.collection('archive').doc(curOutlet).collection('weeks'); }
 
 function computeStats(){
   const all = items();
@@ -610,8 +622,7 @@ function computeStats(){
       done++;
       if(r.actualMs) actualMins += formatMins(r.actualMs);
       if(it.t) budgetMinsDone += it.t;
-    }
-    else if(r.status === 'claimed') claimed++;
+    } else if(r.status === 'claimed') claimed++;
     else open++;
     if(r.status !== 'done' && it.t) minsLeft += it.t;
   });
@@ -716,10 +727,9 @@ function toggleNote(row, id){
 
 async function saveNote(id){
   const val = document.getElementById(`note-${id}`).value.trim();
-  await mutateRecord(id, (r)=>{ r.remark = val; return r; });
+  await mutateRecord(id, (r)=>({...r, remark: val}));
   noteOpen[id] = false;
   toast('Note saved');
-  renderList();
 }
 
 function requireMe(){
@@ -730,9 +740,16 @@ function requireMe(){
   }
   return true;
 }
+function requireDb(){
+  if(NOT_CONFIGURED || !db){
+    toast('Firebase is not configured yet — see the setup box above');
+    return false;
+  }
+  return true;
+}
 
 async function onTaskTap(id){
-  if(!requireMe()) return;
+  if(!requireDb() || !requireMe()) return;
   const r = getRecord(id);
   if(r.status === 'open'){
     await mutateRecord(id, rec=>({...rec, status:'claimed', claimedBy: me, claimedAt: Date.now()}));
@@ -752,136 +769,121 @@ async function onTaskTap(id){
       await mutateRecord(id, rec=>({...rec, status:'open', claimedBy:null, claimedAt:null, doneBy:null, doneAt:null, actualMs:null}));
       logActivity('reopened', id);
       toast('Reopened');
-    } else {
-      return;
     }
   }
-  renderList();
-  updateStatbar();
 }
 
-// Read-modify-write against the latest stored state to minimize clobbering concurrent edits from other teams.
+// Per-task merge write — only this task's field changes, so two teams editing
+// different tasks at the same time never clobber each other.
 async function mutateRecord(id, fn){
-  const key = stateKey(curOutlet, curCat);
-  let latest = {};
+  const current = state[id] || {status:'open'};
+  const updated = fn(current);
+  state[id] = updated;          // optimistic local update for instant feedback
+  renderList();
+  updateStatbar();
   try{
-    const res = await window.storage.get(key, true);
-    latest = res && res.value ? JSON.parse(res.value) : {};
-  }catch(e){ latest = {}; }
-  const current = latest[id] || {status:'open'};
-  latest[id] = fn(current);
-  state = latest;
-  await window.storage.set(key, JSON.stringify(latest), true);
+    await stateDocRef().set({ tasks: { [id]: updated } }, { merge: true });
+  }catch(e){
+    console.error(e);
+    toast('Could not save — check your connection');
+  }
 }
 
 async function logActivity(action, id){
   const it = items().find(t=>t.id===id);
-  const key = activityKey(curOutlet);
-  let log = [];
   try{
-    const res = await window.storage.get(key, true);
-    log = res && res.value ? JSON.parse(res.value) : [];
-  }catch(e){ log = []; }
-  log.push({ ts: Date.now(), who: me, action, cat: curCat, text: it ? it.x : id });
-  if(log.length > 60) log = log.slice(log.length - 60);
-  await window.storage.set(key, JSON.stringify(log), true);
-  renderActivity(log);
+    await activityColRef().add({ ts: Date.now(), who: me, action, cat: curCat, text: it ? it.x : (id || '') });
+  }catch(e){ console.error(e); }
 }
 
 function renderActivity(log){
   const el = document.getElementById('activity-feed');
   if(!log || log.length === 0){ el.innerHTML = '<div class="empty">No activity yet.</div>'; return; }
   el.innerHTML = '';
-  log.slice().reverse().slice(0,20).forEach(ev=>{
+  log.slice(0,20).forEach(ev=>{
     const verb = ev.action === 'claimed' ? 'claimed' : ev.action === 'done' ? 'marked done' : 'reopened';
     const row = document.createElement('div');
     row.className = 'feed-row';
-    row.innerHTML = `<span class="feed-who">${ev.who || '—'}</span><span>${verb} “${ev.text}”</span><span class="feed-when">${timeAgo(ev.ts)}</span>`;
+    row.innerHTML = `<span class="feed-who">${ev.who || '—'}</span><span>${verb} "${ev.text}"</span><span class="feed-when">${timeAgo(ev.ts)}</span>`;
     el.appendChild(row);
   });
 }
 
-async function loadActivity(){
-  try{
-    const res = await window.storage.get(activityKey(curOutlet), true);
-    const log = res && res.value ? JSON.parse(res.value) : [];
-    renderActivity(log);
-  }catch(e){ renderActivity([]); }
-}
-
-async function loadArchive(){
+function renderArchiveList(arch){
   const el = document.getElementById('archive-list');
-  try{
-    const res = await window.storage.get(archiveKey(curOutlet), true);
-    const arch = res && res.value ? JSON.parse(res.value) : [];
-    if(arch.length === 0){ el.innerHTML = '<div class="empty">No past weeks recorded yet.</div>'; return; }
-    el.innerHTML = '';
-    arch.slice().reverse().slice(0,10).forEach(a=>{
-      const row = document.createElement('div');
-      row.className = 'archive-row';
-      row.innerHTML = `
-        <div class="archive-main">
-          <div class="a-title">${CAT_LABEL[a.cat] || a.cat} — reset by ${a.by || '—'}</div>
-          <div class="a-meta">${new Date(a.ts).toLocaleDateString()} · ${a.done}/${a.total} completed</div>
-        </div>
-        <div class="archive-pct">${a.total ? Math.round((a.done/a.total)*100) : 0}%</div>`;
-      el.appendChild(row);
-    });
-  }catch(e){ el.innerHTML = '<div class="empty">Could not load past weeks.</div>'; }
+  if(!arch || arch.length === 0){ el.innerHTML = '<div class="empty">No past weeks recorded yet.</div>'; return; }
+  el.innerHTML = '';
+  arch.forEach(a=>{
+    const row = document.createElement('div');
+    row.className = 'archive-row';
+    row.innerHTML = `
+      <div class="archive-main">
+        <div class="a-title">${CAT_LABEL[a.cat] || a.cat} — reset by ${a.by || '—'}</div>
+        <div class="a-meta">${new Date(a.ts).toLocaleDateString()} · ${a.done}/${a.total} completed</div>
+      </div>
+      <div class="archive-pct">${a.total ? Math.round((a.done/a.total)*100) : 0}%</div>`;
+    el.appendChild(row);
+  });
 }
 
-async function loadState(){
-  try{
-    const res = await window.storage.get(stateKey(curOutlet, curCat), true);
-    state = res && res.value ? JSON.parse(res.value) : {};
-  }catch(e){ state = {}; }
+function subscribeState(){
+  if(unsubState) unsubState();
+  unsubState = stateDocRef().onSnapshot(doc=>{
+    state = (doc.exists && doc.data().tasks) || {};
+    renderList();
+    updateStatbar();
+    setConn('live');
+  }, err=>{ console.error(err); setConn('err'); toast('Sync error — check Firebase config/rules'); });
 }
 
-async function loadAndRender(){
+function subscribeActivity(){
+  if(unsubActivity) unsubActivity();
+  unsubActivity = activityColRef().orderBy('ts','desc').limit(20).onSnapshot(snap=>{
+    renderActivity(snap.docs.map(d=>d.data()));
+  }, err=>console.error(err));
+}
+
+function subscribeArchive(){
+  if(unsubArchive) unsubArchive();
+  unsubArchive = archiveColRef().orderBy('ts','desc').limit(10).onSnapshot(snap=>{
+    renderArchiveList(snap.docs.map(d=>d.data()));
+  }, err=>console.error(err));
+}
+
+function subscribeAll(){
   renderTabs();
-  await loadState();
-  renderList();
-  updateStatbar();
-  await loadActivity();
-  await loadArchive();
+  if(!requireDb()) return;
+  subscribeState();
+  subscribeActivity();
+  subscribeArchive();
 }
 
 async function startNewWeek(){
-  if(!requireMe()) return;
+  if(!requireDb() || !requireMe()) return;
   const s = computeStats();
-  if(!confirm(`Start a new week for ${DATA[curOutlet].label} — ${CAT_LABEL[curCat]}?\\n\\nThis records the current progress (${s.done}/${s.total} done) as a past week, then reopens every task. Notes are kept.`)) return;
+  if(!confirm(`Start a new week for ${DATA[curOutlet].label} — ${CAT_LABEL[curCat]}?\n\nThis records the current progress (${s.done}/${s.total} done) as a past week, then reopens every task. Notes are kept.`)) return;
 
-  const key = stateKey(curOutlet, curCat);
-  let latest = {};
   try{
-    const res = await window.storage.get(key, true);
-    latest = res && res.value ? JSON.parse(res.value) : {};
-  }catch(e){ latest = {}; }
+    await archiveColRef().add({ ts: Date.now(), by: me, cat: curCat, done: s.done, total: s.total });
 
-  const archRec = { ts: Date.now(), by: me, cat: curCat, done: s.done, total: s.total };
-  const akey = archiveKey(curOutlet);
-  let arch = [];
-  try{
-    const ares = await window.storage.get(akey, true);
-    arch = ares && ares.value ? JSON.parse(ares.value) : [];
-  }catch(e){ arch = []; }
-  arch.push(archRec);
-  if(arch.length > 30) arch = arch.slice(arch.length - 30);
-  await window.storage.set(akey, JSON.stringify(arch), true);
-
-  Object.keys(latest).forEach(id=>{
-    latest[id] = { status:'open', remark: latest[id].remark || '' };
-  });
-  await window.storage.set(key, JSON.stringify(latest), true);
-
-  await logActivity('reopened', null).catch(()=>{});
-  toast('New week started');
-  loadAndRender();
+    const snap = await stateDocRef().get();
+    const tasks = (snap.exists && snap.data().tasks) || {};
+    const resetTasks = {};
+    Object.keys(tasks).forEach(id=>{
+      resetTasks[id] = { status:'open', remark: tasks[id].remark || '', claimedBy:null, claimedAt:null, doneBy:null, doneAt:null, actualMs:null };
+    });
+    await stateDocRef().set({ tasks: resetTasks }, { merge: false });
+    await logActivity('reopened', null);
+    toast('New week started');
+  }catch(e){
+    console.error(e);
+    toast('Could not start new week — check your connection');
+  }
 }
 
-document.getElementById('f-me').addEventListener('input', async (e)=>{
+document.getElementById('f-me').addEventListener('input', (e)=>{
   me = e.target.value.trim();
-  try{ await window.storage.set('my-name', me, false); }catch(err){}
+  try{ localStorage.setItem('maintenance-my-name', me); }catch(err){}
   document.getElementById('me-badge').style.display = me ? '' : 'none';
   document.getElementById('me-badge').textContent = me;
 });
@@ -902,29 +904,35 @@ document.querySelectorAll('.chip').forEach(chip=>{
 
 document.getElementById('btn-newweek').addEventListener('click', startNewWeek);
 
-(async function init(){
+(function init(){
   try{
-    const res = await window.storage.get('my-name', false);
-    if(res && res.value){
-      me = res.value;
+    const saved = localStorage.getItem('maintenance-my-name');
+    if(saved){
+      me = saved;
       document.getElementById('f-me').value = me;
       document.getElementById('me-badge').style.display = '';
       document.getElementById('me-badge').textContent = me;
     }
   }catch(e){ /* no saved name yet */ }
 
-  await loadAndRender();
+  if(NOT_CONFIGURED){
+    document.getElementById('setup-banner').style.display = 'block';
+    renderTabs();
+    renderList();
+    updateStatbar();
+    setConn('err');
+  } else {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    subscribeAll();
+  }
 
-  pollTimer = setInterval(loadAndRender, 20000);
   setInterval(()=>{
     document.querySelectorAll('.live-timer').forEach(el=>{
       const start = parseInt(el.dataset.start, 10);
       if(!isNaN(start)) el.textContent = formatClock(Date.now() - start);
     });
   }, 1000);
-  document.addEventListener('visibilitychange', ()=>{
-    if(document.visibilityState === 'visible') loadAndRender();
-  });
 })();
 </script>
 </body>
