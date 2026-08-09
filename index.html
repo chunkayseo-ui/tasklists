@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
-<title>Maintenance Day — Pool Facility Checklist</title>
+<title>Maintenance Board — Live Task Status</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -15,512 +15,892 @@
     --teal:#0D6E76;
     --teal-deep:#0A5359;
     --amber:#DD9A35;
+    --amber-bg:#FBEEDA;
     --moss:#3E7F53;
+    --moss-bg:#E4F0E7;
     --line:#D6D0C0;
     --line-soft:#E5E1D5;
   }
   *{box-sizing:border-box;}
   body{
-    margin:0;
-    background:var(--deck);
-    color:var(--ink);
-    font-family:'Public Sans', system-ui, sans-serif;
-    -webkit-font-smoothing:antialiased;
-    padding:0 0 60px 0;
+    margin:0;background:var(--deck);color:var(--ink);
+    font-family:'Public Sans', system-ui, sans-serif;-webkit-font-smoothing:antialiased;
+    padding:0 0 60px;
   }
-  .wrap{max-width:820px;margin:0 auto;padding:20px 16px 0;}
+  .wrap{max-width:860px;margin:0 auto;padding:18px 14px 0;}
 
-  /* ---------- Header ---------- */
-  header{padding:6px 0 18px;border-bottom:2px solid var(--ink);}
-  .eyebrow{
-    font-family:'IBM Plex Mono',monospace;
-    font-size:11px;letter-spacing:.14em;text-transform:uppercase;
-    color:var(--teal-deep);font-weight:600;margin-bottom:6px;
-  }
-  h1{
-    font-family:'Archivo',sans-serif;font-weight:800;
-    font-size:clamp(28px,7vw,40px);line-height:1;margin:0 0 4px;
-    letter-spacing:-0.01em;
-  }
-  .sub{color:var(--ink-soft);font-size:14px;margin:0;}
+  header{padding:4px 0 14px;border-bottom:2px solid var(--ink);}
+  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--teal-deep);font-weight:600;margin-bottom:6px;}
+  h1{font-family:'Archivo',sans-serif;font-weight:800;font-size:clamp(24px,6vw,34px);line-height:1;margin:0 0 4px;letter-spacing:-0.01em;}
+  .sub{color:var(--ink-soft);font-size:13.5px;margin:0;}
 
-  .fields{
-    display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;
+  .me-row{display:flex;gap:8px;align-items:center;margin-top:14px;}
+  .me-row input{flex:1;}
+  .me-badge{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;background:var(--teal);color:#fff;
+    padding:9px 12px;border-radius:6px;white-space:nowrap;
   }
-  .field{display:flex;flex-direction:column;gap:4px;}
-  .field.span2{grid-column:1/-1;}
-  label{
-    font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;
-    text-transform:uppercase;color:var(--ink-soft);
-  }
+
   input,select,textarea{
-    font-family:'Public Sans',sans-serif;font-size:15px;color:var(--ink);
+    font-family:'Public Sans',sans-serif;font-size:14.5px;color:var(--ink);
     background:var(--deck-raised);border:1.5px solid var(--line);border-radius:6px;
-    padding:9px 10px;width:100%;
+    padding:9px 10px;
   }
   input:focus,select:focus,textarea:focus{outline:2px solid var(--teal);outline-offset:1px;border-color:var(--teal);}
-  textarea{resize:vertical;min-height:64px;font-family:'Public Sans',sans-serif;}
 
-  /* ---------- Gauge / stats ---------- */
+  /* Tabs */
+  .tabs{display:flex;gap:6px;margin-top:16px;flex-wrap:wrap;}
+  .tab{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.03em;
+    padding:8px 14px;border-radius:20px;border:1.5px solid var(--line);background:var(--deck-raised);
+    cursor:pointer;color:var(--ink-soft);font-weight:600;
+  }
+  .tab.active{background:var(--ink);border-color:var(--ink);color:var(--deck-raised);}
+  .subtabs{display:flex;gap:6px;margin-top:10px;}
+  .subtab{
+    font-size:13px;font-weight:600;padding:7px 14px;border-radius:6px 6px 0 0;
+    border:1.5px solid var(--line);border-bottom:none;background:var(--deck);color:var(--ink-soft);cursor:pointer;
+  }
+  .subtab.active{background:var(--deck-raised);color:var(--ink);border-color:var(--ink);}
+
+  /* Stats */
   .statbar{
-    display:flex;align-items:center;gap:20px;
-    background:var(--ink);color:var(--deck-raised);
-    border-radius:12px;padding:18px 20px;margin:22px 0 8px;
+    display:flex;align-items:center;gap:18px;background:var(--ink);color:var(--deck-raised);
+    border-radius:0 10px 10px 10px;padding:16px 18px;margin-top:-1px;position:relative;z-index:1;flex-wrap:wrap;
   }
-  .gauge{flex:0 0 auto;position:relative;width:96px;height:96px;}
+  .gauge{flex:0 0 auto;position:relative;width:74px;height:74px;}
   .gauge svg{width:100%;height:100%;}
-  .gauge-pct{
-    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:19px;
-  }
-  .stat-figs{flex:1;display:flex;flex-wrap:wrap;gap:18px;}
-  .stat{min-width:80px;}
-  .stat .n{font-family:'Archivo',sans-serif;font-weight:800;font-size:22px;line-height:1;}
-  .stat .l{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#B9C2C3;margin-top:4px;}
+  .gauge-pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:15px;}
+  .stat-figs{flex:1;display:flex;flex-wrap:wrap;gap:16px;}
+  .stat{min-width:64px;}
+  .stat .n{font-family:'Archivo',sans-serif;font-weight:800;font-size:19px;line-height:1;}
+  .stat .l{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:#B9C2C3;margin-top:4px;}
   .stat.amber .n{color:var(--amber);}
   .stat.moss .n{color:#8FD1A5;}
+  .weekbtn{
+    font-family:'Public Sans',sans-serif;font-weight:600;font-size:12.5px;
+    background:transparent;border:1.5px solid #4E5F63;color:var(--deck-raised);
+    padding:8px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;
+  }
+  .weekbtn:hover{background:#22343A;}
 
-  /* ---------- Categories ---------- */
-  .cat{margin-top:22px;border-top:1px solid var(--line);}
-  .cat-head{
-    display:flex;align-items:center;justify-content:space-between;
-    padding:14px 2px 10px;cursor:pointer;user-select:none;gap:10px;
+  /* Toolbar */
+  .toolbar{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center;}
+  .toolbar input[type=text]{flex:1;min-width:140px;}
+  .chip{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;padding:7px 11px;border-radius:20px;
+    border:1.5px solid var(--line);background:var(--deck-raised);color:var(--ink-soft);cursor:pointer;font-weight:600;
   }
-  .cat-title{
-    font-family:'Archivo',sans-serif;font-weight:700;font-size:16px;
-    display:flex;align-items:baseline;gap:8px;
-  }
-  .cat-count{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-soft);font-weight:400;}
-  .cat-mins{
-    font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--teal-deep);
-    background:#E3EEEE;padding:3px 8px;border-radius:20px;white-space:nowrap;
-  }
-  .chev{transition:transform .18s ease;color:var(--ink-soft);flex:0 0 auto;}
-  .cat.open .chev{transform:rotate(90deg);}
-  .cat-body{display:none;padding:0 2px 6px;}
-  .cat.open .cat-body{display:block;}
+  .chip.active{background:var(--teal);border-color:var(--teal);color:#fff;}
 
+  /* Task rows */
+  .list{margin-top:10px;}
   .task{
-    display:flex;align-items:flex-start;gap:12px;
-    padding:10px 4px;border-top:1px solid var(--line-soft);
+    display:flex;align-items:center;gap:10px;padding:11px 4px;border-top:1px solid var(--line-soft);
   }
   .task:first-child{border-top:none;}
-  .task input[type=checkbox]{
-    appearance:none;-webkit-appearance:none;
-    width:22px;height:22px;flex:0 0 auto;margin-top:1px;
-    border:2px solid var(--ink-soft);border-radius:5px;background:var(--deck-raised);
-    cursor:pointer;position:relative;
-  }
-  .task input[type=checkbox]:checked{background:var(--moss);border-color:var(--moss);}
-  .task input[type=checkbox]:checked::after{
-    content:"";position:absolute;left:6px;top:2px;width:6px;height:11px;
-    border:solid white;border-width:0 2.5px 2.5px 0;transform:rotate(40deg);
-  }
-  .task-text{flex:1;font-size:14.5px;line-height:1.4;}
-  .task.done .task-text{color:var(--ink-soft);text-decoration:line-through;text-decoration-color:var(--line);}
+  .task-main{flex:1;min-width:0;}
+  .task-text{font-size:14px;line-height:1.35;}
+  .task-meta{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-soft);margin-top:3px;}
   .task-time{
-    font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--ink-soft);
-    background:var(--deck);border:1px solid var(--line);border-radius:20px;
-    padding:2px 8px;flex:0 0 auto;margin-top:1px;white-space:nowrap;
+    font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-soft);
+    background:var(--deck);border:1px solid var(--line);border-radius:20px;padding:2px 7px;flex:0 0 auto;
   }
+  .status-btn{
+    flex:0 0 auto;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;
+    padding:7px 11px;border-radius:20px;border:1.5px solid var(--line);background:var(--deck-raised);
+    cursor:pointer;white-space:nowrap;min-width:76px;text-align:center;
+  }
+  .status-btn.open{color:var(--ink-soft);}
+  .status-btn.claimed{background:var(--amber-bg);border-color:var(--amber);color:#8a5f14;}
+  .status-btn.done{background:var(--moss-bg);border-color:var(--moss);color:var(--teal-deep);}
+  .live-timer{font-weight:700;color:var(--amber);}
+  .over-budget{color:#B0472A;}
+  .under-budget{color:var(--teal-deep);}
+  .note-btn{
+    flex:0 0 auto;width:30px;height:30px;border-radius:6px;border:1.5px solid var(--line);
+    background:var(--deck-raised);cursor:pointer;color:var(--ink-soft);font-size:14px;
+  }
+  .note-btn.has-note{background:#FDF2D8;border-color:var(--amber);color:#8a5f14;}
+  .note-box{
+    display:none;padding:8px 4px 12px 4px;border-top:1px dashed var(--line-soft);
+  }
+  .note-box.open{display:block;}
+  .note-box textarea{width:100%;min-height:52px;}
+  .note-save{margin-top:6px;font-size:12px;padding:6px 12px;}
 
-  /* ---------- Footer / submit ---------- */
-  .signoff{
-    margin-top:28px;padding-top:18px;border-top:2px solid var(--ink);
-  }
-  .signoff h2{font-family:'Archivo',sans-serif;font-size:18px;margin:0 0 12px;}
-  .btnrow{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;}
-  button{
-    font-family:'Public Sans',sans-serif;font-weight:600;font-size:14.5px;
-    border-radius:7px;padding:12px 18px;border:1.5px solid var(--ink);
-    cursor:pointer;background:var(--deck-raised);color:var(--ink);
-  }
-  button.primary{background:var(--teal);border-color:var(--teal);color:#fff;}
-  button.primary:disabled{background:var(--line);border-color:var(--line);color:var(--ink-soft);cursor:not-allowed;}
-  button:hover:not(:disabled){filter:brightness(0.96);}
-  .msg{font-size:13px;color:var(--teal-deep);margin-top:8px;min-height:16px;}
+  /* Panels */
+  .panel{margin-top:26px;border-top:2px solid var(--ink);padding-top:14px;}
+  .panel h2{font-family:'Archivo',sans-serif;font-size:16px;margin:0 0 4px;}
+  .panel .hint{font-size:12.5px;color:var(--ink-soft);margin:0 0 12px;}
+  .feed-row{display:flex;gap:8px;padding:7px 2px;border-top:1px solid var(--line-soft);font-size:12.5px;}
+  .feed-row:first-child{border-top:none;}
+  .feed-who{font-weight:700;flex:0 0 auto;}
+  .feed-when{font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);font-size:11px;margin-left:auto;flex:0 0 auto;white-space:nowrap;}
+  .empty{color:var(--ink-soft);font-size:13px;padding:8px 2px;}
 
-  /* ---------- History ---------- */
-  .history{margin-top:30px;}
-  .history h2{font-family:'Archivo',sans-serif;font-size:16px;margin:0 0 4px;}
-  .history .hint{font-size:12.5px;color:var(--ink-soft);margin:0 0 12px;}
-  .hist-row{
-    display:flex;align-items:center;gap:10px;padding:10px 12px;
-    background:var(--deck-raised);border:1px solid var(--line);border-radius:8px;margin-bottom:8px;
+  .archive-row{
+    display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--deck-raised);
+    border:1px solid var(--line);border-radius:8px;margin-bottom:8px;
   }
-  .hist-row .hr-main{flex:1;min-width:0;}
-  .hist-row .hr-fac{font-weight:700;font-size:14px;}
-  .hist-row .hr-meta{font-size:12px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;}
-  .hist-pct{
-    font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:13px;
-    padding:4px 9px;border-radius:20px;background:#E3EEEE;color:var(--teal-deep);flex:0 0 auto;
-  }
-  .empty{color:var(--ink-soft);font-size:13px;padding:10px 2px;}
+  .archive-main{flex:1;}
+  .archive-main .a-title{font-weight:700;font-size:13.5px;}
+  .archive-main .a-meta{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-soft);}
+  .archive-pct{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:12.5px;padding:4px 9px;border-radius:20px;background:#E3EEEE;color:var(--teal-deep);}
+
   footer.note{margin-top:26px;font-size:11.5px;color:var(--ink-soft);line-height:1.5;}
+  .toast{
+    position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
+    background:var(--ink);color:var(--deck-raised);font-size:13px;padding:10px 16px;border-radius:8px;
+    opacity:0;pointer-events:none;transition:opacity .25s ease;z-index:50;
+  }
+  .toast.show{opacity:1;}
 </style>
 </head>
 <body>
 <div class="wrap">
 
   <header>
-    <div class="eyebrow">Pool Facility · Daily Checklist</div>
-    <h1>Maintenance Day</h1>
-    <p class="sub">Work through every section, then sign off below.</p>
-
-    <div class="fields">
-      <div class="field">
-        <label for="f-facility">Facility</label>
-        <input id="f-facility" type="text" placeholder="e.g. CC" value="CC">
-      </div>
-      <div class="field">
-        <label for="f-date">Date</label>
-        <input id="f-date" type="date">
-      </div>
-      <div class="field">
-        <label for="f-week">Week</label>
-        <select id="f-week">
-          <option>Week 1</option><option>Week 2</option><option>Week 3</option>
-          <option>Week 4</option><option>Week 5</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="f-fm">FM Initials</label>
-        <input id="f-fm" type="text" placeholder="e.g. J.T.">
-      </div>
+    <div class="eyebrow">Multi-Outlet · Live Task Status</div>
+    <h1>Maintenance Board</h1>
+    <p class="sub">See what's done, what's claimed, and what's still open — across every team.</p>
+    <div class="me-row">
+      <input id="f-me" type="text" placeholder="Your name (so your work shows on the board)">
+      <span class="me-badge" id="me-badge" style="display:none;"></span>
     </div>
   </header>
+
+  <div class="tabs" id="outlet-tabs"></div>
+  <div class="subtabs" id="cat-tabs"></div>
 
   <div class="statbar">
     <div class="gauge">
       <svg viewBox="0 0 100 100">
         <circle cx="50" cy="50" r="42" fill="none" stroke="#33474C" stroke-width="9"/>
         <circle id="gauge-arc" cx="50" cy="50" r="42" fill="none" stroke="#3E7F53" stroke-width="9"
-          stroke-linecap="round" stroke-dasharray="264" stroke-dashoffset="264"
-          transform="rotate(-90 50 50)"/>
+          stroke-linecap="round" stroke-dasharray="264" stroke-dashoffset="264" transform="rotate(-90 50 50)"/>
       </svg>
       <div class="gauge-pct" id="gauge-pct">0%</div>
     </div>
     <div class="stat-figs">
-      <div class="stat moss"><div class="n" id="stat-done">0/62</div><div class="l">Tasks done</div></div>
-      <div class="stat"><div class="n" id="stat-mins">0 / 0</div><div class="l">Minutes logged</div></div>
-      <div class="stat amber"><div class="n" id="stat-remain">62</div><div class="l">Remaining</div></div>
+      <div class="stat"><div class="n" id="stat-open">0</div><div class="l">Open</div></div>
+      <div class="stat amber"><div class="n" id="stat-claimed">0</div><div class="l">In progress</div></div>
+      <div class="stat moss"><div class="n" id="stat-done">0</div><div class="l">Done</div></div>
+      <div class="stat" id="stat-mins-wrap"><div class="n" id="stat-mins">0</div><div class="l">Min left</div></div>
+      <div class="stat" id="stat-actual-wrap"><div class="n" id="stat-actual">0/0</div><div class="l">Actual / budget</div></div>
     </div>
+    <button class="weekbtn" id="btn-newweek">Start new week ↻</button>
   </div>
 
-  <div id="categories"></div>
-
-  <div class="signoff">
-    <h2>Sign off</h2>
-    <div class="fields">
-      <div class="field span2">
-        <label for="f-sig">Signature (name)</label>
-        <input id="f-sig" type="text" placeholder="Full name">
-      </div>
-      <div class="field span2">
-        <label for="f-remarks">Remarks</label>
-        <textarea id="f-remarks" placeholder="Anything to flag for this week..."></textarea>
-      </div>
-    </div>
-    <div class="btnrow">
-      <button class="primary" id="btn-submit">Submit checklist</button>
-      <button id="btn-new">Start new (clear checks)</button>
-    </div>
-    <div class="msg" id="msg"></div>
+  <div class="toolbar">
+    <input type="text" id="f-search" placeholder="Search tasks…">
+    <span class="chip active" data-filter="all">All</span>
+    <span class="chip" data-filter="open">Open</span>
+    <span class="chip" data-filter="claimed">In progress</span>
+    <span class="chip" data-filter="done">Done</span>
   </div>
 
-  <div class="history">
-    <h2>Past submissions</h2>
-    <p class="hint">Visible to everyone using this checklist.</p>
-    <div id="hist-list"></div>
+  <div class="list" id="task-list"></div>
+
+  <div class="panel">
+    <h2>Recent activity</h2>
+    <p class="hint">Latest claims and completions for this outlet, most recent first.</p>
+    <div id="activity-feed"></div>
   </div>
 
-  <footer class="note">Progress autosaves as you check items off. Submitting logs a dated record below and starts a fresh sheet.</footer>
+  <div class="panel">
+    <h2>Past weeks</h2>
+    <p class="hint">Snapshot taken each time someone starts a new week.</p>
+    <div id="archive-list"></div>
+  </div>
+
+  <footer class="note">Everyone who opens this board sees the same live status — claim a task before starting it so two teams don't do the same thing twice. The board refreshes automatically every 20 seconds, or reopen it to refresh instantly.</footer>
 </div>
 
+<div class="toast" id="toast"></div>
+
 <script>
-const TASKS = [
-  {id:5,  t:15, c:'chem', x:'Watertest (Ta and Salt, Acid, Refill Test Kit) — facing counter CCTV'},
-  {id:6,  t:5,  c:'chem', x:'Dosing bicarb and salt bags (acid dose later)'},
-  {id:7,  t:2,  c:'chem', x:'Send watertest report to group chat'},
-  {id:19, t:3,  c:'chem', x:'Dosing acid (refer to morning report) — ready bucket near pool'},
-  {id:39, t:5,  c:'chem', x:'Check salt chlorinator panel (must be above 85)'},
-  {id:40, t:20, c:'chem', x:'Check salt cell (remove calcium)'},
-  {id:63, t:30, c:'chem', x:'Night watertest and dosing'},
+const DATA = {
+  CC: { label: 'CC', daily: [
+  {id:'CC_d1',t:30,x:'Backwash (Floortrap toilet women)'},
+  {id:'CC_d2',t:15,x:'Watertest (Ta and Salt, Acid, Refill Test Kit)*Facing Counter CCTV'},
+  {id:'CC_d3',t:5,x:'Dosing bicarb and salt bags (Acid dose later)'},
+  {id:'CC_d4',t:null,x:'Send watertest report to Group chat'},
+  {id:'CC_d5',t:2,x:'Check Shower Heater Display (55 degree above is normal)'},
+  {id:'CC_d6',t:10,x:'Inspect (Lighting, Changing Table, Shower Room,WaterDispenser)'},
+  {id:'CC_d7',t:10,x:'Inspect (HairDryer, Pool Platform, Clock, WiFi, Number Locker)'},
+  {id:'CC_d8',t:20,x:'Check&Repair Shower Facilities(DoorLock,ShowerHead,Hose, Mixer, Hooks, Shampoo, ShowerHead Holder)'},
+  {id:'CC_d9',t:30,x:'Pressure Jet Stubborn algae on deck (once a month)'},
+  {id:'CC_d10',t:60,x:'Scrub off surface algae on deck'},
+  {id:'CC_d11',t:45,x:'Pool Scrub (must in the pool)(Floor, Wall, Ledge)'},
+  {id:'CC_d12',t:30,x:'Remove Stain marks from Pool'},
+  {id:'CC_d13',t:5,x:'Check Floor Inlet (facing below)'},
+  {id:'CC_d14',t:20,x:'Check and Clean the pool divider(Floating Ball, Rope)'},
+  {id:'CC_d15',t:10,x:'Check and Clear Skimmer'},
+  {id:'CC_d16',t:3,x:'Dosing Acid (Refer to Morning report)*Ready Bucket near Pool'},
+  {id:'CC_d17',t:5,x:'Use Mold remover for Baby Anti Slip mat'},
+  {id:'CC_d18',t:15,x:'Pressure Jet Entrance& Blue Anti Slip mat'},
+  {id:'CC_d19',t:30,x:'Pressure Jet Shower Rooms(wall&floor)'},
+  {id:'CC_d20',t:30,x:'Pressure Jet Corridor&Baby Changing Area'},
+  {id:'CC_d21',t:20,x:'Pressure Jet Baby Shower Tub (Algae, Mold) *Dry Wipe after*'},
+  {id:'CC_d22',t:15,x:'Pressure Jet Staircase Deck & 2 Rince off Area'},
+  {id:'CC_d23',t:20,x:'Pressure Jet Women&Men Bathroom&toilet'},
+  {id:'CC_d24',t:15,x:'Scrub tile drain gutter and Pressure Jet to floor trap'},
+  {id:'CC_d25',t:10,x:'Clear Floor Trap(6 ShowerRoom, 1 RinseOff, 1 Basin, 1 Bath Tub)'},
+  {id:'CC_d26',t:40,x:'Manual Vacuum Pool'},
+  {id:'CC_d27',t:15,x:'Clean Pump Basket'},
+  {id:'CC_d28',t:20,x:'Clean Anti-Slip Mat and remove the Mold (Baby Tub)'},
+  {id:'CC_d29',t:5,x:'Check&Clean Robot Filter&Wipe Robot Panel'},
+  {id:'CC_d30',t:10,x:'Clean Fans'},
+  {id:'CC_d31',t:15,x:'Clean filter and Wipe clean Air-Cooler fan'},
+  {id:'CC_d32',t:30,x:'Wipe Handrail&DeckWall'},
+  {id:'CC_d33',t:15,x:'Check & Clean Baby Shower Divider'},
+  {id:'CC_d34',t:5,x:'Check Changing table condition (take photo if dusty&dirty)'},
+  {id:'CC_d35',t:30,x:'Wipe dust on corner of the pool deck against Glass with cloth'},
+  {id:'CC_d36',t:5,x:'Check Salt Chlorinator panel (must be above 85)'},
+  {id:'CC_d37',t:20,x:'Check salt cell (remove calcium)'},
+  {id:'CC_d38',t:5,x:'Check Pump Equipment&Chemical Room'},
+  {id:'CC_d39',t:3,x:'Check Pump Timer (Time is accurate)'},
+  {id:'CC_d40',t:3,x:'Check Heatpump Timer (Time is accurate)'},
+  {id:'CC_d41',t:3,x:'Check Exhaust Fan Timer (Time is accurate)'},
+  {id:'CC_d42',t:60,x:'Wipe Deck Glass wall'},
+  {id:'CC_d43',t:20,x:'Wipe Entrance Glass Door'},
+  {id:'CC_d44',t:15,x:'Wipe Back Glass wall and door'},
+  {id:'CC_d45',t:15,x:'Wipe Shoes Rack Glass wall'},
+  {id:'CC_d46',t:10,x:'Clear hair bottom glass door'},
+  {id:'CC_d47',t:10,x:'Wipe Toilet Doors'},
+  {id:'CC_d48',t:15,x:'Clean 11 Baby Changing Table (Top& Bottom& Portable tub)'},
+  {id:'CC_d49',t:15,x:'Clean 6 Baby Shower Tub & Baby Shower Tub Divider'},
+  {id:'CC_d50',t:20,x:'Pressure jet All anti Slippery Mat'},
+  {id:'CC_d51',t:5,x:'Clean 2 Baby Chairs'},
+  {id:'CC_d52',t:5,x:'Wipe Water Dispenser & Table Top'},
+  {id:'CC_d53',t:10,x:'Wipe Bench, Table&Chairs'},
+  {id:'CC_d54',t:10,x:'Wipe 12 Toyogo Cabinets'},
+  {id:'CC_d55',t:5,x:'Wipe Dehumidifier(Clean Net and make sure power is running and working)'},
+  {id:'CC_d56',t:5,x:'Wipe TV Screen&Fire Hose Area'},
+  {id:'CC_d57',t:5,x:'Wipe Shoes Racks'},
+  {id:'CC_d58',t:5,x:'Wash 1 Basin & Wipe Water Dispenser'},
+  {id:'CC_d59',t:5,x:'Wipe Counter Table&Wall'},
+  {id:'CC_d60',t:30,x:'Night Watertest and Dosing'},
+  {id:'CC_d61',t:5,x:'Tool Box *'},
+  {id:'CC_d62',t:3,x:'Light Bulb (Total 8 pieces)'}
+  ], check: [
+  {id:'CC_c1',t:null,x:'CC Hallway Shower Room Ceiling Light'},
+  {id:'CC_c2',t:null,x:'CC Female Shower Room Ceiling Light'},
+  {id:'CC_c3',t:null,x:'CC Male Shower Room Ceiling Light'},
+  {id:'CC_c4',t:null,x:'CC Storage Shower Room Ceiling Light'},
+  {id:'CC_c5',t:null,x:'CC Baby Shower Tub Light'},
+  {id:'CC_c6',t:null,x:'CC Counter Light'},
+  {id:'CC_c7',t:null,x:'CC Pool Spotlight'},
+  {id:'CC_c8',t:null,x:'CC Pool Night Light'},
+  {id:'CC_c9',t:null,x:'CC Clock'},
+  {id:'CC_c10',t:null,x:'CC Hairdrying Powerpoint'},
+  {id:'CC_c11',t:null,x:'CC TV Powerpoint'},
+  {id:'CC_c12',t:null,x:'CC Counter Powerpoint'},
+  {id:'CC_c13',t:null,x:'CC Wall Fan Powerpoint'},
+  {id:'CC_c14',t:null,x:'CC Deck Powerpoint'},
+  {id:'CC_c15',t:null,x:'CC Water Dispensor Powerpoint'},
+  {id:'CC_c16',t:null,x:'CC Wifi & CCTV Cable'},
+  {id:'CC_c17',t:null,x:'CC Pressure Jet Power Point'},
+  {id:'CC_c18',t:null,x:'CC Exhaust Fan (Beside Female Toilet)'},
+  {id:'CC_c19',t:null,x:'CC 2 Shower Heater (Heating mode, ON , Temperature above 50)'},
+  {id:'CC_c20',t:null,x:'CC DB Box (Burn, Trip ,etc) *Beside Female Toilet'},
+  {id:'CC_c21',t:null,x:'CC DB Box (Burn, Trip ,etc) *DB room'},
+  {id:'CC_c22',t:null,x:'CC Main Pump Panel (Burn, Trip ,etc)'},
+  {id:'CC_c23',t:null,x:'CC Sub Pump Panel (Burn, Trip ,etc)'},
+  {id:'CC_c24',t:null,x:'CC Pump Timer'},
+  {id:'CC_c25',t:null,x:'CC Pump Room Light'},
+  {id:'CC_c26',t:null,x:'CC Main 2 Pump Checking (Manual On 1 by 1, Leaking)'},
+  {id:'CC_c27',t:null,x:'CC Sub 2 Pump Checking (Manual On 1 by 1, Leaking)'},
+  {id:'CC_c28',t:null,x:'CC Heatpump 1 Timer & Correct Temperature'},
+  {id:'CC_c29',t:null,x:'CC Heatpump 2 Timer & Correct Temperature'},
+  {id:'CC_c30',t:null,x:'CC 2 Air Cooler'},
+  {id:'CC_c31',t:null,x:'CC Hall Shower room (Vertical bars, Shower Head, Grey Basket, Wall mount, Hose, Soap Dispenser, Hanger, Door Lock, Door Hinges, Top Cover)'},
+  {id:'CC_c32',t:null,x:'CC Lady Shower room (Vertical bars, Shower Head, Grey Basket, Wall mount, Hose, Soap Dispenser, Hanger, Door Lock, Door Hinges)'},
+  {id:'CC_c33',t:null,x:'CC Men Shower room (Vertical bars, Shower Head, Grey Basket, Wall mount, Hose, Soap Dispenser, Hanger, Door Lock, Door Hinges)'},
+  {id:'CC_c34',t:null,x:'CC Baby Tub (Shower Head, Hose, Drain hose, Tub Stability, Soap Dispenser, Mixer)'},
+  {id:'CC_c35',t:null,x:'CC 6 Baby Tub Drain & Floor trap near Tub'},
+  {id:'CC_c36',t:null,x:'CC Rinse Off (Hose , Shower Head, Mixer)'},
+  {id:'CC_c37',t:null,x:'CC Long hose (Leaking, Break , etc)'},
+  {id:'CC_c38',t:null,x:'CC Changing Table & Mat (Screw, Stability, Board)'},
+  {id:'CC_c39',t:null,x:'CC Wood Wall Ledge (Dusty)'},
+  {id:'CC_c40',t:null,x:'CC Toyogo Cabinet'},
+  {id:'CC_c41',t:null,x:'CC Basin & Mirror'},
+  {id:'CC_c42',t:null,x:'CC Props (6 Noodles, 6 Backfloats, 6 Sinking Rings, Floating Ball)'},
+  {id:'CC_c43',t:null,x:'CC LifeBouy'},
+  {id:'CC_c44',t:null,x:'CC Signage Board'},
+  {id:'CC_c45',t:null,x:'CC Paint (Broken Paint wall, Putty if needed)'},
+  {id:'CC_c46',t:null,x:'CC Front HandRail (Rusty, Paint peeling , putty if needed)'},
+  {id:'CC_c47',t:null,x:'CC Back HandRail (Dusty, Dirty, Wallpaper)'},
+  {id:'CC_c48',t:null,x:'CC Pool Divider (straighten , support rope)'},
+  {id:'CC_c49',t:null,x:'CC Pool Deck Big Wallpaper'},
+  {id:'CC_c50',t:null,x:'CC Entrance Glass'},
+  {id:'CC_c51',t:null,x:'CC Dusty Deck Floor (near Corner Glass wall)'},
+  {id:'CC_c52',t:null,x:'CC Pool Deck Skirting'},
+  {id:'CC_c53',t:null,x:'CC Pool Deck (Algae)'},
+  {id:'CC_c54',t:null,x:'CC Shoe Racks'},
+  {id:'CC_c55',t:null,x:'CC 6 Pool Skimmer Basket'},
+  {id:'CC_c56',t:null,x:'CC Check Spider Web'},
+  {id:'CC_c57',t:null,x:'CC Hall Shower Room Top Bracket'},
+  {id:'CC_c58',t:null,x:'CC Female Shower Room Top Bracket'},
+  {id:'CC_c59',t:null,x:'CC Teaching Platform (inside Pool and Deck)'},
+  {id:'CC_c60',t:null,x:'CC Salt Chlorinator'},
+  {id:'CC_c61',t:null,x:'Check Tool Box (Hammer, Chain Wrench, Monkey plier, Testpen, Driver, Scraper)'},
+  {id:'CC_c62',t:null,x:'Pool Thermometer'},
+  {id:'CC_c63',t:null,x:'White Tape'},
+  {id:'CC_c64',t:null,x:'WD40'},
+  {id:'CC_c65',t:null,x:'Rubber washer (shower head)'},
+  {id:'CC_c66',t:null,x:'Rubber washer (Mixer)'},
+  {id:'CC_c67',t:null,x:'O-ring'},
+  {id:'CC_c68',t:null,x:'Adjustable Spray Nozzle'},
+  {id:'CC_c69',t:null,x:'Hose End Connector'},
+  {id:'CC_c70',t:null,x:'Hose Reapir Connector'},
+  {id:'CC_c71',t:null,x:'Tap Connector'},
+  {id:'CC_c72',t:null,x:'Spare Shower Hose'},
+  {id:'CC_c73',t:null,x:'Spare Shower Head'},
+  {id:'CC_c74',t:null,x:'Shower Head Holder Wall Mount'},
+  {id:'CC_c75',t:null,x:'Shower Head Holder Slide Bar'},
+  {id:'CC_c76',t:null,x:'Grey Basket'},
+  {id:'CC_c77',t:null,x:'Cleaning Chemical - Stain Remover'},
+  {id:'CC_c78',t:null,x:'Cleaning Tools - Hand Brush'},
+  {id:'CC_c79',t:null,x:'2 Mop & Buckets Checking'},
+  {id:'CC_c80',t:null,x:'Spongemop'},
+  {id:'CC_c81',t:null,x:'Scraper'},
+  {id:'CC_c82',t:null,x:'Chemical Room Floor'},
+  {id:'CC_c83',t:null,x:'Chemical Room (Chlorine Drum)'},
+  {id:'CC_c84',t:null,x:'Chemical Room (Acid Drum)'},
+  {id:'CC_c85',t:null,x:'Chemical Room (Bucket, Stick, Cup)'}
+  ] },
+  DR: { label: 'DR', daily: [
+  {id:'DR_d1',t:15,x:'Backwash'},
+  {id:'DR_d2',t:15,x:'Watertest (Ta and Salt, Acid, Refill Test Kit)*Facing Counter CCTV'},
+  {id:'DR_d3',t:5,x:'Dosing bicarb and salt bags (Acid dose later)'},
+  {id:'DR_d4',t:null,x:'Send watertest report to Group chat'},
+  {id:'DR_d5',t:15,x:'Check and Clean the Pump Equipment &Chemical Room'},
+  {id:'DR_d6',t:10,x:'Check Instant Water Heater'},
+  {id:'DR_d7',t:2,x:'Check Shower Pump'},
+  {id:'DR_d8',t:10,x:'Inspect (Lighting, Changing Table, Shower Room,WaterDispenser)'},
+  {id:'DR_d9',t:10,x:'Inspect (HairDryer, Pool Platform, Clock, WiFi, Number Locker)'},
+  {id:'DR_d10',t:20,x:'Check&Repair Shower Facilities(DoorLock,ShowerHead,Hose, Mixer, Hooks, Shampoo, ShowerHead Holder)'},
+  {id:'DR_d11',t:80,x:'Sand and Scrub Pool Stain (Black Algae, Stain)'},
+  {id:'DR_d12',t:15,x:'Scrub Algae on Pool Deck'},
+  {id:'DR_d13',t:20,x:'Pool Scrub (Wall,Ledge,Corner,Floor)'},
+  {id:'DR_d14',t:5,x:'Check and Clean the pool divider(Floating Ball, Rope)'},
+  {id:'DR_d15',t:3,x:'Check Floor Inlet (facing below)'},
+  {id:'DR_d16',t:3,x:'Dosing Acid (Refer to Morning report)*Ready Bucket near Pool'},
+  {id:'DR_d17',t:20,x:'Pressure Jet Top Floor Area & Shower Room(wall&floor)'},
+  {id:'DR_d18',t:15,x:'Pressure Jet Baby Shower Tub (Algae, Mold) *Dry Wipe after*'},
+  {id:'DR_d19',t:5,x:'Scrub and Wipe the drain with wet tissue (Top Floor)'},
+  {id:'DR_d20',t:20,x:'Pressure Jet Stair&CounterArea(Don\'t Jet inside CounterTable)'},
+  {id:'DR_d21',t:10,x:'Pressure Jet Deck Staircase&RinseOff Area'},
+  {id:'DR_d22',t:10,x:'Scrub and Wipe the drain with wet tissue (bottom floor)'},
+  {id:'DR_d23',t:5,x:'Clean Floor Trap (1 ShowerRoom, 2 Toilets, 1 RinseOff)'},
+  {id:'DR_d24',t:30,x:'Pressure Jet Carpark Area'},
+  {id:'DR_d25',t:15,x:'Manual Vacuum Pool'},
+  {id:'DR_d26',t:10,x:'Clean Pump Basket & Skimmer Basket'},
+  {id:'DR_d27',t:20,x:'Clean Babytub Anti-Slip Mat and remove the Mold'},
+  {id:'DR_d28',t:5,x:'Check&Clean Robot Filter&Wipe Robot Panel'},
+  {id:'DR_d29',t:15,x:'Wipe Deck Wall, Steel Door & Window frame(Outside&inside)'},
+  {id:'DR_d30',t:5,x:'Wipe Dust on Filter, WasteTank, HeatPump'},
+  {id:'DR_d31',t:15,x:'Check & Wipe Shower Divider'},
+  {id:'DR_d32',t:20,x:'Clean Fans & Ceiling Fan'},
+  {id:'DR_d33',t:15,x:'Paint & Wipe stain on Deck wall'},
+  {id:'DR_d34',t:3,x:'Check Changing table condition (take photo if dusty&dirty)'},
+  {id:'DR_d35',t:5,x:'Check Salt Chlorinator panel (must be above 85)'},
+  {id:'DR_d36',t:15,x:'Check salt cell (remove calcium)'},
+  {id:'DR_d37',t:5,x:'Check Pump Equipment&Chemical Room'},
+  {id:'DR_d38',t:3,x:'Check Pump Timer (Time is accurate)'},
+  {id:'DR_d39',t:3,x:'Check Heatpump Timer (Time is accurate)'},
+  {id:'DR_d40',t:3,x:'Check Exhaust Fan Timer (Time is accurate)'},
+  {id:'DR_d41',t:15,x:'Wipe Staircase Handrail & Deck Handrail'},
+  {id:'DR_d42',t:20,x:'Wipe Glass and Mirror'},
+  {id:'DR_d43',t:10,x:'Clean 2 Baby Shower Tub & Baby Shower Tub Divider'},
+  {id:'DR_d44',t:15,x:'Pressure jet Anti Slippery Mat'},
+  {id:'DR_d45',t:5,x:'Clean 2 Baby Chairs'},
+  {id:'DR_d46',t:10,x:'Clean 6 Baby Changing Table (Top& Bottom& Portable tub)'},
+  {id:'DR_d47',t:5,x:'Wash 1 Basin & Wipe Water Dispenser'},
+  {id:'DR_d48',t:10,x:'Wipe High Chairs(Top Floor& Counter Area)'},
+  {id:'DR_d49',t:5,x:'Wipe 7 Cabinets'},
+  {id:'DR_d50',t:5,x:'Wipe TV Screen, Wallboard (Counter, staircase, pool deck)'},
+  {id:'DR_d51',t:5,x:'Wipe Shoe Racks& Bench'},
+  {id:'DR_d52',t:10,x:'Wipe picture of photo wall, Second floor light switch& blue pipe'},
+  {id:'DR_d53',t:15,x:'Check and Clear for Rusty(Steel on deck, rust under firehose, rinse off, handrail, etc)'},
+  {id:'DR_d54',t:20,x:'Water Test and Dose'},
+  {id:'DR_d55',t:5,x:'Tool Box *'}
+  ], check: [
+  {id:'DR_c1',t:null,x:'DR Shower Room Ceiling Light'},
+  {id:'DR_c2',t:null,x:'DR 2 Toilet Ceiling Light'},
+  {id:'DR_c3',t:null,x:'DR Baby Shower Tub Light'},
+  {id:'DR_c4',t:null,x:'DR Changing Table Light'},
+  {id:'DR_c5',t:null,x:'DR Ceiling Fan'},
+  {id:'DR_c6',t:null,x:'DR Pool Spotlight'},
+  {id:'DR_c7',t:null,x:'DR Upper floor Wall Fan'},
+  {id:'DR_c8',t:null,x:'DR Backdoor Light'},
+  {id:'DR_c9',t:null,x:'DR Clock'},
+  {id:'DR_c10',t:null,x:'DR Hairdrying Powerpoint'},
+  {id:'DR_c11',t:null,x:'DRTV Powerpoint'},
+  {id:'DR_c12',t:null,x:'DR LED Tracklight'},
+  {id:'DR_c13',t:null,x:'DR Counter Powerpoint'},
+  {id:'DR_c14',t:null,x:'DR Water Dispensor Powerpoint'},
+  {id:'DR_c15',t:null,x:'DR Wifi & CCTV Cable'},
+  {id:'DR_c16',t:null,x:'DR Air Blower Power Point'},
+  {id:'DR_c17',t:null,x:'DR Exhaust Fan'},
+  {id:'DR_c18',t:null,x:'DR Instant Heater'},
+  {id:'DR_c19',t:null,x:'DR Shower Room Pump'},
+  {id:'DR_c20',t:null,x:'DR LG DB Box (Burn, Trip ,etc)'},
+  {id:'DR_c21',t:null,x:'DR Pump Panel (Burn, Trip ,etc)'},
+  {id:'DR_c22',t:null,x:'DR Blue Pump Timer'},
+  {id:'DR_c23',t:null,x:'DR White Pump Timer'},
+  {id:'DR_c24',t:null,x:'DR Pump Room Light'},
+  {id:'DR_c25',t:null,x:'DR Pump Checking (Manual On 1 by 1, Leaking)'},
+  {id:'DR_c26',t:null,x:'DR Heatpump Timer & Correct Temperature'},
+  {id:'DR_c27',t:null,x:'DR Shower room (Vertical bars, Shower Head, Grey Basket, Wall mount, Hose, Soap Dispenser, Hanger, Door Lock, Door Hinges, Top Cover)'},
+  {id:'DR_c28',t:null,x:'DR Baby Tub (Shower Head, Hose, Drain hose, Tub Stability, Soap Dispenser, Mixer, Paint)'},
+  {id:'DR_c29',t:null,x:'DR Baby Tub Divider'},
+  {id:'DR_c30',t:null,x:'DR Rinse Off (Hose , Shower Head, Instant Heater)'},
+  {id:'DR_c31',t:null,x:'DR Long hose (Leaking, Break , etc)'},
+  {id:'DR_c32',t:null,x:'DR Changing Table & Mat (Screw, Stability, Board)'},
+  {id:'DR_c33',t:null,x:'DR Toyogo Cabinet'},
+  {id:'DR_c34',t:null,x:'DR Basin & Mirror'},
+  {id:'DR_c35',t:null,x:'DR Props (6 Noodles, 6 Backfloats, 6 Sinking Rings, Floating Ball)'},
+  {id:'DR_c36',t:null,x:'DR Signage Board'},
+  {id:'DR_c37',t:null,x:'DR Pool Staircase Handrail'},
+  {id:'DR_c38',t:null,x:'DR Paint Deck (Broken Paint wall, Putty if needed)'},
+  {id:'DR_c39',t:null,x:'DR Paint Front (Broken Paint wall, Putty if needed)'},
+  {id:'DR_c40',t:null,x:'DR Paint Back (Broken Paint wall, Putty if needed)'},
+  {id:'DR_c41',t:null,x:'DR Paint Upper Floor (Broken Paint wall, Putty if needed)'},
+  {id:'DR_c42',t:null,x:'DR HandRail (Rusty, Paint peeling , putty if needed)'},
+  {id:'DR_c43',t:null,x:'CC Pool Deck Skirting'},
+  {id:'DR_c44',t:null,x:'CC Pool Deck (Algae)'},
+  {id:'DR_c45',t:null,x:'DR Pool Divider (straighten , support rope)'},
+  {id:'DR_c46',t:null,x:'DR HandRail (Rusty, Paint peeling , putty if needed)'},
+  {id:'DR_c47',t:null,x:'DR Entrance Shoe Racks'},
+  {id:'DR_c48',t:null,x:'DR Backdoor Shoe Racks'},
+  {id:'DR_c49',t:null,x:'DR Pool Skimmer Basket'},
+  {id:'DR_c50',t:null,x:'DR Check SpiderWeb'},
+  {id:'DR_c51',t:null,x:'DR Shower Room Hanger Bracket Rusty'},
+  {id:'DR_c52',t:null,x:'DR Teaching Platform (Deck)'},
+  {id:'DR_c53',t:null,x:'DR Salt Chlorinator'},
+  {id:'DR_c54',t:null,x:'Check Tool Box (Hammer, Chain Wrench, Monkey plier, Testpen, Driver, Scraper)'},
+  {id:'DR_c55',t:null,x:'Pool Thermometer'},
+  {id:'DR_c56',t:null,x:'White Tape'},
+  {id:'DR_c57',t:null,x:'WD40'},
+  {id:'DR_c58',t:null,x:'Rubber washer (shower head)'},
+  {id:'DR_c59',t:null,x:'Rubber washer (Mixer)'},
+  {id:'DR_c60',t:null,x:'O-ring'},
+  {id:'DR_c61',t:null,x:'Adjustable Spray Nozzle'},
+  {id:'DR_c62',t:null,x:'Hose End Connector'},
+  {id:'DR_c63',t:null,x:'Hose Reapir Connector'},
+  {id:'DR_c64',t:null,x:'Tap Connector'},
+  {id:'DR_c65',t:null,x:'Spare Shower Hose'},
+  {id:'DR_c66',t:null,x:'Spare Shower Head'},
+  {id:'DR_c67',t:null,x:'Shower Head Holder Wall Mount'},
+  {id:'DR_c68',t:null,x:'Shower Head Holder Slide Bar'},
+  {id:'DR_c69',t:null,x:'Grey Basket'},
+  {id:'DR_c70',t:null,x:'Cleaning Chemical - Stain Remover'},
+  {id:'DR_c71',t:null,x:'Cleaning Tools - Hand Brush'},
+  {id:'DR_c72',t:null,x:'2 Mop & Buckets Checking'},
+  {id:'DR_c73',t:null,x:'Spongemop'},
+  {id:'DR_c74',t:null,x:'Scraper'}
+  ] },
+};
 
-  {id:8,  t:2,  c:'insp', x:'Check shower heater display (55° and above is normal)'},
-  {id:9,  t:10, c:'insp', x:'Inspect lighting, changing table, shower room, water dispenser'},
-  {id:10, t:10, c:'insp', x:'Inspect hairdryer, pool platform, clock, WiFi, number locker'},
-  {id:16, t:5,  c:'insp', x:'Check floor inlet (facing below)'},
-  {id:17, t:20, c:'insp', x:'Check and clean the pool divider (floating ball, rope)'},
-  {id:18, t:10, c:'insp', x:'Check and clear skimmer'},
-  {id:37, t:5,  c:'insp', x:'Check changing table condition (photo if dusty/dirty)'},
-  {id:41, t:5,  c:'insp', x:'Check pump equipment & chemical room'},
-  {id:42, t:3,  c:'insp', x:'Check pump timer (time is accurate)'},
-  {id:43, t:3,  c:'insp', x:'Check heatpump timer (time is accurate)'},
-  {id:44, t:3,  c:'insp', x:'Check exhaust fan timer (time is accurate)'},
+const CAT_LABEL = { daily: 'Daily Task', check: 'Checking List' };
 
-  {id:4,  t:30, c:'pool', x:'Backwash (floor trap, women\'s toilet)'},
-  {id:12, t:30, c:'pool', x:'Pressure jet stubborn algae on deck (once a month)'},
-  {id:13, t:60, c:'pool', x:'Scrub off surface algae on deck'},
-  {id:14, t:45, c:'pool', x:'Pool scrub — must be in the pool (floor, wall, ledge)'},
-  {id:15, t:30, c:'pool', x:'Remove stain marks from pool'},
-  {id:29, t:40, c:'pool', x:'Manual vacuum pool'},
+let me = '';
+let curOutlet = 'CC';
+let curCat = 'daily';
+let curFilter = 'all';
+let curSearch = '';
+let state = {};        // {taskId: {status, claimedBy, claimedAt, doneBy, doneAt, remark}}
+let noteOpen = {};      // {taskId: bool} local UI toggle
+let pollTimer = null;
 
-  {id:21, t:15, c:'jet', x:'Pressure jet entrance & blue anti-slip mat'},
-  {id:22, t:30, c:'jet', x:'Pressure jet shower rooms (wall & floor)'},
-  {id:23, t:30, c:'jet', x:'Pressure jet corridor & baby changing area'},
-  {id:24, t:20, c:'jet', x:'Pressure jet baby shower tub (algae, mold) — dry wipe after'},
-  {id:25, t:15, c:'jet', x:'Pressure jet staircase deck & rinse-off area'},
-  {id:26, t:20, c:'jet', x:'Pressure jet women\'s & men\'s bathroom & toilet'},
-  {id:27, t:15, c:'jet', x:'Scrub tile drain gutter and pressure jet to floor trap'},
-  {id:28, t:10, c:'jet', x:'Clear floor trap (6 shower rooms, 1 rinse-off, 1 basin, 1 bath tub)'},
-  {id:53, t:20, c:'jet', x:'Pressure jet all anti-slip mats'},
+function stateKey(outlet, cat){ return `state:${outlet}:${cat}`; }
+function activityKey(outlet){ return `activity:${outlet}`; }
+function archiveKey(outlet){ return `archive:${outlet}`; }
 
-  {id:11, t:20, c:'equip', x:'Check & repair shower facilities (door lock, shower head, hose, mixer, hooks, shampoo, shower head holder)'},
-  {id:30, t:15, c:'equip', x:'Clean pump basket'},
-  {id:32, t:5,  c:'equip', x:'Check & clean robot filter & wipe robot panel'},
-  {id:33, t:10, c:'equip', x:'Clean fans'},
-  {id:34, t:15, c:'equip', x:'Clean filter and wipe clean air-cooler fan'},
-  {id:58, t:5,  c:'equip', x:'Wipe dehumidifier — clean net, confirm power is running'},
-
-  {id:35, t:30, c:'glass', x:'Wipe handrail & deck wall'},
-  {id:38, t:30, c:'glass', x:'Wipe dust on corner of the pool deck against glass, with cloth'},
-  {id:45, t:60, c:'glass', x:'Wipe deck glass wall'},
-  {id:46, t:20, c:'glass', x:'Wipe entrance glass door'},
-  {id:47, t:15, c:'glass', x:'Wipe back glass wall and door'},
-  {id:48, t:15, c:'glass', x:'Wipe shoes rack glass wall'},
-  {id:49, t:10, c:'glass', x:'Clear hair from bottom glass door'},
-  {id:50, t:10, c:'glass', x:'Wipe toilet doors'},
-
-  {id:20, t:5,  c:'baby', x:'Use mold remover for baby anti-slip mat'},
-  {id:31, t:20, c:'baby', x:'Clean anti-slip mat and remove mold (baby tub)'},
-  {id:36, t:15, c:'baby', x:'Check & clean baby shower divider'},
-  {id:51, t:15, c:'baby', x:'Clean 11 baby changing tables (top, bottom, portable tub)'},
-  {id:52, t:15, c:'baby', x:'Clean 6 baby shower tubs & divider'},
-  {id:54, t:5,  c:'baby', x:'Clean 2 baby chairs'},
-  {id:55, t:5,  c:'baby', x:'Wipe water dispenser & table top'},
-  {id:56, t:10, c:'baby', x:'Wipe bench, table & chairs'},
-  {id:57, t:10, c:'baby', x:'Wipe 12 Toyogo cabinets'},
-  {id:59, t:5,  c:'baby', x:'Wipe TV screen & fire hose area'},
-  {id:60, t:5,  c:'baby', x:'Wipe shoes racks'},
-  {id:61, t:5,  c:'baby', x:'Wash basin & wipe water dispenser'},
-  {id:62, t:5,  c:'baby', x:'Wipe counter table & wall'},
-
-  {id:64, t:5,  c:'close', x:'Tool box check'},
-  {id:65, t:3,  c:'close', x:'Light bulb check (8 pieces total)'},
-];
-
-const CATS = [
-  {key:'chem',  label:'Water Chemistry & Testing'},
-  {key:'insp',  label:'Daily Inspections'},
-  {key:'pool',  label:'Pool Deck & Water Cleaning'},
-  {key:'jet',   label:'Pressure Jet — Facility Areas'},
-  {key:'equip', label:'Equipment & Mechanical'},
-  {key:'glass', label:'Glass & Surfaces'},
-  {key:'baby',  label:'Baby Area & Amenities'},
-  {key:'close', label:'Closing Tasks'},
-];
-
-const TOTAL_TASKS = TASKS.length;
-const TOTAL_MINS = TASKS.reduce((s,t)=>s+t.t,0);
-const CIRC = 264; // 2*pi*42
-
-let checked = {};
-let openCats = new Set(['chem']); // first section open by default
-let saveTimer = null;
-
-function catStats(key){
-  const items = TASKS.filter(t=>t.c===key);
-  const done = items.filter(t=>checked[t.id]).length;
-  const mins = items.reduce((s,t)=>s+t.t,0);
-  return {items, done, mins};
+function timeAgo(ts){
+  if(!ts) return '';
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if(s < 60) return 'just now';
+  if(s < 3600) return Math.floor(s/60) + 'm ago';
+  if(s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
 }
 
-function render(){
-  const container = document.getElementById('categories');
-  container.innerHTML = '';
-  CATS.forEach(cat=>{
-    const {items, done, mins} = catStats(cat.key);
-    const wrap = document.createElement('div');
-    wrap.className = 'cat' + (openCats.has(cat.key) ? ' open' : '');
+function formatClock(ms){
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const mm = String(m).padStart(2,'0');
+  const ss = String(s).padStart(2,'0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
 
-    const head = document.createElement('div');
-    head.className = 'cat-head';
-    head.innerHTML = `
-      <div class="cat-title">${cat.label} <span class="cat-count">${done}/${items.length}</span></div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span class="cat-mins">${mins} min</span>
-        <svg class="chev" width="16" height="16" viewBox="0 0 16 16"><path d="M5 2l7 6-7 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </div>`;
-    head.addEventListener('click', ()=>{
-      if(openCats.has(cat.key)) openCats.delete(cat.key); else openCats.add(cat.key);
-      render();
-    });
+function formatMins(ms){
+  return Math.round(ms / 60000);
+}
 
-    const body = document.createElement('div');
-    body.className = 'cat-body';
-    items.forEach(task=>{
-      const row = document.createElement('label');
-      row.className = 'task' + (checked[task.id] ? ' done' : '');
-      row.innerHTML = `
-        <input type="checkbox" ${checked[task.id]?'checked':''} data-id="${task.id}">
-        <span class="task-text">${task.x}</span>
-        <span class="task-time">${task.t} min</span>`;
-      row.querySelector('input').addEventListener('change', (e)=>{
-        checked[task.id] = e.target.checked;
-        scheduleSave();
-        render();
-      });
-      body.appendChild(row);
-    });
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._tm);
+  toast._tm = setTimeout(()=>t.classList.remove('show'), 2200);
+}
 
-    wrap.appendChild(head);
-    wrap.appendChild(body);
-    container.appendChild(wrap);
+function renderTabs(){
+  const ot = document.getElementById('outlet-tabs');
+  ot.innerHTML = '';
+  Object.keys(DATA).forEach(key=>{
+    const el = document.createElement('div');
+    el.className = 'tab' + (key===curOutlet ? ' active' : '');
+    el.textContent = DATA[key].label;
+    el.addEventListener('click', ()=>{ curOutlet = key; loadAndRender(); });
+    ot.appendChild(el);
   });
 
-  updateStatbar();
+  const ct = document.getElementById('cat-tabs');
+  ct.innerHTML = '';
+  ['daily','check'].forEach(cat=>{
+    const el = document.createElement('div');
+    el.className = 'subtab' + (cat===curCat ? ' active' : '');
+    el.textContent = CAT_LABEL[cat];
+    el.addEventListener('click', ()=>{ curCat = cat; loadAndRender(); });
+    ct.appendChild(el);
+  });
+}
+
+function items(){ return DATA[curOutlet][curCat]; }
+
+function getRecord(id){ return state[id] || {status:'open'}; }
+
+function computeStats(){
+  const all = items();
+  let open=0, claimed=0, done=0, minsLeft=0, actualMins=0, budgetMinsDone=0;
+  all.forEach(it=>{
+    const r = getRecord(it.id);
+    if(r.status === 'done'){
+      done++;
+      if(r.actualMs) actualMins += formatMins(r.actualMs);
+      if(it.t) budgetMinsDone += it.t;
+    }
+    else if(r.status === 'claimed') claimed++;
+    else open++;
+    if(r.status !== 'done' && it.t) minsLeft += it.t;
+  });
+  return {open, claimed, done, total: all.length, minsLeft, actualMins, budgetMinsDone};
 }
 
 function updateStatbar(){
-  const doneCount = Object.values(checked).filter(Boolean).length;
-  const doneMins = TASKS.filter(t=>checked[t.id]).reduce((s,t)=>s+t.t,0);
-  const pct = TOTAL_TASKS ? Math.round((doneCount/TOTAL_TASKS)*100) : 0;
-
-  document.getElementById('stat-done').textContent = `${doneCount}/${TOTAL_TASKS}`;
-  document.getElementById('stat-mins').textContent = `${doneMins} / ${TOTAL_MINS}`;
-  document.getElementById('stat-remain').textContent = `${TOTAL_TASKS - doneCount}`;
-  document.getElementById('gauge-pct').textContent = `${pct}%`;
-
+  const s = computeStats();
+  const pct = s.total ? Math.round((s.done/s.total)*100) : 0;
+  document.getElementById('stat-open').textContent = s.open;
+  document.getElementById('stat-claimed').textContent = s.claimed;
+  document.getElementById('stat-done').textContent = s.done;
+  document.getElementById('gauge-pct').textContent = pct + '%';
+  const minsWrap = document.getElementById('stat-mins-wrap');
+  const actualWrap = document.getElementById('stat-actual-wrap');
+  if(curCat === 'daily'){
+    minsWrap.style.display = '';
+    document.getElementById('stat-mins').textContent = s.minsLeft;
+    actualWrap.style.display = '';
+    document.getElementById('stat-actual').textContent = `${s.actualMins}/${s.budgetMinsDone}`;
+  } else {
+    minsWrap.style.display = 'none';
+    actualWrap.style.display = 'none';
+  }
   const arc = document.getElementById('gauge-arc');
-  const offset = CIRC - (CIRC * pct / 100);
-  arc.style.stroke = pct >= 100 ? '#3E7F53' : (pct >= 50 ? '#3E7F53' : '#DD9A35');
-  arc.setAttribute('stroke-dashoffset', offset);
-
-  document.getElementById('btn-submit').disabled = doneCount === 0;
+  const CIRC = 264;
+  arc.setAttribute('stroke-dashoffset', CIRC - (CIRC*pct/100));
 }
 
-function scheduleSave(){
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveDraft, 600);
+function statusLabel(r){
+  if(r.status === 'done') return 'Done';
+  if(r.status === 'claimed') return r.claimedBy ? r.claimedBy.split(' ')[0] + ' ⋯' : 'In progress';
+  return 'Open';
 }
 
-async function saveDraft(){
-  try{
-    await window.storage.set('draft-checked', JSON.stringify(checked), true);
-    await window.storage.set('draft-fields', JSON.stringify(readFields()), true);
-  }catch(err){ console.error('Autosave failed', err); }
+function renderList(){
+  const list = document.getElementById('task-list');
+  list.innerHTML = '';
+  const q = curSearch.trim().toLowerCase();
+  const filtered = items().filter(it=>{
+    const r = getRecord(it.id);
+    if(curFilter !== 'all' && r.status !== curFilter) return false;
+    if(q && !it.x.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  if(filtered.length === 0){
+    list.innerHTML = '<div class="empty">No tasks match.</div>';
+    return;
+  }
+  filtered.forEach(it=>{
+    const r = getRecord(it.id);
+    const row = document.createElement('div');
+    row.className = 'task';
+
+    let meta = '';
+    if(r.status === 'claimed'){
+      meta = `Claimed by ${r.claimedBy || '—'} · <span class="live-timer" data-start="${r.claimedAt || Date.now()}">${formatClock(Date.now() - (r.claimedAt || Date.now()))}</span> elapsed`;
+    }
+    if(r.status === 'done'){
+      meta = `Done by ${r.doneBy || '—'} · ${timeAgo(r.doneAt)}`;
+      if(r.actualMs != null){
+        const actual = formatMins(r.actualMs);
+        if(it.t){
+          const cls = actual > it.t ? 'over-budget' : 'under-budget';
+          meta += ` · <span class="${cls}">${actual} min</span> (budget ${it.t})`;
+        } else {
+          meta += ` · ${actual} min`;
+        }
+      }
+    }
+    if(r.remark) meta += (meta ? ' · ' : '') + `Note: ${r.remark}`;
+
+    row.innerHTML = `
+      <div class="task-main">
+        <div class="task-text">${it.x}</div>
+        ${meta ? `<div class="task-meta">${meta}</div>` : ''}
+      </div>
+      ${it.t ? `<span class="task-time">${it.t} min</span>` : ''}
+      <button class="note-btn${r.remark ? ' has-note' : ''}" title="Add note">✎</button>
+      <button class="status-btn ${r.status}">${statusLabel(r)}</button>
+    `;
+
+    row.querySelector('.status-btn').addEventListener('click', ()=>onTaskTap(it.id));
+    row.querySelector('.note-btn').addEventListener('click', ()=>toggleNote(row, it.id));
+
+    list.appendChild(row);
+
+    if(noteOpen[it.id]){
+      const box = document.createElement('div');
+      box.className = 'note-box open';
+      box.innerHTML = `<textarea id="note-${it.id}">${r.remark || ''}</textarea><br><button class="note-save">Save note</button>`;
+      box.querySelector('.note-save').addEventListener('click', ()=>saveNote(it.id));
+      list.appendChild(box);
+    }
+  });
 }
 
-function readFields(){
-  return {
-    facility: document.getElementById('f-facility').value,
-    date: document.getElementById('f-date').value,
-    week: document.getElementById('f-week').value,
-    fm: document.getElementById('f-fm').value,
-    sig: document.getElementById('f-sig').value,
-    remarks: document.getElementById('f-remarks').value,
-  };
+function toggleNote(row, id){
+  noteOpen[id] = !noteOpen[id];
+  renderList();
 }
 
-function writeFields(f){
-  if(!f) return;
-  if(f.facility!==undefined) document.getElementById('f-facility').value = f.facility;
-  if(f.date) document.getElementById('f-date').value = f.date;
-  if(f.week) document.getElementById('f-week').value = f.week;
-  if(f.fm!==undefined) document.getElementById('f-fm').value = f.fm;
-  if(f.sig!==undefined) document.getElementById('f-sig').value = f.sig;
-  if(f.remarks!==undefined) document.getElementById('f-remarks').value = f.remarks;
+async function saveNote(id){
+  const val = document.getElementById(`note-${id}`).value.trim();
+  await mutateRecord(id, (r)=>{ r.remark = val; return r; });
+  noteOpen[id] = false;
+  toast('Note saved');
+  renderList();
 }
 
-async function loadDraft(){
-  try{
-    const c = await window.storage.get('draft-checked', true);
-    if(c && c.value) checked = JSON.parse(c.value);
-  }catch(e){ /* no draft yet */ }
-  try{
-    const f = await window.storage.get('draft-fields', true);
-    if(f && f.value) writeFields(JSON.parse(f.value));
-  }catch(e){ /* no draft yet */ }
+function requireMe(){
+  if(!me){
+    toast('Enter your name first');
+    document.getElementById('f-me').focus();
+    return false;
+  }
+  return true;
 }
 
-async function loadHistory(){
-  const list = document.getElementById('hist-list');
-  list.innerHTML = '<div class="empty">Loading…</div>';
-  try{
-    const res = await window.storage.get('submissions', true);
-    const subs = res && res.value ? JSON.parse(res.value) : [];
-    if(subs.length === 0){
-      list.innerHTML = '<div class="empty">No submissions yet — this run will be the first.</div>';
+async function onTaskTap(id){
+  if(!requireMe()) return;
+  const r = getRecord(id);
+  if(r.status === 'open'){
+    await mutateRecord(id, rec=>({...rec, status:'claimed', claimedBy: me, claimedAt: Date.now()}));
+    logActivity('claimed', id);
+    toast('Claimed');
+  } else if(r.status === 'claimed'){
+    if(r.claimedBy && r.claimedBy !== me){
+      toast(`Already claimed by ${r.claimedBy}`);
       return;
     }
-    list.innerHTML = '';
-    subs.slice().reverse().slice(0,8).forEach(s=>{
-      const row = document.createElement('div');
-      row.className = 'hist-row';
-      row.innerHTML = `
-        <div class="hr-main">
-          <div class="hr-fac">${s.facility || '—'} · ${s.week}</div>
-          <div class="hr-meta">${s.date || 'no date'} · signed ${s.sig || '—'}${s.fm ? ' / FM '+s.fm : ''} · ${s.doneMins} min logged</div>
-        </div>
-        <div class="hist-pct">${s.pct}%</div>`;
-      list.appendChild(row);
-    });
-  }catch(e){
-    list.innerHTML = '<div class="empty">Couldn\'t load history.</div>';
+    const finishedAt = Date.now();
+    await mutateRecord(id, rec=>({...rec, status:'done', doneBy: me, doneAt: finishedAt, actualMs: finishedAt - (rec.claimedAt || finishedAt)}));
+    logActivity('done', id);
+    toast('Marked done');
+  } else if(r.status === 'done'){
+    if(confirm('Reopen this task?')){
+      await mutateRecord(id, rec=>({...rec, status:'open', claimedBy:null, claimedAt:null, doneBy:null, doneAt:null, actualMs:null}));
+      logActivity('reopened', id);
+      toast('Reopened');
+    } else {
+      return;
+    }
   }
+  renderList();
+  updateStatbar();
 }
 
-async function submitChecklist(){
-  const msg = document.getElementById('msg');
-  const f = readFields();
-  const doneCount = Object.values(checked).filter(Boolean).length;
-  const doneMins = TASKS.filter(t=>checked[t.id]).reduce((s,t)=>s+t.t,0);
-  const pct = Math.round((doneCount/TOTAL_TASKS)*100);
-
-  const record = {
-    id: Date.now(),
-    facility: f.facility, date: f.date, week: f.week, fm: f.fm,
-    sig: f.sig, remarks: f.remarks,
-    doneCount, totalTasks: TOTAL_TASKS, doneMins, totalMins: TOTAL_MINS, pct,
-  };
-
+// Read-modify-write against the latest stored state to minimize clobbering concurrent edits from other teams.
+async function mutateRecord(id, fn){
+  const key = stateKey(curOutlet, curCat);
+  let latest = {};
   try{
-    const res = await window.storage.get('submissions', true).catch(()=>null);
-    const subs = res && res.value ? JSON.parse(res.value) : [];
-    subs.push(record);
-    await window.storage.set('submissions', JSON.stringify(subs), true);
-    await window.storage.delete('draft-checked', true).catch(()=>{});
-    await window.storage.delete('draft-fields', true).catch(()=>{});
-    msg.textContent = `Submitted — ${doneCount}/${TOTAL_TASKS} tasks, ${doneMins} min logged.`;
-    checked = {};
-    render();
-    loadHistory();
-  }catch(err){
-    msg.textContent = 'Could not save submission — please try again.';
-    console.error(err);
-  }
+    const res = await window.storage.get(key, true);
+    latest = res && res.value ? JSON.parse(res.value) : {};
+  }catch(e){ latest = {}; }
+  const current = latest[id] || {status:'open'};
+  latest[id] = fn(current);
+  state = latest;
+  await window.storage.set(key, JSON.stringify(latest), true);
 }
 
-document.getElementById('btn-submit').addEventListener('click', submitChecklist);
-document.getElementById('btn-new').addEventListener('click', ()=>{
-  if(confirm('Clear all checked items? This does not affect submitted history.')){
-    checked = {};
-    render();
-    saveDraft();
-  }
+async function logActivity(action, id){
+  const it = items().find(t=>t.id===id);
+  const key = activityKey(curOutlet);
+  let log = [];
+  try{
+    const res = await window.storage.get(key, true);
+    log = res && res.value ? JSON.parse(res.value) : [];
+  }catch(e){ log = []; }
+  log.push({ ts: Date.now(), who: me, action, cat: curCat, text: it ? it.x : id });
+  if(log.length > 60) log = log.slice(log.length - 60);
+  await window.storage.set(key, JSON.stringify(log), true);
+  renderActivity(log);
+}
+
+function renderActivity(log){
+  const el = document.getElementById('activity-feed');
+  if(!log || log.length === 0){ el.innerHTML = '<div class="empty">No activity yet.</div>'; return; }
+  el.innerHTML = '';
+  log.slice().reverse().slice(0,20).forEach(ev=>{
+    const verb = ev.action === 'claimed' ? 'claimed' : ev.action === 'done' ? 'marked done' : 'reopened';
+    const row = document.createElement('div');
+    row.className = 'feed-row';
+    row.innerHTML = `<span class="feed-who">${ev.who || '—'}</span><span>${verb} “${ev.text}”</span><span class="feed-when">${timeAgo(ev.ts)}</span>`;
+    el.appendChild(row);
+  });
+}
+
+async function loadActivity(){
+  try{
+    const res = await window.storage.get(activityKey(curOutlet), true);
+    const log = res && res.value ? JSON.parse(res.value) : [];
+    renderActivity(log);
+  }catch(e){ renderActivity([]); }
+}
+
+async function loadArchive(){
+  const el = document.getElementById('archive-list');
+  try{
+    const res = await window.storage.get(archiveKey(curOutlet), true);
+    const arch = res && res.value ? JSON.parse(res.value) : [];
+    if(arch.length === 0){ el.innerHTML = '<div class="empty">No past weeks recorded yet.</div>'; return; }
+    el.innerHTML = '';
+    arch.slice().reverse().slice(0,10).forEach(a=>{
+      const row = document.createElement('div');
+      row.className = 'archive-row';
+      row.innerHTML = `
+        <div class="archive-main">
+          <div class="a-title">${CAT_LABEL[a.cat] || a.cat} — reset by ${a.by || '—'}</div>
+          <div class="a-meta">${new Date(a.ts).toLocaleDateString()} · ${a.done}/${a.total} completed</div>
+        </div>
+        <div class="archive-pct">${a.total ? Math.round((a.done/a.total)*100) : 0}%</div>`;
+      el.appendChild(row);
+    });
+  }catch(e){ el.innerHTML = '<div class="empty">Could not load past weeks.</div>'; }
+}
+
+async function loadState(){
+  try{
+    const res = await window.storage.get(stateKey(curOutlet, curCat), true);
+    state = res && res.value ? JSON.parse(res.value) : {};
+  }catch(e){ state = {}; }
+}
+
+async function loadAndRender(){
+  renderTabs();
+  await loadState();
+  renderList();
+  updateStatbar();
+  await loadActivity();
+  await loadArchive();
+}
+
+async function startNewWeek(){
+  if(!requireMe()) return;
+  const s = computeStats();
+  if(!confirm(`Start a new week for ${DATA[curOutlet].label} — ${CAT_LABEL[curCat]}?\\n\\nThis records the current progress (${s.done}/${s.total} done) as a past week, then reopens every task. Notes are kept.`)) return;
+
+  const key = stateKey(curOutlet, curCat);
+  let latest = {};
+  try{
+    const res = await window.storage.get(key, true);
+    latest = res && res.value ? JSON.parse(res.value) : {};
+  }catch(e){ latest = {}; }
+
+  const archRec = { ts: Date.now(), by: me, cat: curCat, done: s.done, total: s.total };
+  const akey = archiveKey(curOutlet);
+  let arch = [];
+  try{
+    const ares = await window.storage.get(akey, true);
+    arch = ares && ares.value ? JSON.parse(ares.value) : [];
+  }catch(e){ arch = []; }
+  arch.push(archRec);
+  if(arch.length > 30) arch = arch.slice(arch.length - 30);
+  await window.storage.set(akey, JSON.stringify(arch), true);
+
+  Object.keys(latest).forEach(id=>{
+    latest[id] = { status:'open', remark: latest[id].remark || '' };
+  });
+  await window.storage.set(key, JSON.stringify(latest), true);
+
+  await logActivity('reopened', null).catch(()=>{});
+  toast('New week started');
+  loadAndRender();
+}
+
+document.getElementById('f-me').addEventListener('input', async (e)=>{
+  me = e.target.value.trim();
+  try{ await window.storage.set('my-name', me, false); }catch(err){}
+  document.getElementById('me-badge').style.display = me ? '' : 'none';
+  document.getElementById('me-badge').textContent = me;
 });
-['f-facility','f-date','f-week','f-fm','f-sig','f-remarks'].forEach(id=>{
-  document.getElementById(id).addEventListener('input', scheduleSave);
-  document.getElementById(id).addEventListener('change', scheduleSave);
+
+document.getElementById('f-search').addEventListener('input', (e)=>{
+  curSearch = e.target.value;
+  renderList();
 });
+
+document.querySelectorAll('.chip').forEach(chip=>{
+  chip.addEventListener('click', ()=>{
+    document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active');
+    curFilter = chip.dataset.filter;
+    renderList();
+  });
+});
+
+document.getElementById('btn-newweek').addEventListener('click', startNewWeek);
 
 (async function init(){
-  const today = new Date().toISOString().slice(0,10);
-  document.getElementById('f-date').value = today;
-  await loadDraft();
-  render();
-  loadHistory();
+  try{
+    const res = await window.storage.get('my-name', false);
+    if(res && res.value){
+      me = res.value;
+      document.getElementById('f-me').value = me;
+      document.getElementById('me-badge').style.display = '';
+      document.getElementById('me-badge').textContent = me;
+    }
+  }catch(e){ /* no saved name yet */ }
+
+  await loadAndRender();
+
+  pollTimer = setInterval(loadAndRender, 20000);
+  setInterval(()=>{
+    document.querySelectorAll('.live-timer').forEach(el=>{
+      const start = parseInt(el.dataset.start, 10);
+      if(!isNaN(start)) el.textContent = formatClock(Date.now() - start);
+    });
+  }, 1000);
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.visibilityState === 'visible') loadAndRender();
+  });
 })();
 </script>
 </body>
