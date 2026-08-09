@@ -221,6 +221,7 @@
     <span class="chip" data-filter="open">Open</span>
     <span class="chip" data-filter="claimed">In progress</span>
     <span class="chip" data-filter="done">Done</span>
+    <span class="chip" id="chip-sort-oldest">⏱ Longest neglected first</span>
   </div>
 
   <div class="list" id="task-list"></div>
@@ -548,6 +549,7 @@ let curOutlet = 'CC';
 let curCat = 'daily';
 let curFilter = 'all';
 let curSearch = '';
+let curSortOldest = false;
 let state = {};        // {taskId: {status, claimedBy, claimedAt, doneBy, doneAt, actualMs, remark}}
 let noteOpen = {};      // local UI toggle only
 let unsubState = null, unsubActivity = null, unsubArchive = null;
@@ -668,6 +670,9 @@ function renderList(){
     if(q && !it.x.toLowerCase().includes(q)) return false;
     return true;
   });
+  if(curSortOldest){
+    filtered.sort((a,b)=>(getRecord(a.id).lastDoneAt || 0) - (getRecord(b.id).lastDoneAt || 0));
+  }
   if(filtered.length === 0){
     list.innerHTML = '<div class="empty">No tasks match.</div>';
     return;
@@ -691,6 +696,14 @@ function renderList(){
         } else {
           meta += ` · ${actual} min`;
         }
+      }
+    }
+    if(r.status !== 'done'){
+      if(r.lastDoneAt){
+        const lastBit = `Last done ${timeAgo(r.lastDoneAt)}${r.lastDoneBy ? ' by ' + r.lastDoneBy : ''}`;
+        meta = meta ? meta + ' · ' + lastBit : lastBit;
+      } else if(r.status === 'open'){
+        meta = meta ? meta + ' · Never done before' : 'Never done before';
       }
     }
     if(r.remark) meta += (meta ? ' · ' : '') + `Note: ${r.remark}`;
@@ -761,7 +774,11 @@ async function onTaskTap(id){
       return;
     }
     const finishedAt = Date.now();
-    await mutateRecord(id, rec=>({...rec, status:'done', doneBy: me, doneAt: finishedAt, actualMs: finishedAt - (rec.claimedAt || finishedAt)}));
+    await mutateRecord(id, rec=>{
+      const actualMs = finishedAt - (rec.claimedAt || finishedAt);
+      return {...rec, status:'done', doneBy: me, doneAt: finishedAt, actualMs,
+        lastDoneAt: finishedAt, lastDoneBy: me, lastActualMs: actualMs};
+    });
     logActivity('done', id);
     toast('Marked done');
   } else if(r.status === 'done'){
@@ -816,14 +833,38 @@ function renderArchiveList(arch){
   arch.forEach(a=>{
     const row = document.createElement('div');
     row.className = 'archive-row';
+    row.style.cursor = a.snapshotTasks ? 'pointer' : 'default';
     row.innerHTML = `
       <div class="archive-main">
         <div class="a-title">${CAT_LABEL[a.cat] || a.cat} — reset by ${a.by || '—'}</div>
-        <div class="a-meta">${new Date(a.ts).toLocaleDateString()} · ${a.done}/${a.total} completed</div>
+        <div class="a-meta">${new Date(a.ts).toLocaleDateString()} · ${a.done}/${a.total} completed${a.snapshotTasks ? ' · tap for detail' : ''}</div>
       </div>
       <div class="archive-pct">${a.total ? Math.round((a.done/a.total)*100) : 0}%</div>`;
+    if(a.snapshotTasks){
+      row.addEventListener('click', ()=>showArchiveDetail(a));
+    }
     el.appendChild(row);
+
+    if(a._open && a.snapshotTasks){
+      const box = document.createElement('div');
+      box.style.cssText = 'margin:-4px 0 8px;padding:10px 12px;background:var(--deck-raised);border:1px solid var(--line);border-radius:8px;font-size:12.5px;';
+      const catItems = DATA[curOutlet][a.cat] || [];
+      const lines = catItems.map(it=>{
+        const r = a.snapshotTasks[it.id];
+        if(!r || r.status === 'open') return null;
+        const who = r.status === 'done' ? (r.doneBy || '—') : (r.claimedBy || '—');
+        const label = r.status === 'done' ? 'Done' : 'In progress';
+        return `<div style="padding:3px 0;border-top:1px solid var(--line-soft);">${it.x} — <strong>${label}</strong> by ${who}</div>`;
+      }).filter(Boolean);
+      box.innerHTML = lines.length ? lines.join('') : '<div class="empty">Nothing was marked in this snapshot.</div>';
+      el.appendChild(box);
+    }
   });
+}
+
+function showArchiveDetail(a){
+  a._open = !a._open;
+  renderArchiveList(window._lastArchive || []);
 }
 
 function subscribeState(){
@@ -845,8 +886,9 @@ function subscribeActivity(){
 
 function subscribeArchive(){
   if(unsubArchive) unsubArchive();
-  unsubArchive = archiveColRef().orderBy('ts','desc').limit(10).onSnapshot(snap=>{
-    renderArchiveList(snap.docs.map(d=>d.data()));
+  unsubArchive = archiveColRef().orderBy('ts','desc').limit(30).onSnapshot(snap=>{
+    window._lastArchive = snap.docs.map(d=>d.data()).filter(a=>a.cat===curCat).slice(0,10);
+    renderArchiveList(window._lastArchive);
   }, err=>console.error(err));
 }
 
@@ -861,16 +903,23 @@ function subscribeAll(){
 async function startNewWeek(){
   if(!requireDb() || !requireMe()) return;
   const s = computeStats();
-  if(!confirm(`Start a new week for ${DATA[curOutlet].label} — ${CAT_LABEL[curCat]}?\n\nThis records the current progress (${s.done}/${s.total} done) as a past week, then reopens every task. Notes are kept.`)) return;
+  const typed = prompt(`Start a new week for ${DATA[curOutlet].label} — ${CAT_LABEL[curCat]}?\n\nThis reopens every task (${s.done}/${s.total} currently done). The full detail is saved to Past Weeks first, so nothing is lost — but it will look like a fresh list afterward.\n\nType RESET to confirm:`);
+  if(!typed || typed.trim().toUpperCase() !== 'RESET') return;
 
   try{
-    await archiveColRef().add({ ts: Date.now(), by: me, cat: curCat, done: s.done, total: s.total });
-
     const snap = await stateDocRef().get();
     const tasks = (snap.exists && snap.data().tasks) || {};
+
+    // Full detail is preserved here even though the summary view only shows counts.
+    await archiveColRef().add({ ts: Date.now(), by: me, cat: curCat, done: s.done, total: s.total, snapshotTasks: tasks });
+
     const resetTasks = {};
     Object.keys(tasks).forEach(id=>{
-      resetTasks[id] = { status:'open', remark: tasks[id].remark || '', claimedBy:null, claimedAt:null, doneBy:null, doneAt:null, actualMs:null };
+      resetTasks[id] = {
+        status:'open', remark: tasks[id].remark || '',
+        claimedBy:null, claimedAt:null, doneBy:null, doneAt:null, actualMs:null,
+        lastDoneAt: tasks[id].lastDoneAt || null, lastDoneBy: tasks[id].lastDoneBy || null, lastActualMs: tasks[id].lastActualMs || null
+      };
     });
     await stateDocRef().set({ tasks: resetTasks }, { merge: false });
     await logActivity('reopened', null);
@@ -893,13 +942,19 @@ document.getElementById('f-search').addEventListener('input', (e)=>{
   renderList();
 });
 
-document.querySelectorAll('.chip').forEach(chip=>{
+document.querySelectorAll('.chip[data-filter]').forEach(chip=>{
   chip.addEventListener('click', ()=>{
-    document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+    document.querySelectorAll('.chip[data-filter]').forEach(c=>c.classList.remove('active'));
     chip.classList.add('active');
     curFilter = chip.dataset.filter;
     renderList();
   });
+});
+
+document.getElementById('chip-sort-oldest').addEventListener('click', (e)=>{
+  curSortOldest = !curSortOldest;
+  e.target.classList.toggle('active', curSortOldest);
+  renderList();
 });
 
 document.getElementById('btn-newweek').addEventListener('click', startNewWeek);
