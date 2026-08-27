@@ -126,12 +126,11 @@
   .task{
     display:flex;align-items:center;gap:10px;padding:13px 4px;border-top:1px solid var(--line-soft);flex-wrap:wrap;
   }
+  .task-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto;}
   @media (max-width: 620px){
-    .task-main{flex:1 1 100%;order:1;}
-    .task-time{order:2;}
-    .note-btn{order:3;}
-    .unclaim-btn{order:4;}
-    .status-btn{order:5;margin-left:auto;}
+    .task{flex-direction:column;align-items:stretch;}
+    .task-main{width:100%;}
+    .task-actions{width:100%;justify-content:flex-end;flex-wrap:wrap;margin-top:6px;}
   }
   .task:first-child{border-top:none;}
   .task-main{flex:1;min-width:0;}
@@ -1600,10 +1599,12 @@ function appendTaskRow(list, it){
         <div class="task-text">${it.x}</div>
         ${meta ? `<div class="task-meta">${meta}</div>` : ''}
       </div>
-      ${it.t ? `<span class="task-time">${it.t} min</span>` : ''}
-      <button class="note-btn${r.remark ? ' has-note' : ''}" title="Add note">✎</button>
-      ${r.status === 'claimed' && r.claimedBy === me ? `<button class="unclaim-btn" title="Undo claim">✕</button>` : ''}
-      <button class="status-btn ${r.status}">${statusLabel(r)}</button>
+      <div class="task-actions">
+        ${it.t ? `<span class="task-time">${it.t} min</span>` : ''}
+        <button class="note-btn${r.remark ? ' has-note' : ''}" title="Add note">✎</button>
+        ${r.status === 'claimed' && r.claimedBy === me ? `<button class="unclaim-btn" title="Undo claim">✕</button>` : ''}
+        <button class="status-btn ${r.status}">${statusLabel(r)}</button>
+      </div>
     `;
 
     row.querySelector('.status-btn').addEventListener('click', ()=>onTaskTap(it.id));
