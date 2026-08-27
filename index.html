@@ -1364,6 +1364,7 @@ let curFilter = 'all';
 let curSearch = '';
 let curSortOldest = false;
 let curGroup = 'All';
+let claimLock = false; // true while this device is mid-claim, blocks a second rapid tap from slipping through
 let state = {};        // {taskId: {status, claimedBy, claimedAt, doneBy, doneAt, actualMs, remark}}
 let noteOpen = {};      // local UI toggle only
 let unsubState = null, unsubActivity = null, unsubArchive = null;
@@ -1666,13 +1667,64 @@ function requireDb(){
   return true;
 }
 
+// Checks whether the person already has something claimed in the *other*
+// list for this outlet (Daily Task vs Checking List), since only the
+// currently-open list's state is held locally.
+async function findClaimInOtherList(){
+  const otherCat = curCat === 'daily' ? 'check' : 'daily';
+  if(otherCat === 'check' && (!DATA[curOutlet].check || DATA[curOutlet].check.length === 0)) return null;
+  try{
+    const snap = await db.collection('maintenance_state').doc(`${curOutlet}_${otherCat}`).get();
+    const tasks = (snap.exists && snap.data().tasks) || {};
+    const foundId = Object.keys(tasks).find(tid => tasks[tid] && tasks[tid].status === 'claimed' && tasks[tid].claimedBy === me);
+    if(foundId){
+      const item = DATA[curOutlet][otherCat].find(it=>it.id===foundId);
+      return { text: item ? item.x : foundId, cat: otherCat };
+    }
+  }catch(e){ console.error(e); }
+  return null;
+}
+
 async function onTaskTap(id){
   if(!requireDb() || !requireMe()) return;
   const r = getRecord(id);
   if(r.status === 'open'){
-    await mutateRecord(id, rec=>({...rec, status:'claimed', claimedBy: me, claimedAt: Date.now()}));
-    logActivity('claimed', id);
-    toast('Claimed', { actionLabel: 'UNDO', onAction: ()=>unclaimTask(id) });
+    if(claimLock){
+      toast('Just a moment — claiming your last task…');
+      return;
+    }
+    const existingId = Object.keys(state).find(tid=>{
+      const rec = state[tid];
+      return rec && rec.status === 'claimed' && rec.claimedBy === me;
+    });
+    if(existingId){
+      const existingItem = items().find(it=>it.id===existingId);
+      toast(`Finish or unclaim "${existingItem ? existingItem.x : 'your current task'}" first`);
+      return;
+    }
+    claimLock = true;
+    try{
+      const elsewhere = await findClaimInOtherList();
+      if(elsewhere){
+        toast(`Finish or unclaim "${elsewhere.text}" in ${CAT_LABEL[elsewhere.cat]} first`);
+        return;
+      }
+      // Re-check local state in case a claim landed while we were awaiting the network read above.
+      const stillOpen = getRecord(id).status === 'open';
+      const nowExisting = Object.keys(state).find(tid=>{
+        const rec = state[tid];
+        return rec && rec.status === 'claimed' && rec.claimedBy === me;
+      });
+      if(!stillOpen || nowExisting){
+        toast('That task changed — try again');
+        return;
+      }
+      await mutateRecord(id, rec=>({...rec, status:'claimed', claimedBy: me, claimedAt: Date.now()}));
+      logActivity('claimed', id);
+      toast('Claimed', { actionLabel: 'UNDO', onAction: ()=>unclaimTask(id) });
+    } finally {
+      claimLock = false;
+    }
   } else if(r.status === 'claimed'){
     if(r.claimedBy && r.claimedBy !== me){
       toast(`Already claimed by ${r.claimedBy}`);
