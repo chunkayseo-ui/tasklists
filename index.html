@@ -75,6 +75,22 @@
   }
   .subtab.active{background:var(--deck-raised);color:var(--ink);border-color:var(--ink);}
 
+  /* Week status */
+  .week-status{
+    display:flex;align-items:center;gap:12px;margin-top:14px;padding:13px 16px;border-radius:10px;
+    font-size:13.5px;flex-wrap:wrap;
+  }
+  .week-status.fresh{background:var(--moss-bg);border:1.5px solid var(--moss);color:var(--teal-deep);}
+  .week-status.due{background:var(--amber-bg);border:1.5px solid var(--amber);color:#5c3f0f;}
+  .week-status.overdue{background:#FBEAE5;border:1.5px solid #B0472A;color:#8a2f1c;}
+  .week-status .ws-text{flex:1;min-width:180px;line-height:1.4;}
+  .week-status .ws-text strong{font-family:'Archivo',sans-serif;}
+  .week-status button{
+    font-family:'Public Sans',sans-serif;font-weight:700;font-size:13.5px;
+    padding:10px 16px;border-radius:8px;border:1.5px solid currentColor;background:transparent;
+    cursor:pointer;white-space:nowrap;color:inherit;
+  }
+
   /* Stats */
   .stat-scope{
     font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;color:var(--teal-deep);
@@ -209,6 +225,30 @@
     color:var(--amber);background:transparent;border:none;padding:10px 12px;cursor:pointer;
     white-space:nowrap;
   }
+
+  .modal-overlay{
+    display:none;position:fixed;inset:0;background:rgba(22,38,43,0.55);z-index:80;
+    align-items:flex-end;justify-content:center;
+  }
+  .modal-overlay.show{display:flex;}
+  .modal-box{
+    background:var(--deck-raised);width:100%;max-width:480px;border-radius:16px 16px 0 0;
+    padding:20px 20px calc(20px + env(safe-area-inset-bottom));
+    box-shadow:0 -4px 24px rgba(0,0,0,0.2);
+  }
+  @media (min-width: 560px){
+    .modal-overlay{align-items:center;}
+    .modal-box{border-radius:16px;}
+  }
+  .modal-eyebrow{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.1em;
+    color:var(--teal-deep);font-weight:700;margin-bottom:6px;
+  }
+  .modal-task-name{font-family:'Archivo',sans-serif;font-weight:700;font-size:17px;line-height:1.3;margin-bottom:16px;}
+  .modal-box textarea{width:100%;min-height:90px;margin-top:6px;}
+  .modal-actions{display:flex;gap:10px;margin-top:18px;}
+  .modal-actions button{flex:1;min-height:46px;font-size:15px;}
+  .modal-actions button.primary{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:700;}
 </style>
 </head>
 <body>
@@ -238,6 +278,8 @@
   <div class="tabs" id="outlet-tabs"></div>
   <div class="subtabs" id="cat-tabs"></div>
   <div class="toolbar" id="group-tabs" style="margin-top:8px;"></div>
+
+  <div class="week-status" id="week-status" style="display:none;"></div>
 
   <div class="stat-scope" id="stat-scope"></div>
   <div class="statbar">
@@ -286,6 +328,19 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="done-modal">
+  <div class="modal-box">
+    <div class="modal-eyebrow">Mark done</div>
+    <div class="modal-task-name" id="modal-task-name"></div>
+    <label for="modal-note-input" style="font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);">Note (optional)</label>
+    <textarea id="modal-note-input" placeholder="Anything worth flagging — condition, issue, follow-up…"></textarea>
+    <div class="modal-actions">
+      <button id="modal-cancel">Cancel</button>
+      <button id="modal-confirm" class="primary">Mark Done</button>
+    </div>
+  </div>
+</div>
 
 <script>
 // ── Paste your Firebase project config here (Project settings → General → Your apps) ──
@@ -1551,6 +1606,38 @@ function statusLabel(r){
 }
 
 const GROUP_ORDER = ['Water Test / Dosing', 'Pool Maintenance', 'Checklist', 'Facility Management', 'Others'];
+
+// Typical service day per outlet — informational only (planning reference).
+// The actual "due" logic below is anchored to the shared Saturday cutoff instead,
+// since early or late coverage within the week is expected and shouldn't misfire.
+// TPY isn't set up in the app yet, so it's omitted here until its task list is added.
+const RESET_DOW = {
+  JE: 1, Tengah: 1, BK: 1,      // Monday
+  CC: 2, WWW: 2,                // Tuesday
+  HB: 3,                        // Wednesday
+  DR: 4, HS: 4,                 // Thursday
+  Lentor: 5,                    // Friday
+};
+const DOW_NAME = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+// Shared weekly cutoff: Saturday/Sunday are peak hours, so every outlet needs to be
+// fresh before then. "This week" is counted from the most recent Saturday 12pm, and
+// the hard deadline is the following Saturday 5am — right before doors open for peak.
+function currentWeekBoundary(){
+  const now = new Date();
+  const diff = (now.getDay() - 6 + 7) % 7; // days since last Saturday
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diff, 12, 0, 0, 0);
+  if(d.getTime() > now.getTime()) d.setDate(d.getDate() - 7);
+  return d.getTime();
+}
+function nextDeadline(){
+  const now = new Date();
+  const diff = (6 - now.getDay() + 7) % 7; // days until next Saturday
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff, 5, 0, 0, 0);
+  if(d.getTime() <= now.getTime()) d.setDate(d.getDate() + 7);
+  return d.getTime();
+}
+
 function groupRank(g){ const i = GROUP_ORDER.indexOf(g); return i === -1 ? 999 : i; }
 
 function renderList(){
@@ -1749,15 +1836,7 @@ async function onTaskTap(id){
       toast(`Already claimed by ${r.claimedBy}`);
       return;
     }
-    const prevLastDoneAt = r.lastDoneAt, prevLastDoneBy = r.lastDoneBy, prevLastActualMs = r.lastActualMs;
-    const finishedAt = Date.now();
-    await mutateRecord(id, rec=>{
-      const actualMs = finishedAt - (rec.claimedAt || finishedAt);
-      return {...rec, status:'done', doneBy: me, doneAt: finishedAt, actualMs,
-        lastDoneAt: finishedAt, lastDoneBy: me, lastActualMs: actualMs};
-    });
-    logActivity('done', id);
-    toast('Marked done', { actionLabel: 'UNDO', onAction: ()=>undoDone(id, prevLastDoneAt, prevLastDoneBy, prevLastActualMs) });
+    openDoneModal(id);
   } else if(r.status === 'done'){
     if(confirm('Reopen this task?')){
       await mutateRecord(id, rec=>({...rec, status:'open', claimedBy:null, claimedAt:null, doneBy:null, doneAt:null, actualMs:null}));
@@ -1765,6 +1844,43 @@ async function onTaskTap(id){
       toast('Reopened');
     }
   }
+}
+
+// Shows the "mark done" modal with an optional note field, pre-filled with
+// any existing note. Confirming performs the same completion logic as
+// before, plus saves whatever note text is present.
+let doneModalTaskId = null;
+function openDoneModal(id){
+  doneModalTaskId = id;
+  const it = items().find(t=>t.id===id);
+  const r = getRecord(id);
+  document.getElementById('modal-task-name').textContent = it ? it.x : '';
+  document.getElementById('modal-note-input').value = r.remark || '';
+  document.getElementById('done-modal').classList.add('show');
+  setTimeout(()=>document.getElementById('modal-note-input').focus(), 50);
+}
+
+function closeDoneModal(){
+  document.getElementById('done-modal').classList.remove('show');
+  doneModalTaskId = null;
+}
+
+async function confirmDone(){
+  const id = doneModalTaskId;
+  if(!id) return;
+  const noteVal = document.getElementById('modal-note-input').value.trim();
+  closeDoneModal();
+
+  const r = getRecord(id);
+  const prevLastDoneAt = r.lastDoneAt, prevLastDoneBy = r.lastDoneBy, prevLastActualMs = r.lastActualMs;
+  const finishedAt = Date.now();
+  await mutateRecord(id, rec=>{
+    const actualMs = finishedAt - (rec.claimedAt || finishedAt);
+    return {...rec, status:'done', doneBy: me, doneAt: finishedAt, actualMs, remark: noteVal,
+      lastDoneAt: finishedAt, lastDoneBy: me, lastActualMs: actualMs};
+  });
+  logActivity('done', id);
+  toast('Marked done', { actionLabel: 'UNDO', onAction: ()=>undoDone(id, prevLastDoneAt, prevLastDoneBy, prevLastActualMs) });
 }
 
 // Undo an accidental claim — separate from the main tap so a stray tap on
@@ -1875,6 +1991,7 @@ function subscribeState(){
     renderGroupTabs();
     renderList();
     updateStatbar();
+    updateWeekStatus();
     setConn('live');
   }, err=>{ console.error(err); setConn('err'); toast('Sync error — check Firebase config/rules'); });
 }
@@ -1888,10 +2005,55 @@ function subscribeActivity(){
 
 function subscribeArchive(){
   if(unsubArchive) unsubArchive();
+  window._lastArchive = [];
+  updateWeekStatus();
   unsubArchive = archiveColRef().orderBy('ts','desc').limit(30).onSnapshot(snap=>{
     window._lastArchive = snap.docs.map(d=>d.data()).filter(a=>a.cat===curCat).slice(0,10);
     renderArchiveList(window._lastArchive);
+    updateWeekStatus();
   }, err=>console.error(err));
+}
+
+function updateWeekStatus(){
+  const el = document.getElementById('week-status');
+  const dow = RESET_DOW[curOutlet];
+  if(curCat !== 'daily' || dow === undefined){
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'flex';
+
+  const mostRecentReset = (window._lastArchive && window._lastArchive[0]) ? window._lastArchive[0].ts : null;
+  const dayName = DOW_NAME[dow];
+  const boundary = currentWeekBoundary();
+  const deadline = nextDeadline();
+  const hoursToDeadline = (deadline - Date.now()) / 3600000;
+  const deadlineStr = new Date(deadline).toLocaleString(undefined, {weekday:'short', hour:'numeric', minute:'2-digit'});
+
+  const poolItems = DATA[curOutlet].daily.filter(it=>it.g === 'Pool Maintenance');
+  const poolDone = poolItems.filter(it=>getRecord(it.id).status === 'done').length;
+  const poolReady = poolItems.length === 0 || poolDone === poolItems.length;
+  const poolWarning = !poolReady
+    ? ` <span style="color:#B0472A;font-weight:700;">🏊 ${poolItems.length - poolDone} Pool Maintenance task${poolItems.length-poolDone===1?'':'s'} still open before peak.</span>`
+    : '';
+
+  if(!mostRecentReset || mostRecentReset < boundary){
+    // Not yet reset for this week's cycle.
+    const urgent = hoursToDeadline <= 24;
+    el.className = 'week-status ' + (urgent ? 'overdue' : 'due');
+    const whenText = !mostRecentReset ? "No week has been started yet." : `Last reset was before this week's cycle.`;
+    el.innerHTML = `
+      <div class="ws-text">${whenText} ${DATA[curOutlet].label} is usually covered on <strong>${dayName}s</strong> — needs to be fresh and done before peak starts (<strong>${deadlineStr}</strong>).</div>
+      <button id="ws-reset-btn">Start this week ↻</button>`;
+    document.getElementById('ws-reset-btn').addEventListener('click', startNewWeek);
+  } else if(hoursToDeadline <= 24 && !poolReady){
+    // Reset already happened this week, but the clock's running out and pool work isn't finished.
+    el.className = 'week-status overdue';
+    el.innerHTML = `<div class="ws-text">⏰ Peak starts <strong>${deadlineStr}</strong> — less than a day away.${poolWarning}</div>`;
+  } else {
+    el.className = 'week-status fresh';
+    el.innerHTML = `<div class="ws-text">✓ <strong>This week's list is fresh</strong> — started ${dateOrAgo(mostRecentReset)}. Needs to stay ready before peak starts <strong>${deadlineStr}</strong>.${poolWarning}</div>`;
+  }
 }
 
 function subscribeAll(){
@@ -1904,7 +2066,9 @@ function subscribeAll(){
 
 async function startNewWeek(){
   if(!requireDb() || !requireMe()) return;
-  const s = computeStats();
+  const fullItems = items(); // always the whole list for this category, regardless of which group tab is selected
+  const doneCount = fullItems.filter(it=>getRecord(it.id).status==='done').length;
+  const s = { done: doneCount, total: fullItems.length };
   const typed = prompt(`Start a new week for ${DATA[curOutlet].label} — ${CAT_LABEL[curCat]}?\n\nThis reopens every task (${s.done}/${s.total} currently done). The full detail is saved to Past Weeks first, so nothing is lost — but it will look like a fresh list afterward.\n\nType RESET to confirm:`);
   if(!typed || typed.trim().toUpperCase() !== 'RESET') return;
 
@@ -1960,6 +2124,12 @@ document.getElementById('chip-sort-oldest').addEventListener('click', (e)=>{
 });
 
 document.getElementById('btn-newweek').addEventListener('click', startNewWeek);
+
+document.getElementById('modal-cancel').addEventListener('click', closeDoneModal);
+document.getElementById('modal-confirm').addEventListener('click', confirmDone);
+document.getElementById('done-modal').addEventListener('click', (e)=>{
+  if(e.target.id === 'done-modal') closeDoneModal();
+});
 
 (function init(){
   try{
