@@ -3,347 +3,125 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
-<title>Maintenance Board — Live Task Status</title>
+<title>Manager Overview — All Outlets</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <style>
   :root{
-    --deck:#F3F1EA;
-    --deck-raised:#FBFAF6;
-    --ink:#16262B;
-    --ink-soft:#4E5F63;
-    --teal:#0D6E76;
-    --teal-deep:#0A5359;
-    --amber:#DD9A35;
-    --amber-bg:#FBEEDA;
-    --moss:#3E7F53;
-    --moss-bg:#E4F0E7;
-    --line:#D6D0C0;
-    --line-soft:#E5E1D5;
+    --deck:#F3F1EA; --deck-raised:#FBFAF6; --ink:#16262B; --ink-soft:#4E5F63;
+    --teal:#0D6E76; --teal-deep:#0A5359; --amber:#DD9A35; --amber-bg:#FBEEDA;
+    --moss:#3E7F53; --moss-bg:#E4F0E7; --line:#D6D0C0; --line-soft:#E5E1D5;
   }
   *{box-sizing:border-box;}
-  body{
-    margin:0;background:var(--deck);color:var(--ink);
-    font-family:'Public Sans', system-ui, sans-serif;-webkit-font-smoothing:antialiased;
-    padding:0 0 60px;
-  }
-  .wrap{max-width:860px;margin:0 auto;padding:18px 14px 0;}
-
-  header{padding:4px 0 14px;border-bottom:2px solid var(--ink);}
+  body{margin:0;background:var(--deck);color:var(--ink);font-family:'Public Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;padding:0 0 60px;}
+  .wrap{max-width:980px;margin:0 auto;padding:20px 16px 0;}
+  header{padding:4px 0 16px;border-bottom:2px solid var(--ink);}
   .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--teal-deep);font-weight:600;margin-bottom:6px;}
-  h1{font-family:'Archivo',sans-serif;font-weight:800;font-size:clamp(27px,7vw,38px);line-height:1;margin:0 0 4px;letter-spacing:-0.01em;}
-  .sub{color:var(--ink-soft);font-size:15.5px;margin:0;}
-
-  .setup-banner{
-    display:none;margin-top:14px;padding:14px 16px;border:1.5px solid var(--amber);background:var(--amber-bg);
-    border-radius:8px;font-size:15px;line-height:1.6;color:#5c3f0f;
-  }
-  .setup-banner h3{margin:0 0 6px;font-family:'Archivo',sans-serif;font-size:16.5px;color:#5c3f0f;}
-  .setup-banner code{background:#F3E2BE;padding:1px 5px;border-radius:4px;font-family:'IBM Plex Mono',monospace;font-size:13.5px;}
-
-  .me-row{display:flex;gap:8px;align-items:center;margin-top:14px;}
-  .me-row input{flex:1;}
-  .me-badge{
-    font-family:'IBM Plex Mono',monospace;font-size:12.5px;background:var(--teal);color:#fff;
-    padding:9px 12px;border-radius:6px;white-space:nowrap;
-  }
-  .conn-dot{width:8px;height:8px;border-radius:50%;background:var(--line);flex:0 0 auto;}
+  h1{font-family:'Archivo',sans-serif;font-weight:800;font-size:clamp(26px,6vw,36px);line-height:1;margin:0 0 4px;letter-spacing:-.01em;}
+  .sub{color:var(--ink-soft);font-size:15px;margin:0;}
+  .conn-row{display:flex;align-items:center;gap:8px;margin-top:12px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--ink-soft);}
+  .conn-dot{width:9px;height:9px;border-radius:50%;background:var(--line);}
   .conn-dot.live{background:var(--moss);}
   .conn-dot.err{background:#B0472A;}
 
-  input,select,textarea{
-    font-family:'Public Sans',sans-serif;font-size:16.5px;color:var(--ink);
-    background:var(--deck-raised);border:1.5px solid var(--line);border-radius:6px;
-    padding:12px 13px;
-  }
-  input:focus,select:focus,textarea:focus{outline:2px solid var(--teal);outline-offset:1px;border-color:var(--teal);}
+  .setup-banner{display:none;margin-top:14px;padding:14px 16px;border:1.5px solid var(--amber);background:var(--amber-bg);border-radius:8px;font-size:14px;line-height:1.55;color:#5c3f0f;}
 
-  /* Tabs */
-  .tabs{display:flex;gap:6px;margin-top:16px;flex-wrap:wrap;}
-  .tab{
-    font-family:'IBM Plex Mono',monospace;font-size:14.5px;letter-spacing:.03em;
-    padding:12px 17px;border-radius:20px;border:1.5px solid var(--line);background:var(--deck-raised);
-    cursor:pointer;color:var(--ink-soft);font-weight:600;
-  }
-  .tab.active{background:var(--ink);border-color:var(--ink);color:var(--deck-raised);}
-  .subtabs{display:flex;gap:6px;margin-top:10px;}
-  .subtab{
-    font-size:16px;font-weight:600;padding:13px 17px;border-radius:6px 6px 0 0;
-    border:1.5px solid var(--line);border-bottom:none;background:var(--deck);color:var(--ink-soft);cursor:pointer;
-  }
-  .subtab.active{background:var(--deck-raised);color:var(--ink);border-color:var(--ink);}
+  section{margin-top:30px;}
+  section h2{font-family:'Archivo',sans-serif;font-size:19px;margin:0 0 4px;}
+  section .hint{font-size:13.5px;color:var(--ink-soft);margin:0 0 14px;}
 
-  /* Week status */
-  .week-status{
-    display:flex;align-items:center;gap:12px;margin-top:14px;padding:13px 16px;border-radius:10px;
-    font-size:13.5px;flex-wrap:wrap;
+  /* Snapshot cards */
+  .snap-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;}
+  .day-group{margin-top:22px;}
+  .day-group:first-child{margin-top:0;}
+  .day-group-head{
+    display:flex;align-items:center;gap:10px;margin-bottom:10px;
+    font-family:'Archivo',sans-serif;font-weight:800;font-size:16px;color:var(--ink-soft);
   }
-  .week-status.fresh{background:var(--moss-bg);border:1.5px solid var(--moss);color:var(--teal-deep);}
-  .week-status.due{background:var(--amber-bg);border:1.5px solid var(--amber);color:#5c3f0f;}
-  .week-status.overdue{background:#FBEAE5;border:1.5px solid #B0472A;color:#8a2f1c;}
-  .week-status .ws-text{flex:1;min-width:180px;line-height:1.4;}
-  .week-status .ws-text strong{font-family:'Archivo',sans-serif;}
-  .week-status button{
-    font-family:'Public Sans',sans-serif;font-weight:700;font-size:13.5px;
-    padding:10px 16px;border-radius:8px;border:1.5px solid currentColor;background:transparent;
-    cursor:pointer;white-space:nowrap;color:inherit;
+  .day-group.today .day-group-head{color:var(--teal-deep);}
+  .today-badge{
+    font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.06em;
+    background:var(--teal);color:#fff;padding:3px 9px;border-radius:20px;text-transform:uppercase;
   }
+  .day-group.today .snap-card{border-color:var(--teal);box-shadow:0 0 0 1px var(--teal);}
+  .snap-card{background:var(--deck-raised);border:1.5px solid var(--line);border-radius:10px;padding:16px;}
+  .snap-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;}
+  .snap-outlet{font-family:'Archivo',sans-serif;font-weight:800;font-size:20px;}
+  .snap-active{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--teal-deep);background:#E3EEEE;padding:3px 9px;border-radius:20px;}
+  .snap-row{display:flex;align-items:center;gap:10px;padding:6px 0;}
+  .snap-label{flex:0 0 108px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);}
+  .snap-bar{flex:1;height:9px;background:var(--deck);border-radius:6px;overflow:hidden;border:1px solid var(--line);}
+  .snap-bar-fill{height:100%;background:var(--moss);}
+  .snap-bar-fill.warn{background:var(--amber);}
+  .snap-pct{flex:0 0 44px;text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:600;}
+  .snap-flag{margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px 10px;border-radius:6px;display:inline-block;}
+  .snap-flag.ok{background:var(--moss-bg);color:var(--teal-deep);}
+  .snap-flag.warn{background:var(--amber-bg);color:#8a5f14;}
 
-  /* Stats */
-  .stat-scope{
-    font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;color:var(--teal-deep);
-    margin-top:12px;letter-spacing:.02em;
-  }
-  .statbar{
-    display:flex;align-items:center;gap:18px;background:var(--ink);color:var(--deck-raised);
-    border-radius:0 10px 10px 10px;padding:16px 18px;margin-top:4px;position:sticky;top:8px;z-index:15;flex-wrap:wrap;
-  }
-  .gauge{flex:0 0 auto;position:relative;width:74px;height:74px;}
-  .gauge svg{width:100%;height:100%;}
-  .gauge-pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:17px;}
-  .stat-figs{flex:1;display:flex;flex-wrap:wrap;gap:16px;}
-  .stat{min-width:64px;}
-  .stat .n{font-family:'Archivo',sans-serif;font-weight:800;font-size:22px;line-height:1;}
-  .stat .l{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#B9C2C3;margin-top:4px;}
-  .stat.amber .n{color:var(--amber);}
-  .stat.moss .n{color:#8FD1A5;}
-  .weekbtn{
-    font-family:'Public Sans',sans-serif;font-weight:600;font-size:15.5px;
-    background:transparent;border:1.5px solid #4E5F63;color:var(--deck-raised);
-    padding:13px 17px;border-radius:8px;cursor:pointer;white-space:nowrap;min-height:44px;
-  }
-  .weekbtn:hover{background:#22343A;}
+  /* Attention list */
+  .att-row{display:flex;align-items:center;gap:10px;padding:11px 12px;background:var(--deck-raised);border:1px solid var(--line);border-radius:8px;margin-bottom:8px;}
+  .att-outlet{font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:700;background:var(--ink);color:var(--deck-raised);padding:4px 8px;border-radius:6px;flex:0 0 auto;}
+  .att-main{flex:1;min-width:0;}
+  .att-text{font-size:14.5px;line-height:1.35;}
+  .att-meta{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .att-bad{color:#B0472A;font-weight:700;}
+  .att-cat{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;}
 
-  /* Toolbar */
-  .toolbar{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center;}
-  .toolbar input[type=text]{flex:1;min-width:140px;}
-  .chip{
-    font-family:'IBM Plex Mono',monospace;font-size:13.5px;padding:11px 15px;border-radius:20px;
-    border:1.5px solid var(--line);background:var(--deck-raised);color:var(--ink-soft);cursor:pointer;font-weight:600;
-    display:inline-flex;align-items:center;min-height:44px;
-  }
+  /* Trend table */
+  table.trend{width:100%;border-collapse:collapse;font-size:13.5px;}
+  table.trend th{text-align:left;font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);padding:8px 10px;border-bottom:2px solid var(--ink);}
+  table.trend td{padding:9px 10px;border-bottom:1px solid var(--line-soft);}
+  table.trend tr:hover td{background:var(--deck-raised);}
+  .pct-pill{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:12.5px;padding:3px 9px;border-radius:20px;background:#E3EEEE;color:var(--teal-deep);}
+
+  .empty{color:var(--ink-soft);font-size:14px;padding:10px 2px;}
+  .toggle-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+  .chip{font-family:'IBM Plex Mono',monospace;font-size:12.5px;padding:8px 13px;border-radius:20px;border:1.5px solid var(--line);background:var(--deck-raised);color:var(--ink-soft);cursor:pointer;font-weight:600;}
   .chip.active{background:var(--teal);border-color:var(--teal);color:#fff;}
-
-  /* Task rows */
-  .list{margin-top:10px;}
-  .group-header{
-    display:flex;justify-content:space-between;align-items:center;gap:10px;
-    padding:14px 6px 8px;margin-top:8px;
-    font-family:'Archivo',sans-serif;font-weight:800;font-size:15px;
-    text-transform:uppercase;letter-spacing:.03em;color:var(--teal-deep);
-    border-top:3px solid var(--teal);
-  }
-  .group-header.other-group{
-    color:var(--ink-soft);border-top:2px solid var(--line);font-size:13.5px;font-weight:700;
-  }
-  .group-count{
-    font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:600;
-    background:#E3EEEE;color:var(--teal-deep);padding:4px 10px;border-radius:20px;flex:0 0 auto;
-  }
-  .other-group .group-count{background:var(--deck);color:var(--ink-soft);}
-  .task{
-    display:flex;align-items:center;gap:10px;padding:13px 4px;border-top:1px solid var(--line-soft);flex-wrap:wrap;
-  }
-  .task-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto;}
-  @media (max-width: 620px){
-    .task{flex-direction:column;align-items:stretch;}
-    .task-main{width:100%;}
-    .task-actions{width:100%;justify-content:flex-end;flex-wrap:wrap;margin-top:6px;}
-  }
-  .task:first-child{border-top:none;}
-  .task-main{flex:1;min-width:0;}
-  .task-text{font-size:16.5px;line-height:1.4;}
-  .task-meta{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--ink-soft);margin-top:4px;}
-  .task-time{
-    font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--ink-soft);
-    background:var(--deck);border:1px solid var(--line);border-radius:20px;padding:3px 8px;flex:0 0 auto;
-  }
-  .status-btn{
-    flex:0 0 auto;font-family:'IBM Plex Mono',monospace;font-size:13.5px;font-weight:600;
-    padding:0 16px;min-height:44px;border-radius:22px;border:1.5px solid var(--line);background:var(--deck-raised);
-    cursor:pointer;white-space:nowrap;min-width:92px;text-align:center;
-    display:inline-flex;align-items:center;justify-content:center;
-  }
-  .status-btn.open{color:var(--ink-soft);}
-  .status-btn.claimed{background:var(--amber-bg);border-color:var(--amber);color:#8a5f14;}
-  .status-btn.done{background:var(--moss-bg);border-color:var(--moss);color:var(--teal-deep);}
-  .live-timer{font-weight:700;color:var(--amber);}
-  .over-budget{color:#B0472A;}
-  .under-budget{color:var(--teal-deep);}
-  .tag-good{color:var(--teal-deep);font-weight:700;}
-  .tag-warn{color:#8a5f14;font-weight:700;}
-  .tag-bad{color:#B0472A;font-weight:700;}
-  .note-btn{
-    flex:0 0 auto;width:44px;height:44px;border-radius:8px;border:1.5px solid var(--line);
-    background:var(--deck-raised);cursor:pointer;color:var(--ink-soft);font-size:18px;
-    display:inline-flex;align-items:center;justify-content:center;
-  }
-  .note-btn.has-note{background:#FDF2D8;border-color:var(--amber);color:#8a5f14;}
-  .unclaim-btn{
-    flex:0 0 auto;width:44px;height:44px;border-radius:8px;border:1.5px solid #B0472A;
-    background:#FBEAE5;cursor:pointer;color:#B0472A;font-size:16px;font-weight:700;
-    display:inline-flex;align-items:center;justify-content:center;
-  }
-  .note-box{
-    display:none;padding:8px 4px 12px 4px;border-top:1px dashed var(--line-soft);
-  }
-  .note-box.open{display:block;}
-  .note-box textarea{width:100%;min-height:52px;}
-  .note-save{margin-top:6px;font-size:13.5px;padding:7px 13px;}
-
-  /* Panels */
-  .panel{margin-top:26px;border-top:2px solid var(--ink);padding-top:14px;}
-  .panel h2{font-family:'Archivo',sans-serif;font-size:18.5px;margin:0 0 4px;}
-  .panel .hint{font-size:14px;color:var(--ink-soft);margin:0 0 12px;}
-  .feed-row{display:flex;gap:8px;padding:8px 2px;border-top:1px solid var(--line-soft);font-size:14px;}
-  .feed-row:first-child{border-top:none;}
-  .feed-who{font-weight:700;flex:0 0 auto;}
-  .feed-when{font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);font-size:12.5px;margin-left:auto;flex:0 0 auto;white-space:nowrap;}
-  .empty{color:var(--ink-soft);font-size:14.5px;padding:8px 2px;}
-
-  .archive-row{
-    display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--deck-raised);
-    border:1px solid var(--line);border-radius:8px;margin-bottom:8px;
-  }
-  .archive-main{flex:1;}
-  .archive-main .a-title{font-weight:700;font-size:15.5px;}
-  .archive-main .a-meta{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--ink-soft);}
-  .archive-pct{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:14px;padding:5px 10px;border-radius:20px;background:#E3EEEE;color:var(--teal-deep);}
-
-  footer.note{margin-top:26px;font-size:13px;color:var(--ink-soft);line-height:1.55;}
-  .toast{
-    position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
-    background:var(--ink);color:var(--deck-raised);font-size:14.5px;padding:11px 11px 11px 17px;border-radius:8px;
-    opacity:0;pointer-events:none;transition:opacity .25s ease;z-index:50;
-    display:flex;align-items:center;gap:6px;max-width:92vw;
-  }
-  .toast.show{opacity:1;pointer-events:auto;}
-  .toast-action{
-    font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:13px;letter-spacing:.03em;
-    color:var(--amber);background:transparent;border:none;padding:10px 12px;cursor:pointer;
-    white-space:nowrap;
-  }
-
-  .modal-overlay{
-    display:none;position:fixed;inset:0;background:rgba(22,38,43,0.55);z-index:80;
-    align-items:flex-end;justify-content:center;
-  }
-  .modal-overlay.show{display:flex;}
-  .modal-box{
-    background:var(--deck-raised);width:100%;max-width:480px;border-radius:16px 16px 0 0;
-    padding:20px 20px calc(20px + env(safe-area-inset-bottom));
-    box-shadow:0 -4px 24px rgba(0,0,0,0.2);
-  }
-  @media (min-width: 560px){
-    .modal-overlay{align-items:center;}
-    .modal-box{border-radius:16px;}
-  }
-  .modal-eyebrow{
-    font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.1em;
-    color:var(--teal-deep);font-weight:700;margin-bottom:6px;
-  }
-  .modal-task-name{font-family:'Archivo',sans-serif;font-weight:700;font-size:17px;line-height:1.3;margin-bottom:16px;}
-  .modal-box textarea{width:100%;min-height:90px;margin-top:6px;}
-  .modal-actions{display:flex;gap:10px;margin-top:18px;}
-  .modal-actions button{flex:1;min-height:46px;font-size:15px;}
-  .modal-actions button.primary{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:700;}
+  footer.note{margin-top:30px;font-size:12.5px;color:var(--ink-soft);line-height:1.5;}
 </style>
 </head>
 <body>
 <div class="wrap">
-
   <header>
-    <div class="eyebrow">Multi-Outlet · Live Task Status</div>
-    <h1>Maintenance Board</h1>
-    <p class="sub">See what's done, what's claimed, and what's still open — across every team.</p>
-
+    <div class="eyebrow">Manager Overview · All Outlets</div>
+    <h1>Branch Monitor</h1>
+    <p class="sub">Live status, what needs attention, and how each outlet's trending week to week.</p>
     <div class="setup-banner" id="setup-banner">
-      <h3>One-time setup needed</h3>
-      This board syncs through Firebase, and it isn't connected yet. Open this file, find the
-      <code>firebaseConfig</code> object near the top of the script, and paste in the config values from your
-      Firebase project (Project settings → General → Your apps → SDK setup and configuration). Also make sure
-      Firestore's rules allow read/write (see the setup guide provided alongside this file). Once saved and
-      re-uploaded, this banner disappears and the board goes live.
+      Firebase isn't connected — this page reads the same project as your maintenance boards.
+      Check the <code>firebaseConfig</code> near the top of the script.
     </div>
-
-    <div class="me-row">
-      <input id="f-me" type="text" placeholder="Your name (so your work shows on the board)">
-      <span class="conn-dot" id="conn-dot" title="Connection status"></span>
-      <span class="me-badge" id="me-badge" style="display:none;"></span>
-    </div>
+    <div class="conn-row"><span class="conn-dot" id="conn-dot"></span><span id="conn-label">Connecting…</span></div>
   </header>
 
-  <div class="tabs" id="outlet-tabs"></div>
-  <div class="subtabs" id="cat-tabs"></div>
-  <div class="toolbar" id="group-tabs" style="margin-top:8px;"></div>
+  <section>
+    <h2>This week's snapshot</h2>
+    <p class="hint">Grouped by each outlet's service day — today is highlighted.</p>
+    <div id="snap-grid"></div>
+  </section>
 
-  <div class="week-status" id="week-status" style="display:none;"></div>
+  <section>
+    <h2>Needs attention</h2>
+    <p class="hint">Everything across every outlet that's never been done, or hasn't been done in 21+ days — worst first.</p>
+    <div id="att-list"></div>
+  </section>
 
-  <div class="stat-scope" id="stat-scope"></div>
-  <div class="statbar">
-    <div class="gauge">
-      <svg viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r="42" fill="none" stroke="#33474C" stroke-width="9"/>
-        <circle id="gauge-arc" cx="50" cy="50" r="42" fill="none" stroke="#3E7F53" stroke-width="9"
-          stroke-linecap="round" stroke-dasharray="264" stroke-dashoffset="264" transform="rotate(-90 50 50)"/>
-      </svg>
-      <div class="gauge-pct" id="gauge-pct">0%</div>
-    </div>
-    <div class="stat-figs">
-      <div class="stat"><div class="n" id="stat-open">0</div><div class="l">Open</div></div>
-      <div class="stat amber"><div class="n" id="stat-claimed">0</div><div class="l">In progress</div></div>
-      <div class="stat moss"><div class="n" id="stat-done">0</div><div class="l">Done</div></div>
-      <div class="stat" id="stat-mins-wrap"><div class="n" id="stat-mins">0</div><div class="l">Min left</div></div>
-      <div class="stat" id="stat-actual-wrap"><div class="n" id="stat-actual">0/0</div><div class="l">Actual / budget</div></div>
-    </div>
-    <button class="weekbtn" id="btn-newweek">Start new week ↻</button>
-  </div>
+  <section>
+    <h2>Weekly trend</h2>
+    <p class="hint">Completion rate each time a list was reset for a new week.</p>
+    <div class="toggle-row" id="trend-outlet-toggle"></div>
+    <table class="trend">
+      <thead><tr><th>Outlet</th><th>List</th><th>Week of</th><th>Done</th><th>%</th></tr></thead>
+      <tbody id="trend-body"></tbody>
+    </table>
+  </section>
 
-  <div class="toolbar">
-    <input type="text" id="f-search" placeholder="Search tasks…">
-    <span class="chip active" data-filter="all">All</span>
-    <span class="chip" data-filter="open">Open</span>
-    <span class="chip" data-filter="claimed">In progress</span>
-    <span class="chip" data-filter="done">Done</span>
-    <span class="chip" id="chip-sort-oldest">⏱ Longest neglected first</span>
-  </div>
-
-  <div class="list" id="task-list"></div>
-
-  <div class="panel">
-    <h2>Recent activity</h2>
-    <p class="hint">Latest claims and completions for what you're currently viewing, most recent first.</p>
-    <div id="activity-feed"></div>
-  </div>
-
-  <div class="panel">
-    <h2>Past weeks</h2>
-    <p class="hint">Snapshot taken each time someone starts a new week.</p>
-    <div id="archive-list"></div>
-  </div>
-
-  <footer class="note">Everyone who opens this board sees the same live status, updated instantly — claim a task before starting it so two teams don't do the same thing twice.</footer>
-</div>
-
-<div class="toast" id="toast"></div>
-
-<div class="modal-overlay" id="done-modal">
-  <div class="modal-box">
-    <div class="modal-eyebrow">Mark done</div>
-    <div class="modal-task-name" id="modal-task-name"></div>
-    <label for="modal-note-input" style="font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);">Note (optional)</label>
-    <textarea id="modal-note-input" placeholder="Anything worth flagging — condition, issue, follow-up…"></textarea>
-    <div class="modal-actions">
-      <button id="modal-cancel">Cancel</button>
-      <button id="modal-confirm" class="primary">Mark Done</button>
-    </div>
-  </div>
+  <footer class="note">Reads live from the same shared board your technicians use — nothing here needs to be entered separately.</footer>
 </div>
 
 <script>
-// ── Paste your Firebase project config here (Project settings → General → Your apps) ──
 const firebaseConfig = {
   apiKey: "AIzaSyANFCZbvRGO9aMRtG9MF_qONO3FL85CzSo",
   authDomain: "maintenance-board-f931a.firebaseapp.com",
@@ -352,7 +130,7 @@ const firebaseConfig = {
   messagingSenderId: "169864970579",
   appId: "1:169864970579:web:bfb7490d0aebcfed17e1a6"
 };
-// ─────────────────────────────────────────────────────────────────────────────────────
+const NOT_CONFIGURED = firebaseConfig.apiKey === 'YOUR_API_KEY';
 
 const DATA = {
   CC: { label: 'CC', daily: [
@@ -1412,204 +1190,10 @@ const DATA = {
   
   ] },
 };
-
-const CAT_LABEL = { daily: 'Weekly Tasks', check: 'Checking List' };
-const NOT_CONFIGURED = firebaseConfig.apiKey === 'YOUR_API_KEY';
-
-let db = null;
-let me = '';
-let curOutlet = 'CC';
-let curCat = 'daily';
-let curFilter = 'all';
-let curSearch = '';
-let curSortOldest = false;
-let curGroup = 'All';
-let claimLock = false; // true while this device is mid-claim, blocks a second rapid tap from slipping through
-let state = {};        // {taskId: {status, claimedBy, claimedAt, doneBy, doneAt, actualMs, remark}}
-let noteOpen = {};      // local UI toggle only
-let unsubState = null, unsubActivity = null, unsubArchive = null;
-
-function formatClock(ms){
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  const mm = String(m).padStart(2,'0');
-  const ss = String(s).padStart(2,'0');
-  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
-}
-function formatMins(ms){ return Math.round(ms / 60000); }
-
-function timeAgo(ts){
-  if(!ts) return '';
-  const s = Math.floor((Date.now() - ts) / 1000);
-  if(s < 60) return 'just now';
-  if(s < 3600) return Math.floor(s/60) + 'm ago';
-  if(s < 86400) return Math.floor(s/3600) + 'h ago';
-  return Math.floor(s/86400) + 'd ago';
-}
-
-// Relative for anything recent; switches to an actual date past 14 days so
-// long-since tasks (e.g. monthly items) are easy to pin down at a glance.
-function dateOrAgo(ts){
-  if(!ts) return '';
-  const days = (Date.now() - ts) / 86400000;
-  if(days < 14) return timeAgo(ts);
-  const d = new Date(ts);
-  const opts = { day:'numeric', month:'short' };
-  if(d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
-  return d.toLocaleDateString(undefined, opts);
-}
-
-function toast(msg, opts){
-  const t = document.getElementById('toast');
-  t.innerHTML = '';
-  const span = document.createElement('span');
-  span.textContent = msg;
-  t.appendChild(span);
-  if(opts && opts.actionLabel && opts.onAction){
-    const btn = document.createElement('button');
-    btn.className = 'toast-action';
-    btn.textContent = opts.actionLabel;
-    btn.addEventListener('click', ()=>{
-      t.classList.remove('show');
-      clearTimeout(toast._tm);
-      opts.onAction();
-    });
-    t.appendChild(btn);
-  }
-  t.classList.add('show');
-  clearTimeout(toast._tm);
-  toast._tm = setTimeout(()=>t.classList.remove('show'), (opts && opts.actionLabel) ? 5000 : 2400);
-}
-
-function setConn(status){ // 'live' | 'err' | ''
-  const dot = document.getElementById('conn-dot');
-  dot.className = 'conn-dot' + (status ? ' ' + status : '');
-}
-
-function renderTabs(){
-  const ot = document.getElementById('outlet-tabs');
-  ot.innerHTML = '';
-  Object.keys(DATA).forEach(key=>{
-    const el = document.createElement('div');
-    el.className = 'tab' + (key===curOutlet ? ' active' : '');
-    el.textContent = DATA[key].label;
-    el.addEventListener('click', ()=>{
-      curOutlet = key;
-      if(curCat === 'check' && (!DATA[key].check || DATA[key].check.length === 0)) curCat = 'daily';
-      curGroup = 'All';
-      subscribeAll();
-    });
-    ot.appendChild(el);
-  });
-
-  const ct = document.getElementById('cat-tabs');
-  ct.innerHTML = '';
-  const availableCats = ['daily'];
-  if(DATA[curOutlet].check && DATA[curOutlet].check.length > 0) availableCats.push('check');
-  availableCats.forEach(cat=>{
-    const el = document.createElement('div');
-    el.className = 'subtab' + (cat===curCat ? ' active' : '');
-    el.textContent = CAT_LABEL[cat];
-    el.addEventListener('click', ()=>{ curCat = cat; curGroup = 'All'; subscribeAll(); });
-    ct.appendChild(el);
-  });
-
-  renderGroupTabs();
-}
-
-function renderGroupTabs(){
-  const gt = document.getElementById('group-tabs');
-  gt.innerHTML = '';
-  if(curCat !== 'daily'){ gt.style.display = 'none'; return; }
-  gt.style.display = 'flex';
-
-  const present = new Set(DATA[curOutlet].daily.map(it=>it.g));
-  const orderedGroups = GROUP_ORDER.filter(g=>present.has(g));
-  GROUP_ORDER.forEach(g=>present.delete(g));
-  const extraGroups = [...present]; // anything outside the standard 5 (e.g. a stray "Uncategorized")
-  const allGroups = ['All', ...orderedGroups, ...extraGroups];
-
-  allGroups.forEach(g=>{
-    const groupItems = g === 'All' ? DATA[curOutlet].daily : DATA[curOutlet].daily.filter(it=>it.g === g);
-    const done = groupItems.filter(it=>getRecord(it.id).status === 'done').length;
-    const chip = document.createElement('span');
-    chip.className = 'chip' + (curGroup === g ? ' active' : '');
-    const label = g === 'Pool Maintenance' ? '🏊 ' + g : g;
-    chip.textContent = `${label} (${done}/${groupItems.length})`;
-    chip.addEventListener('click', ()=>{ curGroup = g; renderGroupTabs(); renderList(); updateStatbar(); renderFilteredActivity(); });
-    gt.appendChild(chip);
-  });
-}
-
-function items(){ return DATA[curOutlet][curCat]; }
-function getRecord(id){ return state[id] || {status:'open'}; }
-function stateDocRef(){ return db.collection('maintenance_state').doc(`${curOutlet}_${curCat}`); }
-function activityColRef(){ return db.collection('activity').doc(curOutlet).collection('events'); }
-function archiveColRef(){ return db.collection('archive').doc(curOutlet).collection('weeks'); }
-
-// The stat bar reflects whichever group tab is selected (or the whole
-// list when "All" is picked), not the full Daily Task list regardless of view.
-function statsScope(){
-  if(curCat === 'daily' && curGroup !== 'All') return items().filter(it=>it.g === curGroup);
-  return items();
-}
-
-function computeStats(){
-  const all = statsScope();
-  let open=0, claimed=0, done=0, minsLeft=0, actualMins=0, budgetMinsDone=0;
-  all.forEach(it=>{
-    const r = getRecord(it.id);
-    if(r.status === 'done'){
-      done++;
-      if(r.actualMs) actualMins += formatMins(r.actualMs);
-      if(it.t) budgetMinsDone += it.t;
-    } else if(r.status === 'claimed') claimed++;
-    else open++;
-    if(r.status !== 'done' && it.t) minsLeft += it.t;
-  });
-  return {open, claimed, done, total: all.length, minsLeft, actualMins, budgetMinsDone};
-}
-
-function updateStatbar(){
-  const s = computeStats();
-  const pct = s.total ? Math.round((s.done/s.total)*100) : 0;
-  const scopeLabel = curCat === 'daily'
-    ? (curGroup === 'All' ? 'Showing: All Weekly Task groups' : `Showing: ${curGroup}`)
-    : `Showing: ${CAT_LABEL[curCat]}`;
-  document.getElementById('stat-scope').textContent = scopeLabel;
-  document.getElementById('stat-open').textContent = s.open;
-  document.getElementById('stat-claimed').textContent = s.claimed;
-  document.getElementById('stat-done').textContent = s.done;
-  document.getElementById('gauge-pct').textContent = pct + '%';
-  const minsWrap = document.getElementById('stat-mins-wrap');
-  const actualWrap = document.getElementById('stat-actual-wrap');
-  if(curCat === 'daily'){
-    minsWrap.style.display = '';
-    document.getElementById('stat-mins').textContent = s.minsLeft;
-    actualWrap.style.display = '';
-    document.getElementById('stat-actual').textContent = `${s.actualMins}/${s.budgetMinsDone}`;
-  } else {
-    minsWrap.style.display = 'none';
-    actualWrap.style.display = 'none';
-  }
-  const arc = document.getElementById('gauge-arc');
-  const CIRC = 264;
-  arc.setAttribute('stroke-dashoffset', CIRC - (CIRC*pct/100));
-}
-
-function statusLabel(r){
-  if(r.status === 'done') return 'Done';
-  if(r.status === 'claimed') return r.claimedBy ? r.claimedBy.split(' ')[0] + ' ⋯' : 'In progress';
-  return 'Open';
-}
-
+const CAT_LABEL = { daily:'Weekly Tasks', check:'Checking List' };
 const GROUP_ORDER = ['Water Test / Dosing', 'Pool Maintenance', 'Checklist', 'Facility Management', 'Others'];
 
-// Typical service day per outlet — informational only (planning reference).
-// The actual "due" logic below is anchored to the shared Saturday cutoff instead,
-// since early or late coverage within the week is expected and shouldn't misfire.
+// Typical service day per outlet (JS Date.getDay(): Sun=0 ... Sat=6).
 // TPY isn't set up in the app yet, so it's omitted here until its task list is added.
 const RESET_DOW = {
   JE: 1, Tengah: 1, BK: 1,      // Monday
@@ -1620,559 +1204,253 @@ const RESET_DOW = {
 };
 const DOW_NAME = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
-// Shared weekly cutoff: Saturday/Sunday are peak hours, so every outlet needs to be
-// fresh before then. "This week" is counted from the most recent Saturday 12pm, and
-// the hard deadline is the following Saturday 5am — right before doors open for peak.
-function currentWeekBoundary(){
-  const now = new Date();
-  const diff = (now.getDay() - 6 + 7) % 7; // days since last Saturday
-  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diff, 12, 0, 0, 0);
-  if(d.getTime() > now.getTime()) d.setDate(d.getDate() - 7);
-  return d.getTime();
-}
-function nextDeadline(){
-  const now = new Date();
-  const diff = (6 - now.getDay() + 7) % 7; // days until next Saturday
-  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff, 5, 0, 0, 0);
-  if(d.getTime() <= now.getTime()) d.setDate(d.getDate() + 7);
-  return d.getTime();
+let db = null;
+const liveState = {}; // liveState[outlet][cat] = {taskId: record}
+let curTrendOutlet = 'ALL';
+
+function dateOrAgo(ts){
+  if(!ts) return '';
+  const days = (Date.now() - ts) / 86400000;
+  if(days < 14){
+    const s = Math.floor((Date.now()-ts)/1000);
+    if(s<60) return 'just now';
+    if(s<3600) return Math.floor(s/60)+'m ago';
+    if(s<86400) return Math.floor(s/3600)+'h ago';
+    return Math.floor(s/86400)+'d ago';
+  }
+  const d = new Date(ts);
+  const opts = {day:'numeric', month:'short'};
+  if(d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+  return d.toLocaleDateString(undefined, opts);
 }
 
-function groupRank(g){ const i = GROUP_ORDER.indexOf(g); return i === -1 ? 999 : i; }
+function setConn(status, label){
+  document.getElementById('conn-dot').className = 'conn-dot' + (status ? ' '+status : '');
+  document.getElementById('conn-label').textContent = label;
+}
 
-function renderList(){
-  const list = document.getElementById('task-list');
-  list.innerHTML = '';
-  const q = curSearch.trim().toLowerCase();
-  const filtered = items().filter(it=>{
-    const r = getRecord(it.id);
-    if(curFilter !== 'all' && r.status !== curFilter) return false;
-    if(q && !it.x.toLowerCase().includes(q)) return false;
-    if(curCat === 'daily' && curGroup !== 'All' && it.g !== curGroup) return false;
-    return true;
+function computeCat(outlet, cat){
+  const tasks = (liveState[outlet] && liveState[outlet][cat]) || {};
+  const items = DATA[outlet][cat];
+  let done=0, claimed=0, activeNames = new Set();
+  items.forEach(it=>{
+    const r = tasks[it.id];
+    if(!r) return;
+    if(r.status === 'done') done++;
+    if(r.status === 'claimed'){ claimed++; if(r.claimedBy) activeNames.add(r.claimedBy); }
   });
-  if(curSortOldest){
-    filtered.sort((a,b)=>(getRecord(a.id).lastDoneAt || 0) - (getRecord(b.id).lastDoneAt || 0));
-  }
-  if(filtered.length === 0){
-    list.innerHTML = '<div class="empty">No tasks match.</div>';
-    return;
-  }
-
-  const useGrouping = curCat === 'daily' && curGroup === 'All' && !curSortOldest;
-  if(useGrouping){
-    const groupsMap = {};
-    filtered.forEach(it=>{ (groupsMap[it.g] = groupsMap[it.g] || []).push(it); });
-    const groupNames = Object.keys(groupsMap).sort((a,b)=>groupRank(a)-groupRank(b));
-    groupNames.forEach(g=>{
-      const groupItems = groupsMap[g];
-      const isPool = g === 'Pool Maintenance';
-      appendGroupHeader(list, isPool ? '🏊 ' + g + ' — do these first' : g, groupItems, isPool);
-      groupItems.forEach(it=>appendTaskRow(list, it));
-    });
-  } else {
-    filtered.forEach(it=>appendTaskRow(list, it));
-  }
+  return { done, claimed, total: items.length, activeNames: [...activeNames] };
 }
 
-function appendGroupHeader(list, label, groupItems, isPool){
-  const done = groupItems.filter(it=>getRecord(it.id).status==='done').length;
-  const h = document.createElement('div');
-  h.className = 'group-header' + (isPool ? '' : ' other-group');
-  h.innerHTML = `<span>${label}</span><span class="group-count">${done}/${groupItems.length}</span>`;
-  list.appendChild(h);
+function buildSnapCard(outlet){
+  const dailyItems = DATA[outlet].daily;
+  const tasks = (liveState[outlet] && liveState[outlet].daily) || {};
+  const checkTasks = (liveState[outlet] && liveState[outlet].check) || {};
+  const hasCheck = DATA[outlet].check && DATA[outlet].check.length > 0;
+
+  function pct(list, taskMap){
+    const done = list.filter(it=>taskMap[it.id] && taskMap[it.id].status==='done').length;
+    return { done, total: list.length, pct: list.length ? Math.round(done/list.length*100) : 0 };
+  }
+
+  const present = new Set(dailyItems.map(it=>it.g));
+  const orderedGroups = GROUP_ORDER.filter(g=>present.has(g));
+  GROUP_ORDER.forEach(g=>present.delete(g));
+  const extraGroups = [...present]; // e.g. a stray "Uncategorized"
+  const allGroups = [...orderedGroups, ...extraGroups];
+
+  const groupRowsHtml = allGroups.map(g=>{
+    const groupItems = dailyItems.filter(it=>it.g === g);
+    const s = pct(groupItems, tasks);
+    const label = g === 'Pool Maintenance' ? '🏊 ' + g : g;
+    return `
+    <div class="snap-row">
+      <div class="snap-label">${label}</div>
+      <div class="snap-bar"><div class="snap-bar-fill${s.pct<70?' warn':''}" style="width:${s.pct}%"></div></div>
+      <div class="snap-pct">${s.done}/${s.total}</div>
+    </div>`;
+  }).join('');
+
+  const check = hasCheck ? pct(DATA[outlet].check, checkTasks) : null;
+  const pool = pct(dailyItems.filter(it=>it.g==='Pool Maintenance'), tasks);
+
+  const activeNames = new Set();
+  Object.values(tasks).forEach(r=>{ if(r && r.status==='claimed' && r.claimedBy) activeNames.add(r.claimedBy); });
+  Object.values(checkTasks).forEach(r=>{ if(r && r.status==='claimed' && r.claimedBy) activeNames.add(r.claimedBy); });
+
+  const card = document.createElement('div');
+  card.className = 'snap-card';
+  card.innerHTML = `
+    <div class="snap-head">
+      <div class="snap-outlet">${DATA[outlet].label}</div>
+      ${activeNames.size ? `<div class="snap-active">${activeNames.size} active now</div>` : ''}
+    </div>
+    ${groupRowsHtml}
+    ${check ? `
+    <div class="snap-row" style="margin-top:4px;padding-top:8px;border-top:1px dashed var(--line);">
+      <div class="snap-label">Checking List</div>
+      <div class="snap-bar"><div class="snap-bar-fill${check.pct<70?' warn':''}" style="width:${check.pct}%"></div></div>
+      <div class="snap-pct">${check.done}/${check.total}</div>
+    </div>` : ''}
+    <span class="snap-flag ${pool.pct===100?'ok':'warn'}">${pool.pct===100 ? '✓ Pool maintenance complete' : `${pool.total-pool.done} pool task${pool.total-pool.done===1?'':'s'} left`}</span>
+  `;
+  return card;
 }
 
-function appendTaskRow(list, it){
-    const r = getRecord(it.id);
-    const row = document.createElement('div');
-    row.className = 'task';
+function renderSnapshot(){
+  const container = document.getElementById('snap-grid');
+  container.innerHTML = '';
+  const todayDow = new Date().getDay();
 
-    let meta = '';
-    if(r.status === 'claimed'){
-      meta = `Claimed by ${r.claimedBy || '—'} · <span class="live-timer" data-start="${r.claimedAt || Date.now()}">${formatClock(Date.now() - (r.claimedAt || Date.now()))}</span> elapsed`;
-    }
-    if(r.status === 'done'){
-      meta = `Done by ${r.doneBy || '—'} · <span class="tag-good">${dateOrAgo(r.doneAt)}</span>`;
-      if(r.actualMs != null){
-        const actual = formatMins(r.actualMs);
-        if(it.t){
-          const cls = actual > it.t ? 'over-budget' : 'under-budget';
-          meta += ` · <span class="${cls}">${actual} min</span> (budget ${it.t})`;
+  // Group outlets by service day (Mon–Fri order), then anything unscheduled last.
+  const byDay = {};
+  Object.keys(DATA).forEach(outlet=>{
+    const dow = RESET_DOW[outlet];
+    const key = dow === undefined ? 'unscheduled' : dow;
+    (byDay[key] = byDay[key] || []).push(outlet);
+  });
+
+  const dayKeys = [1,2,3,4,5].filter(d=>byDay[d]);
+  if(byDay['unscheduled']) dayKeys.push('unscheduled');
+
+  dayKeys.forEach(key=>{
+    const isToday = key === todayDow;
+    const section = document.createElement('div');
+    section.className = 'day-group' + (isToday ? ' today' : '');
+    const heading = key === 'unscheduled' ? 'Not yet scheduled' : DOW_NAME[key];
+    section.innerHTML = `<div class="day-group-head">${heading}${isToday ? '<span class="today-badge">Today</span>' : ''}</div>`;
+    const grid = document.createElement('div');
+    grid.className = 'snap-grid';
+    byDay[key].forEach(outlet=>grid.appendChild(buildSnapCard(outlet)));
+    section.appendChild(grid);
+    container.appendChild(section);
+  });
+}
+
+function renderAttention(){
+  const el = document.getElementById('att-list');
+  const flagged = [];
+  Object.keys(DATA).forEach(outlet=>{
+    ['daily','check'].forEach(cat=>{
+      const tasks = (liveState[outlet] && liveState[outlet][cat]) || {};
+      DATA[outlet][cat].forEach(it=>{
+        const r = tasks[it.id];
+        if(r && r.status === 'done') return;
+        const lastDoneAt = r && r.lastDoneAt;
+        if(!lastDoneAt){
+          flagged.push({ outlet, cat, text: it.x, never: true, days: Infinity });
         } else {
-          meta += ` · ${actual} min`;
+          const days = (Date.now() - lastDoneAt) / 86400000;
+          if(days >= 21) flagged.push({ outlet, cat, text: it.x, never: false, days, lastDoneAt, lastDoneBy: r.lastDoneBy });
         }
-      }
-    }
-    if(r.status !== 'done'){
-      if(r.lastDoneAt){
-        const days = (Date.now() - r.lastDoneAt) / 86400000;
-        const cls = days < 7 ? 'tag-good' : days < 21 ? 'tag-warn' : 'tag-bad';
-        const lastBit = `Last done <span class="${cls}">${dateOrAgo(r.lastDoneAt)}</span>${r.lastDoneBy ? ' by ' + r.lastDoneBy : ''}`;
-        meta = meta ? meta + ' · ' + lastBit : lastBit;
-      } else if(r.status === 'open'){
-        meta = meta ? meta + ' · <span class="tag-bad">Never done before</span>' : '<span class="tag-bad">Never done before</span>';
-      }
-    }
-    if(r.remark) meta += (meta ? ' · ' : '') + `Note: <span class="tag-warn">${r.remark}</span>`;
-
-    row.innerHTML = `
-      <div class="task-main">
-        <div class="task-text">${it.x}</div>
-        ${meta ? `<div class="task-meta">${meta}</div>` : ''}
-      </div>
-      <div class="task-actions">
-        ${it.t ? `<span class="task-time">${it.t} min</span>` : ''}
-        <button class="note-btn${r.remark ? ' has-note' : ''}" title="Add note">✎</button>
-        ${r.status === 'claimed' && r.claimedBy === me ? `<button class="unclaim-btn" title="Undo claim">✕</button>` : ''}
-        <button class="status-btn ${r.status}">${statusLabel(r)}</button>
-      </div>
-    `;
-
-    row.querySelector('.status-btn').addEventListener('click', ()=>onTaskTap(it.id));
-    row.querySelector('.note-btn').addEventListener('click', ()=>toggleNote(row, it.id));
-    const unclaimBtn = row.querySelector('.unclaim-btn');
-    if(unclaimBtn) unclaimBtn.addEventListener('click', ()=>unclaimTask(it.id));
-
-    list.appendChild(row);
-
-    if(noteOpen[it.id]){
-      const box = document.createElement('div');
-      box.className = 'note-box open';
-      box.innerHTML = `<textarea id="note-${it.id}">${r.remark || ''}</textarea><br><button class="note-save">Save note</button>`;
-      box.querySelector('.note-save').addEventListener('click', ()=>saveNote(it.id));
-      list.appendChild(box);
-    }
-}
-
-function toggleNote(row, id){
-  noteOpen[id] = !noteOpen[id];
-  renderList();
-}
-
-async function saveNote(id){
-  const val = document.getElementById(`note-${id}`).value.trim();
-  await mutateRecord(id, (r)=>({...r, remark: val}));
-  noteOpen[id] = false;
-  toast('Note saved');
-}
-
-function requireMe(){
-  if(!me){
-    toast('Enter your name first');
-    document.getElementById('f-me').focus();
-    return false;
-  }
-  return true;
-}
-function requireDb(){
-  if(NOT_CONFIGURED || !db){
-    toast('Firebase is not configured yet — see the setup box above');
-    return false;
-  }
-  return true;
-}
-
-// Checks whether the person already has something claimed in the *other*
-// list for this outlet (Daily Task vs Checking List), since only the
-// currently-open list's state is held locally.
-async function findClaimInOtherList(){
-  const otherCat = curCat === 'daily' ? 'check' : 'daily';
-  if(otherCat === 'check' && (!DATA[curOutlet].check || DATA[curOutlet].check.length === 0)) return null;
-  try{
-    const snap = await db.collection('maintenance_state').doc(`${curOutlet}_${otherCat}`).get();
-    const tasks = (snap.exists && snap.data().tasks) || {};
-    const foundId = Object.keys(tasks).find(tid => tasks[tid] && tasks[tid].status === 'claimed' && tasks[tid].claimedBy === me);
-    if(foundId){
-      const item = DATA[curOutlet][otherCat].find(it=>it.id===foundId);
-      return { text: item ? item.x : foundId, cat: otherCat };
-    }
-  }catch(e){ console.error(e); }
-  return null;
-}
-
-async function onTaskTap(id){
-  if(!requireDb() || !requireMe()) return;
-  const r = getRecord(id);
-  if(r.status === 'open'){
-    if(claimLock){
-      toast('Just a moment — claiming your last task…');
-      return;
-    }
-    const existingId = Object.keys(state).find(tid=>{
-      const rec = state[tid];
-      return rec && rec.status === 'claimed' && rec.claimedBy === me;
-    });
-    if(existingId){
-      const existingItem = items().find(it=>it.id===existingId);
-      toast(`Finish or unclaim "${existingItem ? existingItem.x : 'your current task'}" first`);
-      return;
-    }
-    claimLock = true;
-    try{
-      const elsewhere = await findClaimInOtherList();
-      if(elsewhere){
-        toast(`Finish or unclaim "${elsewhere.text}" in ${CAT_LABEL[elsewhere.cat]} first`);
-        return;
-      }
-      // Re-check local state in case a claim landed while we were awaiting the network read above.
-      const stillOpen = getRecord(id).status === 'open';
-      const nowExisting = Object.keys(state).find(tid=>{
-        const rec = state[tid];
-        return rec && rec.status === 'claimed' && rec.claimedBy === me;
       });
-      if(!stillOpen || nowExisting){
-        toast('That task changed — try again');
-        return;
-      }
-      await mutateRecord(id, rec=>({...rec, status:'claimed', claimedBy: me, claimedAt: Date.now()}));
-      logActivity('claimed', id);
-      toast('Claimed', { actionLabel: 'UNDO', onAction: ()=>unclaimTask(id) });
-    } finally {
-      claimLock = false;
-    }
-  } else if(r.status === 'claimed'){
-    if(r.claimedBy && r.claimedBy !== me){
-      toast(`Already claimed by ${r.claimedBy}`);
-      return;
-    }
-    openDoneModal(id);
-  } else if(r.status === 'done'){
-    if(confirm('Reopen this task?')){
-      await mutateRecord(id, rec=>({...rec, status:'open', claimedBy:null, claimedAt:null, doneBy:null, doneAt:null, actualMs:null}));
-      logActivity('reopened', id);
-      toast('Reopened');
-    }
-  }
-}
-
-// Shows the "mark done" modal with an optional note field, pre-filled with
-// any existing note. Confirming performs the same completion logic as
-// before, plus saves whatever note text is present.
-let doneModalTaskId = null;
-function openDoneModal(id){
-  doneModalTaskId = id;
-  const it = items().find(t=>t.id===id);
-  const r = getRecord(id);
-  document.getElementById('modal-task-name').textContent = it ? it.x : '';
-  document.getElementById('modal-note-input').value = r.remark || '';
-  document.getElementById('done-modal').classList.add('show');
-  setTimeout(()=>document.getElementById('modal-note-input').focus(), 50);
-}
-
-function closeDoneModal(){
-  document.getElementById('done-modal').classList.remove('show');
-  doneModalTaskId = null;
-}
-
-async function confirmDone(){
-  const id = doneModalTaskId;
-  if(!id) return;
-  const noteVal = document.getElementById('modal-note-input').value.trim();
-  closeDoneModal();
-
-  const r = getRecord(id);
-  const prevLastDoneAt = r.lastDoneAt, prevLastDoneBy = r.lastDoneBy, prevLastActualMs = r.lastActualMs;
-  const finishedAt = Date.now();
-  await mutateRecord(id, rec=>{
-    const actualMs = finishedAt - (rec.claimedAt || finishedAt);
-    return {...rec, status:'done', doneBy: me, doneAt: finishedAt, actualMs, remark: noteVal,
-      lastDoneAt: finishedAt, lastDoneBy: me, lastActualMs: actualMs};
-  });
-  logActivity('done', id);
-  toast('Marked done', { actionLabel: 'UNDO', onAction: ()=>undoDone(id, prevLastDoneAt, prevLastDoneBy, prevLastActualMs) });
-}
-
-// Undo an accidental claim — separate from the main tap so a stray tap on
-// "Open" can be reversed without walking it forward to Done first.
-async function unclaimTask(id){
-  if(!requireDb() || !requireMe()) return;
-  const r = getRecord(id);
-  if(r.status !== 'claimed' || r.claimedBy !== me) return;
-  await mutateRecord(id, rec=>({...rec, status:'open', claimedBy:null, claimedAt:null}));
-  logActivity('unclaimed', id);
-  toast('Unclaimed');
-}
-
-// Undo a "Marked done" tap — restores In Progress and rolls back the
-// last-completed history to whatever it was before this tap, so an
-// accidental tap doesn't pollute the neglect-tracking data.
-async function undoDone(id, prevLastDoneAt, prevLastDoneBy, prevLastActualMs){
-  if(!requireDb()) return;
-  await mutateRecord(id, rec=>({
-    ...rec, status:'claimed', doneBy:null, doneAt:null, actualMs:null,
-    lastDoneAt: prevLastDoneAt || null, lastDoneBy: prevLastDoneBy || null, lastActualMs: prevLastActualMs || null
-  }));
-  logActivity('unclaimed', id);
-  toast('Undone — back to In progress');
-}
-
-// Per-task merge write — only this task's field changes, so two teams editing
-// different tasks at the same time never clobber each other.
-async function mutateRecord(id, fn){
-  const current = state[id] || {status:'open'};
-  const updated = fn(current);
-  state[id] = updated;          // optimistic local update for instant feedback
-  renderList();
-  updateStatbar();
-  try{
-    await stateDocRef().set({ tasks: { [id]: updated } }, { merge: true });
-  }catch(e){
-    console.error(e);
-    toast('Could not save — check your connection');
-  }
-}
-
-async function logActivity(action, id){
-  const it = items().find(t=>t.id===id);
-  try{
-    await activityColRef().add({ ts: Date.now(), who: me, action, cat: curCat, grp: (it && it.g) || null, text: it ? it.x : (id || '') });
-  }catch(e){ console.error(e); }
-}
-
-function renderActivity(log){
-  const el = document.getElementById('activity-feed');
-  if(!log || log.length === 0){ el.innerHTML = '<div class="empty">No activity yet.</div>'; return; }
-  el.innerHTML = '';
-  log.slice(0,20).forEach(ev=>{
-    const verb = ev.action === 'claimed' ? 'claimed' : ev.action === 'done' ? 'marked done' : ev.action === 'unclaimed' ? 'unclaimed' : 'reopened';
-    const row = document.createElement('div');
-    row.className = 'feed-row';
-    row.innerHTML = `<span class="feed-who">${ev.who || '—'}</span><span>${verb} "${ev.text}"</span><span class="feed-when">${timeAgo(ev.ts)}</span>`;
-    el.appendChild(row);
-  });
-}
-
-function renderArchiveList(arch){
-  const el = document.getElementById('archive-list');
-  if(!arch || arch.length === 0){ el.innerHTML = '<div class="empty">No past weeks recorded yet.</div>'; return; }
-  el.innerHTML = '';
-  arch.forEach(a=>{
-    const row = document.createElement('div');
-    row.className = 'archive-row';
-    row.style.cursor = a.snapshotTasks ? 'pointer' : 'default';
-    row.innerHTML = `
-      <div class="archive-main">
-        <div class="a-title">${CAT_LABEL[a.cat] || a.cat} — reset by ${a.by || '—'}</div>
-        <div class="a-meta">${new Date(a.ts).toLocaleDateString()} · ${a.done}/${a.total} completed${a.snapshotTasks ? ' · tap for detail' : ''}</div>
-      </div>
-      <div class="archive-pct">${a.total ? Math.round((a.done/a.total)*100) : 0}%</div>`;
-    if(a.snapshotTasks){
-      row.addEventListener('click', ()=>showArchiveDetail(a));
-    }
-    el.appendChild(row);
-
-    if(a._open && a.snapshotTasks){
-      const box = document.createElement('div');
-      box.style.cssText = 'margin:-4px 0 8px;padding:10px 12px;background:var(--deck-raised);border:1px solid var(--line);border-radius:8px;font-size:14px;';
-      const catItems = DATA[curOutlet][a.cat] || [];
-      const lines = catItems.map(it=>{
-        const r = a.snapshotTasks[it.id];
-        if(!r || r.status === 'open') return null;
-        const who = r.status === 'done' ? (r.doneBy || '—') : (r.claimedBy || '—');
-        const label = r.status === 'done' ? 'Done' : 'In progress';
-        return `<div style="padding:3px 0;border-top:1px solid var(--line-soft);">${it.x} — <strong>${label}</strong> by ${who}</div>`;
-      }).filter(Boolean);
-      box.innerHTML = lines.length ? lines.join('') : '<div class="empty">Nothing was marked in this snapshot.</div>';
-      el.appendChild(box);
-    }
-  });
-}
-
-function showArchiveDetail(a){
-  a._open = !a._open;
-  renderArchiveList(window._lastArchive || []);
-}
-
-function subscribeState(){
-  if(unsubState) unsubState();
-  unsubState = stateDocRef().onSnapshot(doc=>{
-    state = (doc.exists && doc.data().tasks) || {};
-    renderGroupTabs();
-    renderList();
-    updateStatbar();
-    updateWeekStatus();
-    setConn('live');
-  }, err=>{ console.error(err); setConn('err'); toast('Sync error — check Firebase config/rules'); });
-}
-
-function subscribeActivity(){
-  if(unsubActivity) unsubActivity();
-  unsubActivity = activityColRef().orderBy('ts','desc').limit(80).onSnapshot(snap=>{
-    window._lastActivityRaw = snap.docs.map(d=>d.data());
-    renderFilteredActivity();
-  }, err=>console.error(err));
-}
-
-// Re-applies the cat/group filter against the cached activity feed —
-// called both on new Firestore data and whenever the group tab changes locally.
-function renderFilteredActivity(){
-  const raw = window._lastActivityRaw || [];
-  const filtered = raw.filter(ev=>{
-    if(ev.cat !== curCat) return false;
-    if(curCat === 'daily' && curGroup !== 'All' && ev.grp !== curGroup) return false;
-    return true;
-  });
-  renderActivity(filtered.slice(0, 20));
-}
-
-function subscribeArchive(){
-  if(unsubArchive) unsubArchive();
-  window._lastArchive = [];
-  updateWeekStatus();
-  unsubArchive = archiveColRef().orderBy('ts','desc').limit(30).onSnapshot(snap=>{
-    window._lastArchive = snap.docs.map(d=>d.data()).filter(a=>a.cat===curCat).slice(0,10);
-    renderArchiveList(window._lastArchive);
-    updateWeekStatus();
-  }, err=>console.error(err));
-}
-
-function updateWeekStatus(){
-  const el = document.getElementById('week-status');
-  const dow = RESET_DOW[curOutlet];
-  if(curCat !== 'daily' || dow === undefined){
-    el.style.display = 'none';
-    return;
-  }
-  el.style.display = 'flex';
-
-  const mostRecentReset = (window._lastArchive && window._lastArchive[0]) ? window._lastArchive[0].ts : null;
-  const dayName = DOW_NAME[dow];
-  const boundary = currentWeekBoundary();
-  const deadline = nextDeadline();
-  const hoursToDeadline = (deadline - Date.now()) / 3600000;
-  const deadlineStr = new Date(deadline).toLocaleString(undefined, {weekday:'short', hour:'numeric', minute:'2-digit'});
-
-  const poolItems = DATA[curOutlet].daily.filter(it=>it.g === 'Pool Maintenance');
-  const poolDone = poolItems.filter(it=>getRecord(it.id).status === 'done').length;
-  const poolReady = poolItems.length === 0 || poolDone === poolItems.length;
-  const poolWarning = !poolReady
-    ? ` <span style="color:#B0472A;font-weight:700;">🏊 ${poolItems.length - poolDone} Pool Maintenance task${poolItems.length-poolDone===1?'':'s'} still open before peak.</span>`
-    : '';
-
-  if(!mostRecentReset || mostRecentReset < boundary){
-    // Not yet reset for this week's cycle.
-    const urgent = hoursToDeadline <= 24;
-    el.className = 'week-status ' + (urgent ? 'overdue' : 'due');
-    const whenText = !mostRecentReset ? "No week has been started yet." : `Last reset was before this week's cycle.`;
-    el.innerHTML = `
-      <div class="ws-text">${whenText} ${DATA[curOutlet].label} is usually covered on <strong>${dayName}s</strong> — needs to be fresh and done before peak starts (<strong>${deadlineStr}</strong>).</div>
-      <button id="ws-reset-btn">Start this week ↻</button>`;
-    document.getElementById('ws-reset-btn').addEventListener('click', startNewWeek);
-  } else if(hoursToDeadline <= 24 && !poolReady){
-    // Reset already happened this week, but the clock's running out and pool work isn't finished.
-    el.className = 'week-status overdue';
-    el.innerHTML = `<div class="ws-text">⏰ Peak starts <strong>${deadlineStr}</strong> — less than a day away.${poolWarning}</div>`;
-  } else {
-    el.className = 'week-status fresh';
-    el.innerHTML = `<div class="ws-text">✓ <strong>This week's list is fresh</strong> — started ${dateOrAgo(mostRecentReset)}. Needs to stay ready before peak starts <strong>${deadlineStr}</strong>.${poolWarning}</div>`;
-  }
-}
-
-function subscribeAll(){
-  renderTabs();
-  if(!requireDb()) return;
-  subscribeState();
-  subscribeActivity();
-  subscribeArchive();
-}
-
-async function startNewWeek(){
-  if(!requireDb() || !requireMe()) return;
-  const fullItems = items(); // always the whole list for this category, regardless of which group tab is selected
-  const doneCount = fullItems.filter(it=>getRecord(it.id).status==='done').length;
-  const s = { done: doneCount, total: fullItems.length };
-  const typed = prompt(`Start a new week for ${DATA[curOutlet].label} — ${CAT_LABEL[curCat]}?\n\nThis reopens every task (${s.done}/${s.total} currently done). The full detail is saved to Past Weeks first, so nothing is lost — but it will look like a fresh list afterward.\n\nType RESET to confirm:`);
-  if(!typed || typed.trim().toUpperCase() !== 'RESET') return;
-
-  try{
-    const snap = await stateDocRef().get();
-    const tasks = (snap.exists && snap.data().tasks) || {};
-
-    // Full detail is preserved here even though the summary view only shows counts.
-    await archiveColRef().add({ ts: Date.now(), by: me, cat: curCat, done: s.done, total: s.total, snapshotTasks: tasks });
-
-    const resetTasks = {};
-    Object.keys(tasks).forEach(id=>{
-      resetTasks[id] = {
-        status:'open', remark: tasks[id].remark || '',
-        claimedBy:null, claimedAt:null, doneBy:null, doneAt:null, actualMs:null,
-        lastDoneAt: tasks[id].lastDoneAt || null, lastDoneBy: tasks[id].lastDoneBy || null, lastActualMs: tasks[id].lastActualMs || null
-      };
     });
-    await stateDocRef().set({ tasks: resetTasks }, { merge: false });
-    await logActivity('reopened', null);
-    toast('New week started');
-  }catch(e){
-    console.error(e);
-    toast('Could not start new week — check your connection');
-  }
+  });
+  flagged.sort((a,b)=>b.days - a.days);
+
+  if(flagged.length === 0){ el.innerHTML = '<div class="empty">Nothing flagged — everything is either done or was done within the last 3 weeks. Nice.</div>'; return; }
+  el.innerHTML = '';
+  flagged.slice(0,60).forEach(f=>{
+    const row = document.createElement('div');
+    row.className = 'att-row';
+    row.innerHTML = `
+      <span class="att-outlet">${DATA[f.outlet].label}</span>
+      <div class="att-main">
+        <div class="att-text">${f.text}</div>
+        <div class="att-meta"><span class="att-cat">${CAT_LABEL[f.cat]}</span> · <span class="att-bad">${f.never ? 'Never done before' : dateOrAgo(f.lastDoneAt) + (f.lastDoneBy ? ' by ' + f.lastDoneBy : '')}</span></div>
+      </div>`;
+    el.appendChild(row);
+  });
 }
 
-document.getElementById('f-me').addEventListener('input', (e)=>{
-  me = e.target.value.trim();
-  try{ localStorage.setItem('maintenance-my-name', me); }catch(err){}
-  document.getElementById('me-badge').style.display = me ? '' : 'none';
-  document.getElementById('me-badge').textContent = me;
-});
-
-document.getElementById('f-search').addEventListener('input', (e)=>{
-  curSearch = e.target.value;
-  renderList();
-});
-
-document.querySelectorAll('.chip[data-filter]').forEach(chip=>{
-  chip.addEventListener('click', ()=>{
-    document.querySelectorAll('.chip[data-filter]').forEach(c=>c.classList.remove('active'));
-    chip.classList.add('active');
-    curFilter = chip.dataset.filter;
-    renderList();
+let allArchiveRows = [];
+function renderTrendToggle(){
+  const wrap = document.getElementById('trend-outlet-toggle');
+  wrap.innerHTML = '';
+  ['ALL', ...Object.keys(DATA)].forEach(key=>{
+    const chip = document.createElement('span');
+    chip.className = 'chip' + (curTrendOutlet===key ? ' active' : '');
+    chip.textContent = key === 'ALL' ? 'All outlets' : DATA[key].label;
+    chip.addEventListener('click', ()=>{ curTrendOutlet = key; renderTrendToggle(); renderTrend(); });
+    wrap.appendChild(chip);
   });
-});
+}
 
-document.getElementById('chip-sort-oldest').addEventListener('click', (e)=>{
-  curSortOldest = !curSortOldest;
-  e.target.classList.toggle('active', curSortOldest);
-  renderList();
-});
+function renderTrend(){
+  const body = document.getElementById('trend-body');
+  const rows = curTrendOutlet==='ALL' ? allArchiveRows : allArchiveRows.filter(r=>r.outlet===curTrendOutlet);
+  if(rows.length === 0){ body.innerHTML = '<tr><td colspan="5" class="empty">No past weeks recorded yet.</td></tr>'; return; }
+  body.innerHTML = '';
+  rows.forEach(r=>{
+    const pct = r.total ? Math.round(r.done/r.total*100) : 0;
+    const tr = document.createElement('tr');
+    tr.style.cursor = r.snapshotTasks ? 'pointer' : 'default';
+    tr.innerHTML = `
+      <td>${DATA[r.outlet].label}</td>
+      <td>${CAT_LABEL[r.cat] || r.cat}</td>
+      <td>${new Date(r.ts).toLocaleDateString()}${r.snapshotTasks ? ' <span style="color:var(--ink-soft);font-size:11px;">(tap for detail)</span>' : ''}</td>
+      <td>${r.done}/${r.total}</td>
+      <td><span class="pct-pill">${pct}%</span></td>`;
+    if(r.snapshotTasks){
+      tr.addEventListener('click', ()=>{ r._open = !r._open; renderTrend(); });
+    }
+    body.appendChild(tr);
 
-document.getElementById('btn-newweek').addEventListener('click', startNewWeek);
+    if(r._open && r.snapshotTasks){
+      const detailTr = document.createElement('tr');
+      const catItems = (DATA[r.outlet] && DATA[r.outlet][r.cat]) || [];
+      const lines = catItems.map(it=>{
+        const rec = r.snapshotTasks[it.id];
+        if(!rec || rec.status === 'open') return null;
+        const who = rec.status === 'done' ? (rec.doneBy || '—') : (rec.claimedBy || '—');
+        const label = rec.status === 'done' ? 'Done' : 'In progress';
+        return `<div style="padding:4px 0;border-top:1px solid var(--line-soft);">${it.x} — <strong>${label}</strong> by ${who}</div>`;
+      }).filter(Boolean);
+      detailTr.innerHTML = `<td colspan="5" style="background:var(--deck);padding:10px 12px;font-size:13px;">
+        ${lines.length ? lines.join('') : '<div class="empty">Nothing was marked in this snapshot.</div>'}
+      </td>`;
+      body.appendChild(detailTr);
+    }
+  });
+}
 
-document.getElementById('modal-cancel').addEventListener('click', closeDoneModal);
-document.getElementById('modal-confirm').addEventListener('click', confirmDone);
-document.getElementById('done-modal').addEventListener('click', (e)=>{
-  if(e.target.id === 'done-modal') closeDoneModal();
-});
+function subscribeOutletCat(outlet, cat){
+  db.collection('maintenance_state').doc(`${outlet}_${cat}`).onSnapshot(doc=>{
+    liveState[outlet] = liveState[outlet] || {};
+    liveState[outlet][cat] = (doc.exists && doc.data().tasks) || {};
+    renderSnapshot();
+    renderAttention();
+    setConn('live', 'Connected — live');
+  }, err=>{ console.error(err); setConn('err', 'Sync error — check console'); });
+}
+
+function subscribeArchive(outlet){
+  db.collection('archive').doc(outlet).collection('weeks').orderBy('ts','desc').limit(25).onSnapshot(snap=>{
+    const rows = snap.docs.map(d=>({ outlet, ...d.data() }));
+    allArchiveRows = allArchiveRows.filter(r=>r.outlet!==outlet).concat(rows);
+    allArchiveRows.sort((a,b)=>b.ts-a.ts);
+    renderTrend();
+  }, err=>console.error(err));
+}
 
 (function init(){
-  try{
-    const saved = localStorage.getItem('maintenance-my-name');
-    if(saved){
-      me = saved;
-      document.getElementById('f-me').value = me;
-      document.getElementById('me-badge').style.display = '';
-      document.getElementById('me-badge').textContent = me;
-    }
-  }catch(e){ /* no saved name yet */ }
+  renderSnapshot();
+  renderAttention();
+  renderTrendToggle();
+  renderTrend();
 
   if(NOT_CONFIGURED){
     document.getElementById('setup-banner').style.display = 'block';
-    renderTabs();
-    renderList();
-    updateStatbar();
-    setConn('err');
-  } else {
-    firebase.initializeApp(firebaseConfig);
-    db = firebase.firestore();
-    subscribeAll();
+    setConn('err', 'Not connected');
+    return;
   }
-
-  setInterval(()=>{
-    document.querySelectorAll('.live-timer').forEach(el=>{
-      const start = parseInt(el.dataset.start, 10);
-      if(!isNaN(start)) el.textContent = formatClock(Date.now() - start);
-    });
-  }, 1000);
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+  Object.keys(DATA).forEach(outlet=>{
+    subscribeOutletCat(outlet, 'daily');
+    subscribeOutletCat(outlet, 'check');
+    subscribeArchive(outlet);
+  });
 })();
 </script>
 </body>
