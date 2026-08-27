@@ -233,6 +233,7 @@
 
   <div class="tabs" id="outlet-tabs"></div>
   <div class="subtabs" id="cat-tabs"></div>
+  <div class="toolbar" id="group-tabs" style="margin-top:8px;"></div>
 
   <div class="statbar">
     <div class="gauge">
@@ -260,7 +261,6 @@
     <span class="chip" data-filter="claimed">In progress</span>
     <span class="chip" data-filter="done">Done</span>
     <span class="chip" id="chip-sort-oldest">⏱ Longest neglected first</span>
-    <span class="chip" id="chip-pool-only" style="display:none;">🏊 Pool Maintenance only</span>
   </div>
 
   <div class="list" id="task-list"></div>
@@ -1363,7 +1363,7 @@ let curCat = 'daily';
 let curFilter = 'all';
 let curSearch = '';
 let curSortOldest = false;
-let curPoolOnly = false;
+let curGroup = 'All';
 let state = {};        // {taskId: {status, claimedBy, claimedAt, doneBy, doneAt, actualMs, remark}}
 let noteOpen = {};      // local UI toggle only
 let unsubState = null, unsubActivity = null, unsubArchive = null;
@@ -1437,6 +1437,7 @@ function renderTabs(){
     el.addEventListener('click', ()=>{
       curOutlet = key;
       if(curCat === 'check' && (!DATA[key].check || DATA[key].check.length === 0)) curCat = 'daily';
+      curGroup = 'All';
       subscribeAll();
     });
     ot.appendChild(el);
@@ -1450,18 +1451,32 @@ function renderTabs(){
     const el = document.createElement('div');
     el.className = 'subtab' + (cat===curCat ? ' active' : '');
     el.textContent = CAT_LABEL[cat];
-    el.addEventListener('click', ()=>{ curCat = cat; subscribeAll(); });
+    el.addEventListener('click', ()=>{ curCat = cat; curGroup = 'All'; subscribeAll(); });
     ct.appendChild(el);
   });
 
-  const poolChip = document.getElementById('chip-pool-only');
-  if(curCat === 'daily'){
-    poolChip.style.display = 'inline-flex';
-  } else {
-    poolChip.style.display = 'none';
-    curPoolOnly = false;
-    poolChip.classList.remove('active');
-  }
+  renderGroupTabs();
+}
+
+function renderGroupTabs(){
+  const gt = document.getElementById('group-tabs');
+  gt.innerHTML = '';
+  if(curCat !== 'daily'){ gt.style.display = 'none'; return; }
+  gt.style.display = 'flex';
+
+  const present = new Set(DATA[curOutlet].daily.map(it=>it.g));
+  const orderedGroups = GROUP_ORDER.filter(g=>present.has(g));
+  GROUP_ORDER.forEach(g=>present.delete(g));
+  const extraGroups = [...present]; // anything outside the standard 5 (e.g. a stray "Uncategorized")
+  const allGroups = ['All', ...orderedGroups, ...extraGroups];
+
+  allGroups.forEach(g=>{
+    const chip = document.createElement('span');
+    chip.className = 'chip' + (curGroup === g ? ' active' : '');
+    chip.textContent = g === 'Pool Maintenance' ? '🏊 ' + g : g;
+    chip.addEventListener('click', ()=>{ curGroup = g; renderGroupTabs(); renderList(); });
+    gt.appendChild(chip);
+  });
 }
 
 function items(){ return DATA[curOutlet][curCat]; }
@@ -1526,7 +1541,7 @@ function renderList(){
     const r = getRecord(it.id);
     if(curFilter !== 'all' && r.status !== curFilter) return false;
     if(q && !it.x.toLowerCase().includes(q)) return false;
-    if(curCat === 'daily' && curPoolOnly && it.g !== 'Pool Maintenance') return false;
+    if(curCat === 'daily' && curGroup !== 'All' && it.g !== curGroup) return false;
     return true;
   });
   if(curSortOldest){
@@ -1537,7 +1552,7 @@ function renderList(){
     return;
   }
 
-  const useGrouping = curCat === 'daily' && !curSortOldest && !curPoolOnly;
+  const useGrouping = curCat === 'daily' && curGroup === 'All' && !curSortOldest;
   if(useGrouping){
     const groupsMap = {};
     filtered.forEach(it=>{ (groupsMap[it.g] = groupsMap[it.g] || []).push(it); });
@@ -1869,12 +1884,6 @@ document.querySelectorAll('.chip[data-filter]').forEach(chip=>{
 document.getElementById('chip-sort-oldest').addEventListener('click', (e)=>{
   curSortOldest = !curSortOldest;
   e.target.classList.toggle('active', curSortOldest);
-  renderList();
-});
-
-document.getElementById('chip-pool-only').addEventListener('click', (e)=>{
-  curPoolOnly = !curPoolOnly;
-  e.target.classList.toggle('active', curPoolOnly);
   renderList();
 });
 
