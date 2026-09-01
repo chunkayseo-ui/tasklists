@@ -1462,14 +1462,20 @@ function dateOrAgo(ts){
 }
 
 // Full date, weekday, and time — e.g. "Mon, 1 Sep · 3:15 PM"
-function fullDateTime(ts){
+function formatDateOnly(ts){
   if(!ts) return '';
   const d = new Date(ts);
   const opts = { weekday:'short', day:'numeric', month:'short' };
   if(d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
-  const dateStr = d.toLocaleDateString(undefined, opts);
-  const timeStr = d.toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' });
-  return `${dateStr} · ${timeStr}`;
+  return d.toLocaleDateString(undefined, opts);
+}
+function formatTime24(ts){
+  if(!ts) return '';
+  return new Date(ts).toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit', hour12:false });
+}
+function fullDateTime(ts){
+  if(!ts) return '';
+  return `${formatDateOnly(ts)} ${formatTime24(ts)}`;
 }
 
 function toast(msg, opts){
@@ -1704,8 +1710,19 @@ function appendTaskRow(list, it){
       meta = `Claimed by ${r.claimedBy || '—'} on ${fullDateTime(r.claimedAt)} · <span class="live-timer" data-start="${r.claimedAt || Date.now()}">${formatClock(Date.now() - (r.claimedAt || Date.now()))}</span> elapsed`;
     }
     if(r.status === 'done'){
-      const startBit = r.claimedAt ? `Started ${fullDateTime(r.claimedAt)} → ` : '';
-      meta = `${startBit}Done by ${r.doneBy || '—'} <span class="tag-good">${fullDateTime(r.doneAt)}</span>`;
+      const dateStr = formatDateOnly(r.doneAt);
+      const endTime = formatTime24(r.doneAt);
+      let dtDisplay;
+      if(r.claimedAt){
+        const sameDay = new Date(r.claimedAt).toDateString() === new Date(r.doneAt).toDateString();
+        const startTime = formatTime24(r.claimedAt);
+        dtDisplay = sameDay
+          ? `${dateStr} ${startTime} - ${endTime}`
+          : `${formatDateOnly(r.claimedAt)} ${startTime} → ${dateStr} ${endTime}`;
+      } else {
+        dtDisplay = `${dateStr} ${endTime}`;
+      }
+      meta = `Done by ${r.doneBy || '—'} on <span class="tag-good">${dtDisplay}</span>`;
       if(r.actualMs != null){
         const actual = formatMins(r.actualMs);
         if(it.t){
