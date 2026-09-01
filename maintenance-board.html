@@ -1,0 +1,2190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Maintenance Board — Live Task Status</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --deck:#F3F1EA;
+    --deck-raised:#FBFAF6;
+    --ink:#16262B;
+    --ink-soft:#4E5F63;
+    --teal:#0D6E76;
+    --teal-deep:#0A5359;
+    --amber:#DD9A35;
+    --amber-bg:#FBEEDA;
+    --moss:#3E7F53;
+    --moss-bg:#E4F0E7;
+    --line:#D6D0C0;
+    --line-soft:#E5E1D5;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;background:var(--deck);color:var(--ink);
+    font-family:'Public Sans', system-ui, sans-serif;-webkit-font-smoothing:antialiased;
+    padding:0 0 60px;
+  }
+  .wrap{max-width:860px;margin:0 auto;padding:18px 14px 0;}
+
+  header{padding:4px 0 14px;border-bottom:2px solid var(--ink);}
+  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--teal-deep);font-weight:600;margin-bottom:6px;}
+  h1{font-family:'Archivo',sans-serif;font-weight:800;font-size:clamp(27px,7vw,38px);line-height:1;margin:0 0 4px;letter-spacing:-0.01em;}
+  .sub{color:var(--ink-soft);font-size:15.5px;margin:0;}
+
+  .setup-banner{
+    display:none;margin-top:14px;padding:14px 16px;border:1.5px solid var(--amber);background:var(--amber-bg);
+    border-radius:8px;font-size:15px;line-height:1.6;color:#5c3f0f;
+  }
+  .setup-banner h3{margin:0 0 6px;font-family:'Archivo',sans-serif;font-size:16.5px;color:#5c3f0f;}
+  .setup-banner code{background:#F3E2BE;padding:1px 5px;border-radius:4px;font-family:'IBM Plex Mono',monospace;font-size:13.5px;}
+
+  .me-row{display:flex;gap:8px;align-items:center;margin-top:14px;}
+  .me-row input{flex:1;}
+  .me-badge{
+    font-family:'IBM Plex Mono',monospace;font-size:12.5px;background:var(--teal);color:#fff;
+    padding:9px 12px;border-radius:6px;white-space:nowrap;
+  }
+  .conn-dot{width:8px;height:8px;border-radius:50%;background:var(--line);flex:0 0 auto;}
+  .conn-dot.live{background:var(--moss);}
+  .conn-dot.err{background:#B0472A;}
+
+  input,select,textarea{
+    font-family:'Public Sans',sans-serif;font-size:16.5px;color:var(--ink);
+    background:var(--deck-raised);border:1.5px solid var(--line);border-radius:6px;
+    padding:12px 13px;
+  }
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--teal);outline-offset:1px;border-color:var(--teal);}
+
+  /* Tabs */
+  .tabs{display:flex;gap:6px;margin-top:16px;flex-wrap:wrap;}
+  .tab{
+    font-family:'IBM Plex Mono',monospace;font-size:14.5px;letter-spacing:.03em;
+    padding:12px 17px;border-radius:20px;border:1.5px solid var(--line);background:var(--deck-raised);
+    cursor:pointer;color:var(--ink-soft);font-weight:600;
+  }
+  .tab.active{background:var(--ink);border-color:var(--ink);color:var(--deck-raised);}
+  .subtabs{display:flex;gap:6px;margin-top:10px;}
+  .subtab{
+    font-size:16px;font-weight:600;padding:13px 17px;border-radius:6px 6px 0 0;
+    border:1.5px solid var(--line);border-bottom:none;background:var(--deck);color:var(--ink-soft);cursor:pointer;
+  }
+  .subtab.active{background:var(--deck-raised);color:var(--ink);border-color:var(--ink);}
+
+  /* Week status */
+  .week-status{
+    display:flex;align-items:center;gap:12px;margin-top:14px;padding:13px 16px;border-radius:10px;
+    font-size:13.5px;flex-wrap:wrap;
+  }
+  .week-status.fresh{background:var(--moss-bg);border:1.5px solid var(--moss);color:var(--teal-deep);}
+  .week-status.due{background:var(--amber-bg);border:1.5px solid var(--amber);color:#5c3f0f;}
+  .week-status.overdue{background:#FBEAE5;border:1.5px solid #B0472A;color:#8a2f1c;}
+  .week-status .ws-text{flex:1;min-width:180px;line-height:1.4;}
+  .week-status .ws-text strong{font-family:'Archivo',sans-serif;}
+  .week-status button{
+    font-family:'Public Sans',sans-serif;font-weight:700;font-size:13.5px;
+    padding:10px 16px;border-radius:8px;border:1.5px solid currentColor;background:transparent;
+    cursor:pointer;white-space:nowrap;color:inherit;
+  }
+
+  /* Stats */
+  .stat-scope{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;color:var(--teal-deep);
+    margin-top:12px;letter-spacing:.02em;
+  }
+  .statbar{
+    display:flex;align-items:center;gap:18px;background:var(--ink);color:var(--deck-raised);
+    border-radius:0 10px 10px 10px;padding:16px 18px;margin-top:4px;position:sticky;top:8px;z-index:15;flex-wrap:wrap;
+  }
+  .gauge{flex:0 0 auto;position:relative;width:74px;height:74px;}
+  .gauge svg{width:100%;height:100%;}
+  .gauge-pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:17px;}
+  .stat-figs{flex:1;display:flex;flex-wrap:wrap;gap:16px;}
+  .stat{min-width:64px;}
+  .stat .n{font-family:'Archivo',sans-serif;font-weight:800;font-size:22px;line-height:1;}
+  .stat .l{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#B9C2C3;margin-top:4px;}
+  .stat.amber .n{color:var(--amber);}
+  .stat.moss .n{color:#8FD1A5;}
+  .weekbtn{
+    font-family:'Public Sans',sans-serif;font-weight:600;font-size:15.5px;
+    background:transparent;border:1.5px solid #4E5F63;color:var(--deck-raised);
+    padding:13px 17px;border-radius:8px;cursor:pointer;white-space:nowrap;min-height:44px;
+  }
+  .weekbtn:hover{background:#22343A;}
+
+  /* Toolbar */
+  .toolbar{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center;}
+  .toolbar input[type=text]{flex:1;min-width:140px;}
+  .chip{
+    font-family:'IBM Plex Mono',monospace;font-size:13.5px;padding:11px 15px;border-radius:20px;
+    border:1.5px solid var(--line);background:var(--deck-raised);color:var(--ink-soft);cursor:pointer;font-weight:600;
+    display:inline-flex;align-items:center;min-height:44px;
+  }
+  .chip.active{background:var(--teal);border-color:var(--teal);color:#fff;}
+
+  /* Task rows */
+  .list{margin-top:10px;}
+  .group-header{
+    display:flex;justify-content:space-between;align-items:center;gap:10px;
+    padding:14px 6px 8px;margin-top:8px;
+    font-family:'Archivo',sans-serif;font-weight:800;font-size:15px;
+    text-transform:uppercase;letter-spacing:.03em;color:var(--teal-deep);
+    border-top:3px solid var(--teal);
+  }
+  .group-header.other-group{
+    color:var(--ink-soft);border-top:2px solid var(--line);font-size:13.5px;font-weight:700;
+  }
+  .group-count{
+    font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:600;
+    background:#E3EEEE;color:var(--teal-deep);padding:4px 10px;border-radius:20px;flex:0 0 auto;
+  }
+  .other-group .group-count{background:var(--deck);color:var(--ink-soft);}
+  .task{
+    display:flex;align-items:center;gap:10px;padding:13px 4px;border-top:1px solid var(--line-soft);flex-wrap:wrap;
+  }
+  .task-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto;}
+  @media (max-width: 620px){
+    .task{flex-direction:column;align-items:stretch;}
+    .task-main{width:100%;}
+    .task-actions{width:100%;justify-content:flex-end;flex-wrap:wrap;margin-top:6px;}
+  }
+  .task:first-child{border-top:none;}
+  .task-main{flex:1;min-width:0;}
+  .task-text{font-size:16.5px;line-height:1.4;}
+  .task-meta{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--ink-soft);margin-top:4px;}
+  .task-time{
+    font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--ink-soft);
+    background:var(--deck);border:1px solid var(--line);border-radius:20px;padding:3px 8px;flex:0 0 auto;
+  }
+  .status-btn{
+    flex:0 0 auto;font-family:'IBM Plex Mono',monospace;font-size:13.5px;font-weight:600;
+    padding:0 16px;min-height:44px;border-radius:22px;border:1.5px solid var(--line);background:var(--deck-raised);
+    cursor:pointer;white-space:nowrap;min-width:92px;text-align:center;
+    display:inline-flex;align-items:center;justify-content:center;
+  }
+  .status-btn.open{color:var(--ink-soft);}
+  .status-btn.claimed{background:var(--amber-bg);border-color:var(--amber);color:#8a5f14;}
+  .status-btn.done{background:var(--moss-bg);border-color:var(--moss);color:var(--teal-deep);}
+  .live-timer{font-weight:700;color:var(--amber);}
+  .over-budget{color:#B0472A;}
+  .under-budget{color:var(--teal-deep);}
+  .tag-good{color:var(--teal-deep);font-weight:700;}
+  .tag-warn{color:#8a5f14;font-weight:700;}
+  .tag-bad{color:#B0472A;font-weight:700;}
+  .note-btn{
+    flex:0 0 auto;width:44px;height:44px;border-radius:8px;border:1.5px solid var(--line);
+    background:var(--deck-raised);cursor:pointer;color:var(--ink-soft);font-size:18px;
+    display:inline-flex;align-items:center;justify-content:center;
+  }
+  .note-btn.has-note{background:#FDF2D8;border-color:var(--amber);color:#8a5f14;}
+  .unclaim-btn{
+    flex:0 0 auto;width:44px;height:44px;border-radius:8px;border:1.5px solid #B0472A;
+    background:#FBEAE5;cursor:pointer;color:#B0472A;font-size:16px;font-weight:700;
+    display:inline-flex;align-items:center;justify-content:center;
+  }
+  .note-box{
+    display:none;padding:8px 4px 12px 4px;border-top:1px dashed var(--line-soft);
+  }
+  .note-box.open{display:block;}
+  .note-box textarea{width:100%;min-height:52px;}
+  .note-save{margin-top:6px;font-size:13.5px;padding:7px 13px;}
+
+  /* Panels */
+  .panel{margin-top:26px;border-top:2px solid var(--ink);padding-top:14px;}
+  .panel h2{font-family:'Archivo',sans-serif;font-size:18.5px;margin:0 0 4px;}
+  .panel .hint{font-size:14px;color:var(--ink-soft);margin:0 0 12px;}
+  .feed-row{display:flex;gap:8px;padding:8px 2px;border-top:1px solid var(--line-soft);font-size:14px;}
+  .feed-row:first-child{border-top:none;}
+  .feed-who{font-weight:700;flex:0 0 auto;}
+  .feed-when{font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);font-size:12.5px;margin-left:auto;flex:0 0 auto;white-space:nowrap;}
+  .empty{color:var(--ink-soft);font-size:14.5px;padding:8px 2px;}
+
+  .archive-row{
+    display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--deck-raised);
+    border:1px solid var(--line);border-radius:8px;margin-bottom:8px;
+  }
+  .archive-main{flex:1;}
+  .archive-main .a-title{font-weight:700;font-size:15.5px;}
+  .archive-main .a-meta{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--ink-soft);}
+  .archive-pct{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:14px;padding:5px 10px;border-radius:20px;background:#E3EEEE;color:var(--teal-deep);}
+
+  footer.note{margin-top:26px;font-size:13px;color:var(--ink-soft);line-height:1.55;}
+  .toast{
+    position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
+    background:var(--ink);color:var(--deck-raised);font-size:14.5px;padding:11px 11px 11px 17px;border-radius:8px;
+    opacity:0;pointer-events:none;transition:opacity .25s ease;z-index:50;
+    display:flex;align-items:center;gap:6px;max-width:92vw;
+  }
+  .toast.show{opacity:1;pointer-events:auto;}
+  .toast-action{
+    font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:13px;letter-spacing:.03em;
+    color:var(--amber);background:transparent;border:none;padding:10px 12px;cursor:pointer;
+    white-space:nowrap;
+  }
+
+  .modal-overlay{
+    display:none;position:fixed;inset:0;background:rgba(22,38,43,0.55);z-index:80;
+    align-items:flex-end;justify-content:center;
+  }
+  .modal-overlay.show{display:flex;}
+  .modal-box{
+    background:var(--deck-raised);width:100%;max-width:480px;border-radius:16px 16px 0 0;
+    padding:20px 20px calc(20px + env(safe-area-inset-bottom));
+    box-shadow:0 -4px 24px rgba(0,0,0,0.2);
+  }
+  @media (min-width: 560px){
+    .modal-overlay{align-items:center;}
+    .modal-box{border-radius:16px;}
+  }
+  .modal-eyebrow{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.1em;
+    color:var(--teal-deep);font-weight:700;margin-bottom:6px;
+  }
+  .modal-task-name{font-family:'Archivo',sans-serif;font-weight:700;font-size:17px;line-height:1.3;margin-bottom:16px;}
+  .modal-box textarea{width:100%;min-height:90px;margin-top:6px;}
+  .modal-actions{display:flex;gap:10px;margin-top:18px;}
+  .modal-actions button{flex:1;min-height:46px;font-size:15px;}
+  .modal-actions button.primary{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:700;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">Multi-Outlet · Live Task Status</div>
+    <h1>Maintenance Board</h1>
+    <p class="sub">See what's done, what's claimed, and what's still open — across every team.</p>
+
+    <div class="setup-banner" id="setup-banner">
+      <h3>One-time setup needed</h3>
+      This board syncs through Firebase, and it isn't connected yet. Open this file, find the
+      <code>firebaseConfig</code> object near the top of the script, and paste in the config values from your
+      Firebase project (Project settings → General → Your apps → SDK setup and configuration). Also make sure
+      Firestore's rules allow read/write (see the setup guide provided alongside this file). Once saved and
+      re-uploaded, this banner disappears and the board goes live.
+    </div>
+
+    <div class="me-row">
+      <input id="f-me" type="text" placeholder="Your name (so your work shows on the board)">
+      <span class="conn-dot" id="conn-dot" title="Connection status"></span>
+      <span class="me-badge" id="me-badge" style="display:none;"></span>
+    </div>
+  </header>
+
+  <div class="tabs" id="outlet-tabs"></div>
+  <div class="subtabs" id="cat-tabs"></div>
+  <div class="toolbar" id="group-tabs" style="margin-top:8px;"></div>
+
+  <div class="week-status" id="week-status" style="display:none;"></div>
+
+  <div class="stat-scope" id="stat-scope"></div>
+  <div class="statbar">
+    <div class="gauge">
+      <svg viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="42" fill="none" stroke="#33474C" stroke-width="9"/>
+        <circle id="gauge-arc" cx="50" cy="50" r="42" fill="none" stroke="#3E7F53" stroke-width="9"
+          stroke-linecap="round" stroke-dasharray="264" stroke-dashoffset="264" transform="rotate(-90 50 50)"/>
+      </svg>
+      <div class="gauge-pct" id="gauge-pct">0%</div>
+    </div>
+    <div class="stat-figs">
+      <div class="stat"><div class="n" id="stat-open">0</div><div class="l">Open</div></div>
+      <div class="stat amber"><div class="n" id="stat-claimed">0</div><div class="l">In progress</div></div>
+      <div class="stat moss"><div class="n" id="stat-done">0</div><div class="l">Done</div></div>
+      <div class="stat" id="stat-mins-wrap"><div class="n" id="stat-mins">0</div><div class="l">Min left</div></div>
+      <div class="stat" id="stat-actual-wrap"><div class="n" id="stat-actual">0/0</div><div class="l">Actual / budget</div></div>
+    </div>
+    <button class="weekbtn" id="btn-newweek">Start new week ↻</button>
+  </div>
+
+  <div class="toolbar">
+    <input type="text" id="f-search" placeholder="Search tasks…">
+    <span class="chip active" data-filter="all">All</span>
+    <span class="chip" data-filter="open">Open</span>
+    <span class="chip" data-filter="claimed">In progress</span>
+    <span class="chip" data-filter="done">Done</span>
+    <span class="chip" id="chip-sort-oldest">⏱ Longest neglected first</span>
+  </div>
+
+  <div class="list" id="task-list"></div>
+
+  <div class="panel">
+    <h2>Recent activity</h2>
+    <p class="hint">Latest claims and completions for what you're currently viewing, most recent first.</p>
+    <div id="activity-feed"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Past weeks</h2>
+    <p class="hint">Snapshot taken each time someone starts a new week.</p>
+    <div id="archive-list"></div>
+  </div>
+
+  <footer class="note">Everyone who opens this board sees the same live status, updated instantly — claim a task before starting it so two teams don't do the same thing twice.</footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="done-modal">
+  <div class="modal-box">
+    <div class="modal-eyebrow">Mark done</div>
+    <div class="modal-task-name" id="modal-task-name"></div>
+    <label for="modal-note-input" style="font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);">Note (optional)</label>
+    <textarea id="modal-note-input" placeholder="Anything worth flagging — condition, issue, follow-up…"></textarea>
+    <div class="modal-actions">
+      <button id="modal-cancel">Cancel</button>
+      <button id="modal-confirm" class="primary">Mark Done</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Paste your Firebase project config here (Project settings → General → Your apps) ──
+const firebaseConfig = {
+  apiKey: "AIzaSyANFCZbvRGO9aMRtG9MF_qONO3FL85CzSo",
+  authDomain: "maintenance-board-f931a.firebaseapp.com",
+  projectId: "maintenance-board-f931a",
+  storageBucket: "maintenance-board-f931a.firebasestorage.app",
+  messagingSenderId: "169864970579",
+  appId: "1:169864970579:web:bfb7490d0aebcfed17e1a6"
+};
+// ─────────────────────────────────────────────────────────────────────────────────────
+
+const DATA = {
+  CC: { label: 'CC', daily: [
+  {id:'CC_d1',t:15,x:'Watertest (Ta and Salt, Acid, Refill Test Kit)*Facing Counter CCTV',g:'Water Test / Dosing'},
+  {id:'CC_d2',t:5,x:'Dosing bicarb and salt bags (Acid dose later)',g:'Water Test / Dosing'},
+  {id:'CC_d3',t:null,x:'Send watertest report to Group chat',g:'Water Test / Dosing'},
+  {id:'CC_d4',t:3,x:'Dosing Acid (Refer to Morning report)*Ready Bucket near Pool',g:'Water Test / Dosing'},
+  {id:'CC_d5',t:30,x:'Night Watertest and Dosing',g:'Water Test / Dosing'},
+  {id:'CC_d6',t:30,x:'Backwash (Floortrap toilet women)',g:'Pool Maintenance'},
+  {id:'CC_d7',t:60,x:'Scrub off surface algae on deck',g:'Pool Maintenance'},
+  {id:'CC_d8',t:45,x:'Pool Scrub (must in the pool)(Floor, Wall, Ledge)',g:'Pool Maintenance'},
+  {id:'CC_d9',t:30,x:'Remove Stain marks from Pool',g:'Pool Maintenance'},
+  {id:'CC_d10',t:5,x:'Check Floor Inlet (facing below)',g:'Pool Maintenance'},
+  {id:'CC_d11',t:20,x:'Check and Clean the pool divider(Floating Ball, Rope)',g:'Pool Maintenance'},
+  {id:'CC_d12',t:10,x:'Check and Clear Skimmer',g:'Pool Maintenance'},
+  {id:'CC_d13',t:40,x:'Manual Vacuum Pool',g:'Pool Maintenance'},
+  {id:'CC_d14',t:15,x:'Clean Pump Basket',g:'Pool Maintenance'},
+  {id:'CC_d15',t:20,x:'Check salt cell (remove calcium)',g:'Pool Maintenance'},
+  {id:'CC_d16',t:2,x:'Check Shower Heater Display (55 degree above is normal)',g:'Checklist'},
+  {id:'CC_d17',t:10,x:'Inspect (Lighting, Changing Table, Shower Room,WaterDispenser)',g:'Checklist'},
+  {id:'CC_d18',t:10,x:'Inspect (HairDryer, Pool Platform, Clock, WiFi, Number Locker)',g:'Checklist'},
+  {id:'CC_d19',t:20,x:'Check&Repair Shower Facilities(DoorLock,ShowerHead,Hose, Mixer, Hooks, Shampoo, ShowerHead Holder)',g:'Checklist'},
+  {id:'CC_d20',t:5,x:'Check Changing table condition (take photo if dusty&dirty)',g:'Checklist'},
+  {id:'CC_d21',t:30,x:'Wipe dust on corner of the pool deck against Glass with cloth',g:'Checklist'},
+  {id:'CC_d22',t:5,x:'Check Salt Chlorinator panel (must be above 85)',g:'Checklist'},
+  {id:'CC_d23',t:5,x:'Check Pump Equipment&Chemical Room',g:'Checklist'},
+  {id:'CC_d24',t:3,x:'Check Pump Timer (Time is accurate)',g:'Checklist'},
+  {id:'CC_d25',t:3,x:'Check Heatpump Timer (Time is accurate)',g:'Checklist'},
+  {id:'CC_d26',t:3,x:'Check Exhaust Fan Timer (Time is accurate)',g:'Checklist'},
+  {id:'CC_d27',t:30,x:'Pressure Jet Stubborn algae on deck (once a month)',g:'Facility Management'},
+  {id:'CC_d28',t:5,x:'Use Mold remover for Baby Anti Slip mat',g:'Facility Management'},
+  {id:'CC_d29',t:15,x:'Pressure Jet Entrance& Blue Anti Slip mat',g:'Facility Management'},
+  {id:'CC_d30',t:30,x:'Pressure Jet Shower Rooms(wall&floor)',g:'Facility Management'},
+  {id:'CC_d31',t:30,x:'Pressure Jet Corridor&Baby Changing Area',g:'Facility Management'},
+  {id:'CC_d32',t:20,x:'Pressure Jet Baby Shower Tub (Algae, Mold) *Dry Wipe after*',g:'Facility Management'},
+  {id:'CC_d33',t:15,x:'Pressure Jet Staircase Deck & 2 Rince off Area',g:'Facility Management'},
+  {id:'CC_d34',t:20,x:'Pressure Jet Women&Men Bathroom&toilet',g:'Facility Management'},
+  {id:'CC_d35',t:15,x:'Scrub tile drain gutter and Pressure Jet to floor trap',g:'Facility Management'},
+  {id:'CC_d36',t:10,x:'Clear Floor Trap(6 ShowerRoom, 1 RinseOff, 1 Basin, 1 Bath Tub)',g:'Facility Management'},
+  {id:'CC_d37',t:20,x:'Clean Anti-Slip Mat and remove the Mold (Baby Tub)',g:'Facility Management'},
+  {id:'CC_d38',t:5,x:'Check&Clean Robot Filter&Wipe Robot Panel',g:'Facility Management'},
+  {id:'CC_d39',t:10,x:'Clean Fans',g:'Facility Management'},
+  {id:'CC_d40',t:15,x:'Clean filter and Wipe clean Air-Cooler fan',g:'Facility Management'},
+  {id:'CC_d41',t:30,x:'Wipe Handrail&DeckWall',g:'Facility Management'},
+  {id:'CC_d42',t:15,x:'Check & Clean Baby Shower Divider',g:'Facility Management'},
+  {id:'CC_d43',t:10,x:'Wipe Toilet Doors',g:'Facility Management'},
+  {id:'CC_d44',t:15,x:'Clean 6 Baby Shower Tub & Baby Shower Tub Divider',g:'Facility Management'},
+  {id:'CC_d45',t:20,x:'Pressure jet All anti Slippery Mat',g:'Facility Management'},
+  {id:'CC_d46',t:10,x:'Wipe Bench, Table&Chairs',g:'Facility Management'},
+  {id:'CC_d47',t:60,x:'Wipe Deck Glass wall',g:'Others'},
+  {id:'CC_d48',t:20,x:'Wipe Entrance Glass Door',g:'Others'},
+  {id:'CC_d49',t:15,x:'Wipe Back Glass wall and door',g:'Others'},
+  {id:'CC_d50',t:15,x:'Wipe Shoes Rack Glass wall',g:'Others'},
+  {id:'CC_d51',t:10,x:'Clear hair bottom glass door',g:'Others'},
+  {id:'CC_d52',t:15,x:'Clean 11 Baby Changing Table (Top& Bottom& Portable tub)',g:'Others'},
+  {id:'CC_d53',t:5,x:'Clean 2 Baby Chairs',g:'Others'},
+  {id:'CC_d54',t:5,x:'Wipe Water Dispenser & Table Top',g:'Others'},
+  {id:'CC_d55',t:10,x:'Wipe 12 Toyogo Cabinets',g:'Others'},
+  {id:'CC_d56',t:5,x:'Wipe Dehumidifier(Clean Net and make sure power is running and working)',g:'Others'},
+  {id:'CC_d57',t:5,x:'Wipe TV Screen&Fire Hose Area',g:'Others'},
+  {id:'CC_d58',t:5,x:'Wipe Shoes Racks',g:'Others'},
+  {id:'CC_d59',t:5,x:'Wash 1 Basin & Wipe Water Dispenser',g:'Others'},
+  {id:'CC_d60',t:5,x:'Wipe Counter Table&Wall',g:'Others'},
+  {id:'CC_d61',t:5,x:'Tool Box *',g:'Others'},
+  {id:'CC_d62',t:3,x:'Light Bulb (Total 8 pieces)',g:'Others'}
+  ], check: [
+  {id:'CC_c1',t:null,x:'CC Hallway Shower Room Ceiling Light'},
+  {id:'CC_c2',t:null,x:'CC Female Shower Room Ceiling Light'},
+  {id:'CC_c3',t:null,x:'CC Male Shower Room Ceiling Light'},
+  {id:'CC_c4',t:null,x:'CC Storage Shower Room Ceiling Light'},
+  {id:'CC_c5',t:null,x:'CC Baby Shower Tub Light'},
+  {id:'CC_c6',t:null,x:'CC Counter Light'},
+  {id:'CC_c7',t:null,x:'CC Pool Spotlight'},
+  {id:'CC_c8',t:null,x:'CC Pool Night Light'},
+  {id:'CC_c9',t:null,x:'CC Clock'},
+  {id:'CC_c10',t:null,x:'CC Hairdrying Powerpoint'},
+  {id:'CC_c11',t:null,x:'CC TV Powerpoint'},
+  {id:'CC_c12',t:null,x:'CC Counter Powerpoint'},
+  {id:'CC_c13',t:null,x:'CC Wall Fan Powerpoint'},
+  {id:'CC_c14',t:null,x:'CC Deck Powerpoint'},
+  {id:'CC_c15',t:null,x:'CC Water Dispensor Powerpoint'},
+  {id:'CC_c16',t:null,x:'CC Wifi & CCTV Cable'},
+  {id:'CC_c17',t:null,x:'CC Pressure Jet Power Point'},
+  {id:'CC_c18',t:null,x:'CC Exhaust Fan (Beside Female Toilet)'},
+  {id:'CC_c19',t:null,x:'CC 2 Shower Heater (Heating mode, ON , Temperature above 50)'},
+  {id:'CC_c20',t:null,x:'CC DB Box (Burn, Trip ,etc) *Beside Female Toilet'},
+  {id:'CC_c21',t:null,x:'CC DB Box  (Burn, Trip ,etc) *DB room'},
+  {id:'CC_c22',t:null,x:'CC Main Pump Panel  (Burn, Trip ,etc)'},
+  {id:'CC_c23',t:null,x:'CC Sub Pump Panel  (Burn, Trip ,etc)'},
+  {id:'CC_c24',t:null,x:'CC Pump Timer'},
+  {id:'CC_c25',t:null,x:'CC Pump Room Light'},
+  {id:'CC_c26',t:null,x:'CC Main 2 Pump Checking (Manual On 1 by 1, Leaking)'},
+  {id:'CC_c27',t:null,x:'CC Sub 2 Pump Checking (Manual On 1 by 1, Leaking)'},
+  {id:'CC_c28',t:null,x:'CC Heatpump 1 Timer & Correct Temperature'},
+  {id:'CC_c29',t:null,x:'CC Heatpump 2 Timer & Correct Temperature'},
+  {id:'CC_c30',t:null,x:'CC 2 Air Cooler'},
+  {id:'CC_c31',t:null,x:'CC Hall Shower room (Vertical bars, Shower Head, Grey Basket,                                        Wall mount, Hose, Soap Dispenser, Hanger                                       , Door Lock, Door Hinges, Top Cover)'},
+  {id:'CC_c32',t:null,x:'CC Lady Shower room (Vertical bars, Shower Head, Grey Basket,                                        Wall mount, Hose, Soap Dispenser,                                        Hanger, Door Lock, Door Hinges)'},
+  {id:'CC_c33',t:null,x:'CC Men Shower room (Vertical bars, Shower Head, Grey Basket,                                        Wall mount, Hose, Soap Dispenser,                                        Hanger, Door Lock, Door Hinges)'},
+  {id:'CC_c34',t:null,x:'CC Baby Tub (Shower Head, Hose, Drain hose, Tub Stability,                                 Soap Dispenser, Mixer)'},
+  {id:'CC_c35',t:null,x:'CC 6 Baby Tub Drain & Floor trap near Tub'},
+  {id:'CC_c36',t:null,x:'CC Rinse Off (Hose , Shower Head, Mixer)'},
+  {id:'CC_c37',t:null,x:'CC Long hose (Leaking, Break , etc)'},
+  {id:'CC_c38',t:null,x:'CC Changing Table & Mat (Screw, Stability, Board)'},
+  {id:'CC_c39',t:null,x:'CC Wood Wall Ledge (Dusty)'},
+  {id:'CC_c40',t:null,x:'CC Toyogo Cabinet'},
+  {id:'CC_c41',t:null,x:'CC Basin & Mirror'},
+  {id:'CC_c42',t:null,x:'CC Props (6 Noodles, 6 Backfloats, 6 Sinking Rings,                          Floating Ball)'},
+  {id:'CC_c43',t:null,x:'CC LifeBouy'},
+  {id:'CC_c44',t:null,x:'CC Signage Board'},
+  {id:'CC_c45',t:null,x:'CC Paint (Broken Paint wall, Putty if needed)'},
+  {id:'CC_c46',t:null,x:'CC Front HandRail (Rusty, Paint peeling , putty if needed)'},
+  {id:'CC_c47',t:null,x:'CC Back HandRail (Dusty, Dirty, Wallpaper)'},
+  {id:'CC_c48',t:null,x:'CC Pool Divider (straighten , support rope)'},
+  {id:'CC_c49',t:null,x:'CC Pool Deck Big Wallpaper'},
+  {id:'CC_c50',t:null,x:'CC Entrance Glass'},
+  {id:'CC_c51',t:null,x:'CC Dusty Deck Floor (near Corner Glass wall)'},
+  {id:'CC_c52',t:null,x:'CC Pool Deck Skirting'},
+  {id:'CC_c53',t:null,x:'CC Pool Deck (Algae)'},
+  {id:'CC_c54',t:null,x:'CC Shoe Racks'},
+  {id:'CC_c55',t:null,x:'CC 6 Pool Skimmer Basket'},
+  {id:'CC_c56',t:null,x:'CC Check Spider Web'},
+  {id:'CC_c57',t:null,x:'CC Hall Shower Room Top Bracket'},
+  {id:'CC_c58',t:null,x:'CC Female Shower Room Top Bracket'},
+  {id:'CC_c59',t:null,x:'CC Teaching Platform (inside Pool and Deck)'},
+  {id:'CC_c60',t:null,x:'CC Salt Chlorinator'},
+  {id:'CC_c61',t:null,x:'Check Tool Box (Hammer, Chain Wrench, Monkey plier, Testpen, Driver, Scraper)'},
+  {id:'CC_c62',t:null,x:'Pool Thermometer'},
+  {id:'CC_c63',t:null,x:'White Tape'},
+  {id:'CC_c64',t:null,x:'WD40'},
+  {id:'CC_c65',t:null,x:'Rubber washer (shower head)'},
+  {id:'CC_c66',t:null,x:'Rubber washer (Mixer)'},
+  {id:'CC_c67',t:null,x:'O-ring'},
+  {id:'CC_c68',t:null,x:'Adjustable Spray Nozzle'},
+  {id:'CC_c69',t:null,x:'Hose End Connector'},
+  {id:'CC_c70',t:null,x:'Hose Reapir Connector'},
+  {id:'CC_c71',t:null,x:'Tap Connector'},
+  {id:'CC_c72',t:null,x:'Spare Shower Hose'},
+  {id:'CC_c73',t:null,x:'Spare Shower Head'},
+  {id:'CC_c74',t:null,x:'Shower Head Holder Wall Mount'},
+  {id:'CC_c75',t:null,x:'Shower Head Holder Slide Bar'},
+  {id:'CC_c76',t:null,x:'Grey Basket'},
+  {id:'CC_c77',t:null,x:'Cleaning Chemical - Stain Remover'},
+  {id:'CC_c78',t:null,x:'Cleaning Tools - Hand Brush'},
+  {id:'CC_c79',t:null,x:'2 Mop & Buckets Checking'},
+  {id:'CC_c80',t:null,x:'Spongemop'},
+  {id:'CC_c81',t:null,x:'Scraper'},
+  {id:'CC_c82',t:null,x:'Chemical Room Floor'},
+  {id:'CC_c83',t:null,x:'Chemical Room (Chlorine Drum)'},
+  {id:'CC_c84',t:null,x:'Chemical Room (Acid Drum)'},
+  {id:'CC_c85',t:null,x:'Chemical Room (Bucket, Stick, Cup)'}
+  ] },
+  DR: { label: 'DR', daily: [
+  {id:'DR_d1',t:15,x:'Watertest (Ta and Salt, Acid, Refill Test Kit)*Facing Counter CCTV',g:'Water Test / Dosing'},
+  {id:'DR_d2',t:5,x:'Dosing bicarb and salt bags (Acid dose later)',g:'Water Test / Dosing'},
+  {id:'DR_d3',t:null,x:'Send watertest report to Group chat',g:'Water Test / Dosing'},
+  {id:'DR_d4',t:3,x:'Dosing Acid (Refer to Morning report)*Ready Bucket near Pool',g:'Water Test / Dosing'},
+  {id:'DR_d5',t:20,x:'Water Test and Dose',g:'Water Test / Dosing'},
+  {id:'DR_d6',t:15,x:'Backwash',g:'Pool Maintenance'},
+  {id:'DR_d7',t:80,x:'Sand and Scrub Pool Stain (Black Algae, Stain)',g:'Pool Maintenance'},
+  {id:'DR_d8',t:15,x:'Scrub Algae on Pool Deck',g:'Pool Maintenance'},
+  {id:'DR_d9',t:20,x:'Pool Scrub (Wall,Ledge,Corner,Floor)',g:'Pool Maintenance'},
+  {id:'DR_d10',t:5,x:'Check and Clean the pool divider(Floating Ball, Rope)',g:'Pool Maintenance'},
+  {id:'DR_d11',t:3,x:'Check Floor Inlet (facing below)',g:'Pool Maintenance'},
+  {id:'DR_d12',t:15,x:'Manual Vacuum Pool',g:'Pool Maintenance'},
+  {id:'DR_d13',t:10,x:'Clean Pump Basket & Skimmer Basket',g:'Pool Maintenance'},
+  {id:'DR_d14',t:5,x:'Check&Clean Robot Filter&Wipe Robot Panel',g:'Pool Maintenance'},
+  {id:'DR_d15',t:10,x:'Check Instant Water Heater',g:'Checklist'},
+  {id:'DR_d16',t:2,x:'Check Shower Pump',g:'Checklist'},
+  {id:'DR_d17',t:10,x:'Inspect (Lighting, Changing Table, Shower Room,WaterDispenser)',g:'Checklist'},
+  {id:'DR_d18',t:10,x:'Inspect (HairDryer, Pool Platform, Clock, WiFi, Number Locker)',g:'Checklist'},
+  {id:'DR_d19',t:20,x:'Check&Repair Shower Facilities(DoorLock,ShowerHead,Hose, Mixer, Hooks, Shampoo, ShowerHead Holder)',g:'Checklist'},
+  {id:'DR_d20',t:3,x:'Check Changing table condition (take photo if dusty&dirty)',g:'Checklist'},
+  {id:'DR_d21',t:5,x:'Check Salt Chlorinator panel (must be above 85)',g:'Checklist'},
+  {id:'DR_d22',t:15,x:'Check salt cell (remove calcium)',g:'Checklist'},
+  {id:'DR_d23',t:5,x:'Check Pump Equipment&Chemical Room',g:'Checklist'},
+  {id:'DR_d24',t:3,x:'Check Pump Timer (Time is accurate)',g:'Checklist'},
+  {id:'DR_d25',t:3,x:'Check Heatpump Timer (Time is accurate)',g:'Checklist'},
+  {id:'DR_d26',t:3,x:'Check Exhaust Fan Timer (Time is accurate)',g:'Checklist'},
+  {id:'DR_d27',t:15,x:'Check and Clear for Rusty(Steel on deck, rust under firehose,  rinse off, handrail, etc)',g:'Checklist'},
+  {id:'DR_d28',t:5,x:'Tool Box *',g:'Checklist'},
+  {id:'DR_d29',t:15,x:'Check and Clean the Pump Equipment &Chemical Room',g:'Facility Management'},
+  {id:'DR_d30',t:20,x:'Pressure Jet Top Floor Area & Shower Room(wall&floor)',g:'Facility Management'},
+  {id:'DR_d31',t:15,x:'Pressure Jet Baby Shower Tub (Algae, Mold) *Dry Wipe after*',g:'Facility Management'},
+  {id:'DR_d32',t:5,x:'Scrub and Wipe the drain with wet tissue (Top Floor)',g:'Facility Management'},
+  {id:'DR_d33',t:20,x:'Pressure Jet Stair&CounterArea(Don\'t Jet inside CounterTable)',g:'Facility Management'},
+  {id:'DR_d34',t:10,x:'Pressure Jet Deck Staircase&RinseOff Area',g:'Facility Management'},
+  {id:'DR_d35',t:10,x:'Scrub and Wipe the drain with wet tissue (bottom floor)',g:'Facility Management'},
+  {id:'DR_d36',t:5,x:'Clean Floor Trap (1 ShowerRoom, 2 Toilets, 1 RinseOff)',g:'Facility Management'},
+  {id:'DR_d37',t:30,x:'Pressure Jet Carpark Area',g:'Facility Management'},
+  {id:'DR_d38',t:20,x:'Clean Babytub Anti-Slip Mat and remove the Mold',g:'Facility Management'},
+  {id:'DR_d39',t:15,x:'Wipe Deck Wall, Steel Door & Window frame(Outside&inside)',g:'Facility Management'},
+  {id:'DR_d40',t:5,x:'Wipe Dust on Filter, WasteTank, HeatPump',g:'Facility Management'},
+  {id:'DR_d41',t:15,x:'Check & Wipe Shower Divider',g:'Facility Management'},
+  {id:'DR_d42',t:20,x:'Clean Fans & Ceiling Fan',g:'Facility Management'},
+  {id:'DR_d43',t:15,x:'Paint & Wipe stain on Deck wall',g:'Facility Management'},
+  {id:'DR_d44',t:10,x:'Clean 2 Baby Shower Tub & Baby Shower Tub Divider',g:'Facility Management'},
+  {id:'DR_d45',t:15,x:'Pressure jet Anti Slippery Mat',g:'Facility Management'},
+  {id:'DR_d46',t:10,x:'Wipe picture of photo wall, Second floor light switch& blue pipe',g:'Facility Management'},
+  {id:'DR_d47',t:15,x:'Wipe Staircase Handrail & Deck Handrail',g:'Others'},
+  {id:'DR_d48',t:20,x:'Wipe Glass and Mirror',g:'Others'},
+  {id:'DR_d49',t:5,x:'Clean 2 Baby Chairs',g:'Others'},
+  {id:'DR_d50',t:10,x:'Clean 6 Baby Changing Table (Top& Bottom& Portable tub)',g:'Others'},
+  {id:'DR_d51',t:5,x:'Wash 1 Basin & Wipe Water Dispenser',g:'Others'},
+  {id:'DR_d52',t:10,x:'Wipe High Chairs(Top Floor& Counter Area)',g:'Others'},
+  {id:'DR_d53',t:5,x:'Wipe 7 Cabinets',g:'Others'},
+  {id:'DR_d54',t:5,x:'Wipe TV Screen, Wallboard (Counter, staircase, pool deck)',g:'Others'},
+  {id:'DR_d55',t:5,x:'Wipe Shoe Racks& Bench',g:'Others'}
+  ], check: [
+  {id:'DR_c1',t:null,x:'DR Shower Room Ceiling Light'},
+  {id:'DR_c2',t:null,x:'DR 2 Toilet Ceiling Light'},
+  {id:'DR_c3',t:null,x:'DR Baby Shower Tub Light'},
+  {id:'DR_c4',t:null,x:'DR Changing Table Light'},
+  {id:'DR_c5',t:null,x:'DR Ceiling Fan'},
+  {id:'DR_c6',t:null,x:'DR Pool Spotlight'},
+  {id:'DR_c7',t:null,x:'DR Upper floor Wall Fan'},
+  {id:'DR_c8',t:null,x:'DR Backdoor Light'},
+  {id:'DR_c9',t:null,x:'DR Clock'},
+  {id:'DR_c10',t:null,x:'DR Hairdrying Powerpoint'},
+  {id:'DR_c11',t:null,x:'DRTV Powerpoint'},
+  {id:'DR_c12',t:null,x:'DR LED Tracklight'},
+  {id:'DR_c13',t:null,x:'DR Counter Powerpoint'},
+  {id:'DR_c14',t:null,x:'DR Water Dispensor Powerpoint'},
+  {id:'DR_c15',t:null,x:'DR Wifi & CCTV Cable'},
+  {id:'DR_c16',t:null,x:'DR Air Blower Power Point'},
+  {id:'DR_c17',t:null,x:'DR Exhaust Fan'},
+  {id:'DR_c18',t:null,x:'DR Instant Heater'},
+  {id:'DR_c19',t:null,x:'DR Shower Room Pump'},
+  {id:'DR_c20',t:null,x:'DR LG DB Box (Burn, Trip ,etc)'},
+  {id:'DR_c21',t:null,x:'DR Pump Panel  (Burn, Trip ,etc)'},
+  {id:'DR_c22',t:null,x:'DR Blue Pump Timer'},
+  {id:'DR_c23',t:null,x:'DR White Pump Timer'},
+  {id:'DR_c24',t:null,x:'DR Pump Room Light'},
+  {id:'DR_c25',t:null,x:'DR Pump Checking (Manual On 1 by 1, Leaking)'},
+  {id:'DR_c26',t:null,x:'DR Heatpump Timer & Correct Temperature'},
+  {id:'DR_c27',t:null,x:'DR Shower room (Vertical bars, Shower Head, Grey Basket,                                        Wall mount, Hose, Soap Dispenser, Hanger                                       , Door Lock, Door Hinges, Top Cover)'},
+  {id:'DR_c28',t:null,x:'DR Baby Tub (Shower Head, Hose, Drain hose, Tub Stability,                                 Soap Dispenser, Mixer, Paint)'},
+  {id:'DR_c29',t:null,x:'DR Baby Tub Divider'},
+  {id:'DR_c30',t:null,x:'DR Rinse Off (Hose , Shower Head, Instant Heater)'},
+  {id:'DR_c31',t:null,x:'DR Long hose (Leaking, Break , etc)'},
+  {id:'DR_c32',t:null,x:'DR Changing Table & Mat (Screw, Stability, Board)'},
+  {id:'DR_c33',t:null,x:'DR Toyogo Cabinet'},
+  {id:'DR_c34',t:null,x:'DR Basin & Mirror'},
+  {id:'DR_c35',t:null,x:'DR Props (6 Noodles, 6 Backfloats, 6 Sinking Rings,                          Floating Ball)'},
+  {id:'DR_c36',t:null,x:'DR Signage Board'},
+  {id:'DR_c37',t:null,x:'DR Pool Staircase Handrail'},
+  {id:'DR_c38',t:null,x:'DR Paint Deck (Broken Paint wall, Putty if needed)'},
+  {id:'DR_c39',t:null,x:'DR Paint Front (Broken Paint wall, Putty if needed)'},
+  {id:'DR_c40',t:null,x:'DR Paint Back (Broken Paint wall, Putty if needed)'},
+  {id:'DR_c41',t:null,x:'DR Paint Upper Floor (Broken Paint wall, Putty if needed)'},
+  {id:'DR_c42',t:null,x:'DR HandRail (Rusty, Paint peeling , putty if needed)'},
+  {id:'DR_c43',t:null,x:'CC Pool Deck Skirting'},
+  {id:'DR_c44',t:null,x:'CC Pool Deck (Algae)'},
+  {id:'DR_c45',t:null,x:'DR Pool Divider (straighten , support rope)'},
+  {id:'DR_c46',t:null,x:'DR HandRail (Rusty, Paint peeling , putty if needed)'},
+  {id:'DR_c47',t:null,x:'DR Entrance Shoe Racks'},
+  {id:'DR_c48',t:null,x:'DR Backdoor Shoe Racks'},
+  {id:'DR_c49',t:null,x:'DR Pool Skimmer Basket'},
+  {id:'DR_c50',t:null,x:'DR Check SpiderWeb'},
+  {id:'DR_c51',t:null,x:'DR Shower Room Hanger Bracket Rusty'},
+  {id:'DR_c52',t:null,x:'DR Teaching Platform (Deck)'},
+  {id:'DR_c53',t:null,x:'DR Salt Chlorinator'},
+  {id:'DR_c54',t:null,x:'Check Tool Box (Hammer, Chain Wrench, Monkey plier, Testpen, Driver, Scraper)'},
+  {id:'DR_c55',t:null,x:'Pool Thermometer'},
+  {id:'DR_c56',t:null,x:'White Tape'},
+  {id:'DR_c57',t:null,x:'WD40'},
+  {id:'DR_c58',t:null,x:'Rubber washer (shower head)'},
+  {id:'DR_c59',t:null,x:'Rubber washer (Mixer)'},
+  {id:'DR_c60',t:null,x:'O-ring'},
+  {id:'DR_c61',t:null,x:'Adjustable Spray Nozzle'},
+  {id:'DR_c62',t:null,x:'Hose End Connector'},
+  {id:'DR_c63',t:null,x:'Hose Reapir Connector'},
+  {id:'DR_c64',t:null,x:'Tap Connector'},
+  {id:'DR_c65',t:null,x:'Spare Shower Hose'},
+  {id:'DR_c66',t:null,x:'Spare Shower Head'},
+  {id:'DR_c67',t:null,x:'Shower Head Holder Wall Mount'},
+  {id:'DR_c68',t:null,x:'Shower Head Holder Slide Bar'},
+  {id:'DR_c69',t:null,x:'Grey Basket'},
+  {id:'DR_c70',t:null,x:'Cleaning Chemical - Stain Remover'},
+  {id:'DR_c71',t:null,x:'Cleaning Tools - Hand Brush'},
+  {id:'DR_c72',t:null,x:'2 Mop & Buckets Checking'},
+  {id:'DR_c73',t:null,x:'Spongemop'},
+  {id:'DR_c74',t:null,x:'Scraper'}
+  ] },
+  Lentor: { label: 'Lentor', daily: [
+  {id:'Lentor_d1',t:null,x:'Watertest (Ta and Salt, Acid, Refill Test Kit)*Facing Counter CCTV',g:'Water Test / Dosing'},
+  {id:'Lentor_d2',t:null,x:'Dosing bicarb and salt bags (Acid dose later)',g:'Water Test / Dosing'},
+  {id:'Lentor_d3',t:null,x:'Send watertest report to Group chat',g:'Water Test / Dosing'},
+  {id:'Lentor_d4',t:null,x:'Dosing Acid (Refer to Morning report)*Ready Bucket near Pool',g:'Water Test / Dosing'},
+  {id:'Lentor_d5',t:null,x:'Water Test and Dose',g:'Water Test / Dosing'},
+  {id:'Lentor_d6',t:null,x:'Backwash',g:'Pool Maintenance'},
+  {id:'Lentor_d7',t:null,x:'Check and Clean the Pump Equipment &Chemical Room',g:'Pool Maintenance'},
+  {id:'Lentor_d8',t:null,x:'Pressure Jet Pool Deck',g:'Pool Maintenance'},
+  {id:'Lentor_d9',t:null,x:'Pool Scrub (Wall,Ledge,Corner,Floor)',g:'Pool Maintenance'},
+  {id:'Lentor_d10',t:null,x:'Check and Clean the pool divider(Floating Ball, Rope)',g:'Pool Maintenance'},
+  {id:'Lentor_d11',t:null,x:'Pressure Jet Hall Way Area & Shower Room(wall&floor)',g:'Pool Maintenance'},
+  {id:'Lentor_d12',t:null,x:'Clean Pump Basket & Skimmer Basket',g:'Pool Maintenance'},
+  {id:'Lentor_d13',t:null,x:'Clean Babytub Anti-Slip Mat and remove the Mold',g:'Pool Maintenance'},
+  {id:'Lentor_d14',t:null,x:'Check & Wipe Shower Divider',g:'Pool Maintenance'},
+  {id:'Lentor_d15',t:null,x:'Tool Box *',g:'Pool Maintenance'},
+  {id:'Lentor_d16',t:null,x:'Check Instant Water Heater',g:'Checklist'},
+  {id:'Lentor_d17',t:null,x:'Inspect (Lighting, Changing Table, Shower Room,WaterDispenser)',g:'Checklist'},
+  {id:'Lentor_d18',t:null,x:'Inspect (HairDryer, Pool Platform, Clock, WiFi, Number Locker)',g:'Checklist'},
+  {id:'Lentor_d19',t:null,x:'Check&Repair Shower Facilities(DoorLock,ShowerHead,Hose, Mixer, Hooks, Shampoo, ShowerHead Holder)',g:'Checklist'},
+  {id:'Lentor_d20',t:null,x:'Sand and Scrub Pool Stain (Calcium, Stain)',g:'Checklist'},
+  {id:'Lentor_d21',t:null,x:'Check Floor Inlet (facing below)',g:'Checklist'},
+  {id:'Lentor_d22',t:null,x:'Check Salt Chlorinator panel',g:'Checklist'},
+  {id:'Lentor_d23',t:null,x:'Check salt cell (remove calcium)',g:'Checklist'},
+  {id:'Lentor_d24',t:null,x:'Check Pump Equipment&Chemical Room',g:'Checklist'},
+  {id:'Lentor_d25',t:null,x:'Check Pump Timer (Time is accurate)',g:'Checklist'},
+  {id:'Lentor_d26',t:null,x:'Check Heatpump Timer (Time is accurate)',g:'Checklist'},
+  {id:'Lentor_d27',t:null,x:'Check Exhaust Fan Timer (Time is accurate)',g:'Checklist'},
+  {id:'Lentor_d28',t:null,x:'Wipe Staircase Handrail & Deck Handrail',g:'Checklist'},
+  {id:'Lentor_d29',t:null,x:'Clean Pool Skimmer Basket',g:'Facility Management'},
+  {id:'Lentor_d30',t:null,x:'Pressure Jet Baby Shower Tub (Algae, Mold) *Dry Wipe after*',g:'Facility Management'},
+  {id:'Lentor_d31',t:null,x:'Scrub and Wipe the drain with wet tissue (Top Floor)',g:'Facility Management'},
+  {id:'Lentor_d32',t:null,x:'Pressure Jet Stair&CounterArea(Don\'t Jet inside CounterTable)',g:'Facility Management'},
+  {id:'Lentor_d33',t:null,x:'Pressure Jet Deck Staircase&RinseOff Area',g:'Facility Management'},
+  {id:'Lentor_d34',t:null,x:'Pressure Jet Drain and Drain Cover',g:'Facility Management'},
+  {id:'Lentor_d35',t:null,x:'Clean Floor Trap',g:'Facility Management'},
+  {id:'Lentor_d36',t:null,x:'Wipe Rover Door (Heatpump area)',g:'Facility Management'},
+  {id:'Lentor_d37',t:null,x:'Wipe Dust Glass Wall Top Hole',g:'Facility Management'},
+  {id:'Lentor_d38',t:null,x:'Sweep Outside and Drain fallen Leaf',g:'Facility Management'},
+  {id:'Lentor_d39',t:null,x:'Manual Vacuum Pool',g:'Facility Management'},
+  {id:'Lentor_d40',t:null,x:'Check&Clean Robot Filter&Wipe Robot Panel',g:'Facility Management'},
+  {id:'Lentor_d41',t:null,x:'Wipe Dust on Filter, WasteTank, HeatPump',g:'Facility Management'},
+  {id:'Lentor_d42',t:null,x:'Clean Fans & Ceiling Fan',g:'Facility Management'},
+  {id:'Lentor_d43',t:null,x:'Paint & Wipe stain on Deck wall',g:'Facility Management'},
+  {id:'Lentor_d44',t:null,x:'Check Changing table condition (take photo if dusty&dirty)',g:'Facility Management'},
+  {id:'Lentor_d45',t:null,x:'Wipe Pool Glass Wall',g:'Facility Management'},
+  {id:'Lentor_d46',t:null,x:'Wipe Glass and Mirror',g:'Facility Management'},
+  {id:'Lentor_d47',t:null,x:'Wipe Outside High Chairs, Table and Chairs',g:'Facility Management'},
+  {id:'Lentor_d48',t:null,x:'Wipe Ceiling Fan',g:'Facility Management'},
+  {id:'Lentor_d49',t:null,x:'Wipe All Toyogo Cabinets',g:'Facility Management'},
+  {id:'Lentor_d50',t:null,x:'Wipe Shoe Racks& Bench',g:'Facility Management'},
+  {id:'Lentor_d51',t:null,x:'Clean 6 Baby Shower Tub & Baby Shower Tub Divider',g:'Others'},
+  {id:'Lentor_d52',t:null,x:'Wipe Glass Door',g:'Others'},
+  {id:'Lentor_d53',t:null,x:'Clean Baby Chairs',g:'Others'},
+  {id:'Lentor_d54',t:null,x:'Clean Baby Changing Table (Top& Bottom& Portable tub)',g:'Others'},
+  {id:'Lentor_d55',t:null,x:'Wash Basin & Wipe Water Dispenser',g:'Others'},
+  {id:'Lentor_d56',t:null,x:'Wipe Mount Wall Fan',g:'Others'},
+  {id:'Lentor_d57',t:null,x:'Wipe Dusty Sound Panel',g:'Others'},
+  {id:'Lentor_d58',t:null,x:'Wipe Shelf top of Shower Tub',g:'Others'},
+  {id:'Lentor_d59',t:null,x:'Check and Clear for Rusty(Steel on deck, rust under firehose,  rinse off, handrail, etc)',g:'Others'},
+  {id:'Lentor_d60',t:null,x:'Wipe Deck Wall, Steel Door & Window frame(Outside&inside)',g:'Uncategorized'}
+  ], check: [
+  {id:'Lentor_c1',t:null,x:'LT Shower Room Ceiling Light'},
+  {id:'Lentor_c2',t:null,x:'LT Changing Table Area Ceiling Light'},
+  {id:'Lentor_c3',t:null,x:'LT Baby Shower Tub Light'},
+  {id:'Lentor_c4',t:null,x:'LT Counter Light'},
+  {id:'Lentor_c5',t:null,x:'LT Pool Spotlight'},
+  {id:'Lentor_c6',t:null,x:'LT Waterproof LED Light on Deck'},
+  {id:'Lentor_c7',t:null,x:'LT Hanging Photo Area Light'},
+  {id:'Lentor_c8',t:null,x:'LT Awning (Alignment, and Power)'},
+  {id:'Lentor_c9',t:null,x:'LT Clock'},
+  {id:'Lentor_c10',t:null,x:'LT Hairdrying Powerpoint'},
+  {id:'Lentor_c11',t:null,x:'LT Ceiling Fan'},
+  {id:'Lentor_c12',t:null,x:'LT LED Signage Powerpoint'},
+  {id:'Lentor_c13',t:null,x:'LT Counter Powerpoint'},
+  {id:'Lentor_c14',t:null,x:'LT Water Dispensor Powerpoint'},
+  {id:'Lentor_c15',t:null,x:'LT Wifi & CCTV Cable'},
+  {id:'Lentor_c16',t:null,x:'LT Pressure Jet Power Point'},
+  {id:'Lentor_c17',t:null,x:'LT Exhaust Fan'},
+  {id:'Lentor_c18',t:null,x:'LT Shower Heater (Ceiling)'},
+  {id:'Lentor_c19',t:null,x:'LT Baby Tub Instant Heater'},
+  {id:'Lentor_c20',t:null,x:'LT DB Box (Burn, Trip ,etc)'},
+  {id:'Lentor_c21',t:null,x:'LT Pump Panel  (Burn, Trip ,etc)'},
+  {id:'Lentor_c22',t:null,x:'LT Pump Timer'},
+  {id:'Lentor_c23',t:null,x:'LT Pump Room Light'},
+  {id:'Lentor_c24',t:null,x:'LT 2 Pump Checking (Manual On 1 by 1, Leaking)'},
+  {id:'Lentor_c25',t:null,x:'LT Heatpump Timer & Correct Temperature'},
+  {id:'Lentor_c26',t:null,x:'LT HeatPump Panel  (Burn, Trip ,etc)'},
+  {id:'Lentor_c27',t:null,x:'LT Shower room (Vertical bars, Shower Head, Grey Basket,                                        Wall mount, Hose, Soap Dispenser, Hanger                                       , Door Lock, Door Hinges, Top Cover)'},
+  {id:'Lentor_c28',t:null,x:'LT Baby Tub (Shower Head, Hose, Drain hose, Tub Stability,                                 Soap Dispenser, Mixer)'},
+  {id:'Lentor_c29',t:null,x:'LT Rinse Off (Hose , Shower Head, Mixer)'},
+  {id:'Lentor_c30',t:null,x:'LT Long hose (Leaking, Break , etc)'},
+  {id:'Lentor_c31',t:null,x:'LT Changing Table & Mat (Screw, Stability, Board)'},
+  {id:'Lentor_c32',t:null,x:'LT Toyogo Cabinet'},
+  {id:'Lentor_c33',t:null,x:'LT Basin & Mirror'},
+  {id:'Lentor_c34',t:null,x:'LT Props (6 Noodles, 6 Backfloats, 6 Sinking Rings,                          Floating Ball)'},
+  {id:'Lentor_c35',t:null,x:'LT Sound Panel'},
+  {id:'Lentor_c36',t:null,x:'LT Corner Safety Protector'},
+  {id:'Lentor_c37',t:null,x:'LT Signage Board'},
+  {id:'Lentor_c38',t:null,x:'LT Paint (Broken Paint wall, Putty if needed)'},
+  {id:'Lentor_c39',t:null,x:'LT Counter HandRail (Rusty, Paint peeling , putty if needed)'},
+  {id:'Lentor_c40',t:null,x:'LT Rinse off HandRail (Rusty, Paint peeling , putty if needed)'},
+  {id:'Lentor_c41',t:null,x:'LT Pool Divider (straighten , support rope)'},
+  {id:'Lentor_c42',t:null,x:'LT Outdoor Shade (Wire Rope , Shade dirty)'},
+  {id:'Lentor_c43',t:null,x:'LT Pool Staircase'},
+  {id:'Lentor_c44',t:null,x:'LT Shoe Racks'},
+  {id:'Lentor_c45',t:null,x:'LT Pool Skimmer Basket'},
+  {id:'Lentor_c46',t:null,x:'LT Check SpiderWeb'},
+  {id:'Lentor_c47',t:null,x:'LT Pool Deck Wall Hole (Dusty)'},
+  {id:'Lentor_c48',t:null,x:'LT Grill Door Pump Room'},
+  {id:'Lentor_c49',t:null,x:'LT Grill Door Heatpump Room'},
+  {id:'Lentor_c50',t:null,x:'LT Shower Room Top Bracket Rusty'},
+  {id:'Lentor_c51',t:null,x:'LT Salt Chlorinator'},
+  {id:'Lentor_c52',t:null,x:'Check Tool Box (Hammer, Chain Wrench, Monkey plier, Testpen, Driver, Scraper)'},
+  {id:'Lentor_c53',t:null,x:'Pool Thermometer'},
+  {id:'Lentor_c54',t:null,x:'White Tape'},
+  {id:'Lentor_c55',t:null,x:'WD40'},
+  {id:'Lentor_c56',t:null,x:'Rubber washer (shower head)'},
+  {id:'Lentor_c57',t:null,x:'Rubber washer (Mixer)'},
+  {id:'Lentor_c58',t:null,x:'O-ring'},
+  {id:'Lentor_c59',t:null,x:'Adjustable Spray Nozzle'},
+  {id:'Lentor_c60',t:null,x:'Hose End Connector'},
+  {id:'Lentor_c61',t:null,x:'Hose Reapir Connector'},
+  {id:'Lentor_c62',t:null,x:'Tap Connector'},
+  {id:'Lentor_c63',t:null,x:'Spare Shower Hose'},
+  {id:'Lentor_c64',t:null,x:'Spare Shower Head'},
+  {id:'Lentor_c65',t:null,x:'Shower Head Holder Wall Mount'},
+  {id:'Lentor_c66',t:null,x:'Shower Head Holder Slide Bar'},
+  {id:'Lentor_c67',t:null,x:'Grey Basket'},
+  {id:'Lentor_c68',t:null,x:'Cleaning Chemical - Stain Remover'},
+  {id:'Lentor_c69',t:null,x:'Cleaning Tools - Hand Brush'},
+  {id:'Lentor_c70',t:null,x:'2 Mop & Buckets Checking'},
+  {id:'Lentor_c71',t:null,x:'Spongemop'},
+  {id:'Lentor_c72',t:null,x:'Scraper'},
+  {id:'Lentor_c73',t:null,x:'Pool divider Hook Cover'},
+  {id:'Lentor_c74',t:null,x:'Chemical Room Floor'},
+  {id:'Lentor_c75',t:null,x:'Chemical Room (Chlorine Drum)'},
+  {id:'Lentor_c76',t:null,x:'Chemical Room (Acid Drum)'},
+  {id:'Lentor_c77',t:null,x:'Chemical Room (Bucket, Stick, Cup)'}
+  ] },
+  Tengah: { label: 'Tengah', daily: [
+  {id:'Tengah_d1',t:15,x:'Watertest (Ta and Salt, Acid, Refill Test Kit)*Facing Counter CCTV',g:'Water Test / Dosing'},
+  {id:'Tengah_d2',t:5,x:'Dosing bicarb and salt bags (Acid dose later)',g:'Water Test / Dosing'},
+  {id:'Tengah_d3',t:null,x:'Send watertest report to Group chat',g:'Water Test / Dosing'},
+  {id:'Tengah_d4',t:3,x:'Dosing Acid (Refer to Morning report)*Ready Bucket near Pool',g:'Water Test / Dosing'},
+  {id:'Tengah_d5',t:20,x:'Water Test and Dose',g:'Water Test / Dosing'},
+  {id:'Tengah_d6',t:15,x:'Backwash',g:'Pool Maintenance'},
+  {id:'Tengah_d7',t:20,x:'Sand and Scrub Pool Stain',g:'Pool Maintenance'},
+  {id:'Tengah_d8',t:20,x:'Pool Scrub & Pool Ladder (Wall,Ledge,Corner,Floor)',g:'Pool Maintenance'},
+  {id:'Tengah_d9',t:5,x:'Check and Clean the pool divider(Floating Ball, Rope)',g:'Pool Maintenance'},
+  {id:'Tengah_d10',t:3,x:'Check Floor Inlet (facing below)',g:'Pool Maintenance'},
+  {id:'Tengah_d11',t:10,x:'Clean Pool Skimmer Basket',g:'Pool Maintenance'},
+  {id:'Tengah_d12',t:15,x:'Manual Vacuum Pool',g:'Pool Maintenance'},
+  {id:'Tengah_d13',t:10,x:'Clean Pump Basket (Pump Room 2)',g:'Pool Maintenance'},
+  {id:'Tengah_d14',t:10,x:'Clean Pump Basket (Pump Room 1)',g:'Pool Maintenance'},
+  {id:'Tengah_d15',t:5,x:'Check&Clean Robot Filter&Wipe Robot Panel',g:'Pool Maintenance'},
+  {id:'Tengah_d16',t:15,x:'Check and Clean the Pump Equipment &Chemical Room',g:'Checklist'},
+  {id:'Tengah_d17',t:10,x:'Check Water Heater',g:'Checklist'},
+  {id:'Tengah_d18',t:2,x:'Check Shower Pump',g:'Checklist'},
+  {id:'Tengah_d19',t:10,x:'Inspect (Lighting, Changing Table, Shower Room,WaterDispenser)',g:'Checklist'},
+  {id:'Tengah_d20',t:10,x:'Inspect (HairDryer, Pool Platform, Clock, WiFi, Number Locker)',g:'Checklist'},
+  {id:'Tengah_d21',t:20,x:'Check&Repair Shower Facilities(DoorLock,ShowerHead,Hose, Mixer, Hooks, Shampoo, ShowerHead Holder)',g:'Checklist'},
+  {id:'Tengah_d22',t:5,x:'Check Salt Chlorinator Cell (Calcium)',g:'Checklist'},
+  {id:'Tengah_d23',t:3,x:'Check Pump Timer (Time is accurate)',g:'Checklist'},
+  {id:'Tengah_d24',t:3,x:'Check Heatpump Timer (Time is accurate)',g:'Checklist'},
+  {id:'Tengah_d25',t:3,x:'Check Exhaust Fan Timer (Time is accurate)',g:'Checklist'},
+  {id:'Tengah_d26',t:15,x:'Check and Clear for Rusty(Steel on deck, rust under firehose,  rinse off, handrail, etc)',g:'Checklist'},
+  {id:'Tengah_d27',t:20,x:'Pressure Jet Deck',g:'Facility Management'},
+  {id:'Tengah_d28',t:15,x:'Clean and Wipe Deck Glass Wall',g:'Facility Management'},
+  {id:'Tengah_d29',t:15,x:'Pressure Jet Staircase',g:'Facility Management'},
+  {id:'Tengah_d30',t:10,x:'Clean and Wipe Staircase Glass Wall',g:'Facility Management'},
+  {id:'Tengah_d31',t:5,x:'Pressure Jet Rinse Off',g:'Facility Management'},
+  {id:'Tengah_d32',t:1,x:'Clean Rinse Off Floor Trap',g:'Facility Management'},
+  {id:'Tengah_d33',t:10,x:'Pressure Jet Black Anti Slip Mat',g:'Facility Management'},
+  {id:'Tengah_d34',t:10,x:'Pressure Jet Shower Area Corridor 1',g:'Facility Management'},
+  {id:'Tengah_d35',t:30,x:'Perssure Jet Shower Room (Corridor 1)',g:'Facility Management'},
+  {id:'Tengah_d36',t:10,x:'Scrub mold Basin & Baby Bath Tubs  (Corridor 1)',g:'Facility Management'},
+  {id:'Tengah_d37',t:10,x:'Pressure Baby Tub Drain (Corridor 1)',g:'Facility Management'},
+  {id:'Tengah_d38',t:10,x:'Pressure Jet Toilets (Corridor 1)',g:'Facility Management'},
+  {id:'Tengah_d39',t:30,x:'Clean Floor Trap (Corridor 1)',g:'Facility Management'},
+  {id:'Tengah_d40',t:15,x:'Pressure Jet Corridor 2',g:'Facility Management'},
+  {id:'Tengah_d41',t:15,x:'Perssure Jet Shower Room (Corridor 2)',g:'Facility Management'},
+  {id:'Tengah_d42',t:10,x:'Pressure Jet Baby Shower Area (Walkway)',g:'Facility Management'},
+  {id:'Tengah_d43',t:15,x:'Pressure Baby Tub Drain (Corridor 2)',g:'Facility Management'},
+  {id:'Tengah_d44',t:10,x:'Pressure Jet Drain Cover (Near Pump Room 2)',g:'Facility Management'},
+  {id:'Tengah_d45',t:10,x:'Clean Floor Trap (Corridor 2)',g:'Facility Management'},
+  {id:'Tengah_d46',t:20,x:'Clean Baby tub remove Mold (Corridor 2)',g:'Facility Management'},
+  {id:'Tengah_d47',t:30,x:'Wipe Dusty Exhaust Fan',g:'Facility Management'},
+  {id:'Tengah_d48',t:5,x:'Wipe Dust on Filter, WasteTank, HeatPump',g:'Facility Management'},
+  {id:'Tengah_d49',t:15,x:'Check & Wipe Shower Divider',g:'Facility Management'},
+  {id:'Tengah_d50',t:20,x:'Clean Wall Fans',g:'Facility Management'},
+  {id:'Tengah_d51',t:20,x:'Wipe Glass Entrance and Mirror Basin',g:'Others'},
+  {id:'Tengah_d52',t:5,x:'Clean 2 Baby Chairs',g:'Others'},
+  {id:'Tengah_d53',t:10,x:'Clean 6 Baby Changing Table (Top& Bottom& Portable tub)',g:'Others'},
+  {id:'Tengah_d54',t:5,x:'Wipe Toyogo Cabinets',g:'Others'},
+  {id:'Tengah_d55',t:5,x:'Wipe TV Screen',g:'Others'},
+  {id:'Tengah_d56',t:5,x:'Wipe Shoe Racks& Bench',g:'Others'},
+  {id:'Tengah_d57',t:10,x:'Wipe Deck Logo',g:'Others'},
+  {id:'Tengah_d58',t:5,x:'Tool Box *',g:'Uncategorized'}
+  ], check: [
+  {id:'Tengah_c1',t:null,x:'TGH Shower Room Ceiling Light'},
+  {id:'Tengah_c2',t:null,x:'TGH Pool Ceiling Light'},
+  {id:'Tengah_c3',t:null,x:'TGH Baby Shower Area Light'},
+  {id:'Tengah_c4',t:null,x:'TGH Toilet Ceiling Light'},
+  {id:'Tengah_c5',t:null,x:'TGH Counter Light'},
+  {id:'Tengah_c6',t:null,x:'TGH Pool Spotlight'},
+  {id:'Tengah_c7',t:null,x:'TGH Baby Shower Area Light'},
+  {id:'Tengah_c8',t:null,x:'TGH Clock'},
+  {id:'Tengah_c9',t:null,x:'TGH Hairdrying Powerpoint'},
+  {id:'Tengah_c10',t:null,x:'TGH TV Powerpoint'},
+  {id:'Tengah_c11',t:null,x:'TGH LED Signage Powerpoint'},
+  {id:'Tengah_c12',t:null,x:'TGH Counter Powerpoint'},
+  {id:'Tengah_c13',t:null,x:'TGH Water Dispensor Powerpoint'},
+  {id:'Tengah_c14',t:null,x:'TGH Wifi & CCTV Cable'},
+  {id:'Tengah_c15',t:null,x:'TGH Pool Deck Power Point'},
+  {id:'Tengah_c16',t:null,x:'TGH Exhaust Fan'},
+  {id:'Tengah_c17',t:null,x:'TGH Shower Heater'},
+  {id:'Tengah_c18',t:null,x:'TGH DB Box (Burn, Trip ,etc)'},
+  {id:'Tengah_c19',t:null,x:'TGH Main Pump Panel  (Burn, Trip ,etc)'},
+  {id:'Tengah_c20',t:null,x:'TGH Heatpump Panel  (Burn, Trip ,etc)'},
+  {id:'Tengah_c21',t:null,x:'TGH Main Pump Timer'},
+  {id:'Tengah_c22',t:null,x:'TGH Heatpump Timer'},
+  {id:'Tengah_c23',t:null,x:'TGH Main Pump Room Light'},
+  {id:'Tengah_c24',t:null,x:'TGH Heatpump Room Light'},
+  {id:'Tengah_c25',t:null,x:'TGH 2 Pump Checking (Manual On 1 by 1, Leaking)'},
+  {id:'Tengah_c26',t:null,x:'TGH Pump Checking at Heatpump(Manual On 1 by 1, Leaking)'},
+  {id:'Tengah_c27',t:null,x:'TGH Heatpump Timer & Correct Temperature'},
+  {id:'Tengah_c28',t:null,x:'TGH Shower room (Vertical bars, Shower Head, Grey Basket,                                        Wall mount, Hose, Soap Dispenser, Hanger                                       , Door Lock, Door Hinges, Top Cover)'},
+  {id:'Tengah_c29',t:null,x:'TGH Baby Tub (Shower Head, Hose, Drain hose, Tub Stability,                                 Soap Dispenser, Mixer)'},
+  {id:'Tengah_c30',t:null,x:'TGH Rinse Off (Hose , Shower Head, Mixer)'},
+  {id:'Tengah_c31',t:null,x:'TGH Chemical Room Long hose (Leaking, Break , etc)'},
+  {id:'Tengah_c32',t:null,x:'JEIP2 Long hose (Leaking, Break , etc)'},
+  {id:'Tengah_c33',t:null,x:'JEIP1 Changing Table & Mat (Screw, Stability, Board)'},
+  {id:'Tengah_c34',t:null,x:'JE Toyogo Cabinet'},
+  {id:'Tengah_c35',t:null,x:'JEIP1 Basin & Mirror'},
+  {id:'Tengah_c36',t:null,x:'JEIP1 Props (6 Noodles, 6 Backfloats, 6 Sinking Rings,                          Floating Ball)'},
+  {id:'Tengah_c37',t:null,x:'JEIP2 Props (6 Noodles, 6 Backfloats, 6 Sinking Rings,                          Floating Ball)'},
+  {id:'Tengah_c38',t:null,x:'JEOP1 Props (6 Noodles, 6 Backfloats, 6 Sinking Rings,                          Floating Ball)'},
+  {id:'Tengah_c39',t:null,x:'JEOP2 Props (6 Noodles, 6 Backfloats, 6 Sinking Rings,                          Floating Ball)'},
+  {id:'Tengah_c40',t:null,x:'JE LifeBouy'},
+  {id:'Tengah_c41',t:null,x:'JEIP1 Pool Staircase'},
+  {id:'Tengah_c42',t:null,x:'JEIP2 Pool Staircase'},
+  {id:'Tengah_c43',t:null,x:'JE Signage Board'},
+  {id:'Tengah_c44',t:null,x:'JE Paint (Broken Paint wall, Putty if needed)'},
+  {id:'Tengah_c45',t:null,x:'JEOP1 HandRail (Rusty, Paint peeling , putty if needed)'},
+  {id:'Tengah_c46',t:null,x:'JEOP1 Outdoor Shade (Wire Rope Support)'},
+  {id:'Tengah_c47',t:null,x:'JEOP1 Pool Divider (straighten , support rope)'},
+  {id:'Tengah_c48',t:null,x:'JEOP2 Outdoor Shade (Wire Rope Support)'},
+  {id:'Tengah_c49',t:null,x:'JEOP2 HandRail (Rusty, Paint peeling , putty if needed)'},
+  {id:'Tengah_c50',t:null,x:'JEOP1 HandRail (Rusty, Paint peeling , putty if needed)'},
+  {id:'Tengah_c51',t:null,x:'JEOP2 Pool Divider (straighten , support rope)'},
+  {id:'Tengah_c52',t:null,x:'JEIP2 Pool Divider (straighten , support rope)'},
+  {id:'Tengah_c53',t:null,x:'JEIP1 Pool Divider (straighten , support rope)'},
+  {id:'Tengah_c54',t:null,x:'JE Shoe Racks'},
+  {id:'Tengah_c55',t:null,x:'JEIP1 Check Robot Pool'},
+  {id:'Tengah_c56',t:null,x:'JEIP1 Pool Skimmer Basket'},
+  {id:'Tengah_c57',t:null,x:'JE Check SpiderWeb'},
+  {id:'Tengah_c58',t:null,x:'JEIP1 Shower Room Top Bracket Rusty'},
+  {id:'Tengah_c59',t:null,x:'JEIP2 Shower Room Top Bracket Rusty'},
+  {id:'Tengah_c60',t:null,x:'JE Teaching Platform (inside Pool and Deck)'},
+  {id:'Tengah_c61',t:null,x:'JEIP1 Salt Chlorinator'},
+  {id:'Tengah_c62',t:null,x:'JEIP2 Salt Chlorinator'},
+  {id:'Tengah_c63',t:null,x:'JEOP1 Salt Chlorinator'},
+  {id:'Tengah_c64',t:null,x:'JEOP2 Salt Chlorinator'},
+  {id:'Tengah_c65',t:null,x:'Check Tool Box (Hammer, Chain Wrench, Monkey plier, Testpen, Driver, Scraper)'},
+  {id:'Tengah_c66',t:null,x:'Pool Thermometer'},
+  {id:'Tengah_c67',t:null,x:'White Tape'},
+  {id:'Tengah_c68',t:null,x:'WD40'},
+  {id:'Tengah_c69',t:null,x:'Rubber washer (shower head)'},
+  {id:'Tengah_c70',t:null,x:'Rubber washer (Mixer)'},
+  {id:'Tengah_c71',t:null,x:'O-ring'},
+  {id:'Tengah_c72',t:null,x:'Adjustable Spray Nozzle'},
+  {id:'Tengah_c73',t:null,x:'Hose End Connector'},
+  {id:'Tengah_c74',t:null,x:'Hose Reapir Connector'},
+  {id:'Tengah_c75',t:null,x:'Tap Connector'},
+  {id:'Tengah_c76',t:null,x:'Spare Shower Hose'},
+  {id:'Tengah_c77',t:null,x:'Spare Shower Head'},
+  {id:'Tengah_c78',t:null,x:'Shower Head Holder Wall Mount'},
+  {id:'Tengah_c79',t:null,x:'Shower Head Holder Slide Bar'},
+  {id:'Tengah_c80',t:null,x:'Grey Basket'},
+  {id:'Tengah_c81',t:null,x:'Cleaning Chemical - Stain Remover'},
+  {id:'Tengah_c82',t:null,x:'Cleaning Tools - Hand Brush'},
+  {id:'Tengah_c83',t:null,x:'2 Mop & Buckets Checking'},
+  {id:'Tengah_c84',t:null,x:'Spongemop'},
+  {id:'Tengah_c85',t:null,x:'Scraper'},
+  {id:'Tengah_c86',t:null,x:'Pool divider Hook Cover'},
+  {id:'Tengah_c87',t:null,x:'Chemical Room Floor'},
+  {id:'Tengah_c88',t:null,x:'Chemical Room (Chlorine Drum)'},
+  {id:'Tengah_c89',t:null,x:'Chemical Room (Acid Drum)'},
+  {id:'Tengah_c90',t:null,x:'Chemical Room (Bucket, Stick, Cup)'}
+  ] },
+  JE: { label: 'JE', daily: [
+  {id:'JE_d1',t:null,x:'Watertest (Ta and Salt, Acid, Refill Test Kit)*Facing Counter CCTV',g:'Water Test / Dosing'},
+  {id:'JE_d2',t:null,x:'Dosing bicarb and salt bags (Acid dose later)',g:'Water Test / Dosing'},
+  {id:'JE_d3',t:null,x:'Send watertest report to Group chat',g:'Water Test / Dosing'},
+  {id:'JE_d4',t:null,x:'Dosing Acid (Refer to Morning report)*Ready Bucket near Pool',g:'Water Test / Dosing'},
+  {id:'JE_d5',t:null,x:'Night Watertest and Dosing',g:'Water Test / Dosing'},
+  {id:'JE_d6',t:null,x:'BackWash (JEOP 1, JEIP1)',g:'Pool Maintenance'},
+  {id:'JE_d7',t:null,x:'BackWash (JEOP2 , JEIP2)',g:'Pool Maintenance'},
+  {id:'JE_d8',t:null,x:'Outdoor & Indoor Pool Scrub (Floor, Wall, Ledge)',g:'Pool Maintenance'},
+  {id:'JE_d9',t:null,x:'Remove Calcium and Stain marks of indoor Pool',g:'Pool Maintenance'},
+  {id:'JE_d10',t:null,x:'Check and Clean Outdoor&Indoor the pool divider (Floating Ball, Rope)',g:'Pool Maintenance'},
+  {id:'JE_d11',t:null,x:'Check and Clear Indoor&Outdoor Skimmer',g:'Pool Maintenance'},
+  {id:'JE_d12',t:null,x:'Manual vacuum Outdoor & Indoor',g:'Pool Maintenance'},
+  {id:'JE_d13',t:null,x:'Clean Pump Basket (Indoor&Outdoor)',g:'Pool Maintenance'},
+  {id:'JE_d14',t:null,x:'Check&Clean Robot Filter&Wipe Robot Panel',g:'Pool Maintenance'},
+  {id:'JE_d15',t:null,x:'Check Props Equipment & Toys drop over Outdoor Pool Fence',g:'Checklist'},
+  {id:'JE_d16',t:null,x:'Inspect indoor water level Auto-top Tub&Outdoor Balancing Tank',g:'Checklist'},
+  {id:'JE_d17',t:null,x:'Inspect&Repair roof shade net & BRC fence banners',g:'Checklist'},
+  {id:'JE_d18',t:null,x:'Inspect (Lighting, Changing Table, Shower Room,WaterDispenser)',g:'Checklist'},
+  {id:'JE_d19',t:null,x:'Inspect (HairDryer, Pool Platform, Clock, WiFi, Number Locker)',g:'Checklist'},
+  {id:'JE_d20',t:null,x:'Check&Repair Shower Facilities(DoorLock,ShowerHead,Hose, Mixer, Hooks, Shampoo, ShowerHead Holder)',g:'Checklist'},
+  {id:'JE_d21',t:5,x:'Check Salt Chlorinator Cell (Calcium)',g:'Checklist'},
+  {id:'JE_d22',t:3,x:'Check Pump Timer (Time is accurate)',g:'Checklist'},
+  {id:'JE_d23',t:3,x:'Check Heatpump Timer (Time is accurate)',g:'Checklist'},
+  {id:'JE_d24',t:3,x:'Check Exhaust Fan Timer (Time is accurate)',g:'Checklist'},
+  {id:'JE_d25',t:null,x:'Check and Clear for Rusty',g:'Checklist'},
+  {id:'JE_d26',t:null,x:'Pressure Jet Outdoor Deck&Staircase, 2 Rince off Area & Indoor Pool Deck&Stairs',g:'Facility Management'},
+  {id:'JE_d27',t:null,x:'Scrub outside algae with Chemical',g:'Facility Management'},
+  {id:'JE_d28',t:null,x:'Clean Baby Anti-Slip Mat and remove the Mold',g:'Facility Management'},
+  {id:'JE_d29',t:null,x:'Scrub and Mop Counter table area *No Jetting*',g:'Facility Management'},
+  {id:'JE_d30',t:null,x:'Jet Indoor Shower Room(Floor&Wall) & Wipe Rinse Off Wall*',g:'Facility Management'},
+  {id:'JE_d31',t:null,x:'Pressure Jet Baby Shower Tub (Algae, Mold) *Dry Wipe after*',g:'Facility Management'},
+  {id:'JE_d32',t:null,x:'Pressure Jet Entrance & Shoe rack area',g:'Facility Management'},
+  {id:'JE_d33',t:null,x:'Pressure Jet anti Slippery Mat',g:'Facility Management'},
+  {id:'JE_d34',t:null,x:'Pressure Jet Outside Awning',g:'Facility Management'},
+  {id:'JE_d35',t:null,x:'Pressure Jet Pump Floor',g:'Facility Management'},
+  {id:'JE_d36',t:null,x:'Pressure Jet Outdoor ShowerRoom&Toilet(wall&floor)&Corridor',g:'Facility Management'},
+  {id:'JE_d37',t:null,x:'Pressure Jet Back Lounges',g:'Facility Management'},
+  {id:'JE_d38',t:null,x:'Clear Floor Trap(4 ShowerRoom, 3 RinseOff, 1 Corridor)',g:'Facility Management'},
+  {id:'JE_d39',t:null,x:'Floor Trap under Shower Tub (Quarterly)',g:'Facility Management'},
+  {id:'JE_d40',t:null,x:'Clear Rusty Stain Indoor',g:'Facility Management'},
+  {id:'JE_d41',t:null,x:'Check & Clean Shower Divider',g:'Facility Management'},
+  {id:'JE_d42',t:null,x:'Check and Clean the Pump Equipment &Chemical Room',g:'Facility Management'},
+  {id:'JE_d43',t:null,x:'Clean Fan and Standing fan',g:'Facility Management'},
+  {id:'JE_d44',t:null,x:'Wash 1 Basin & Wipe Water Dispenser',g:'Facility Management'},
+  {id:'JE_d45',t:null,x:'Clean Rust on Heatpump and Chemical Door Handle',g:'Facility Management'},
+  {id:'JE_d46',t:null,x:'Scrub Bleach Rinse off wall',g:'Facility Management'},
+  {id:'JE_d47',t:null,x:'Wipe Counter Glass wall and Back Cabinet',g:'Others'},
+  {id:'JE_d48',t:null,x:'Wipe Indoor Glass wall',g:'Others'},
+  {id:'JE_d49',t:null,x:'Wipe Indoor Handrail & Outdoor Staircase handrail',g:'Others'},
+  {id:'JE_d50',t:null,x:'Clean 4 Baby Shower Tub & Baby Shower Tub Divider',g:'Others'},
+  {id:'JE_d51',t:null,x:'Clean 2 Baby Chairs',g:'Others'},
+  {id:'JE_d52',t:null,x:'Clean Baby Changing Table (Top& Bottom& Portable tub)',g:'Others'},
+  {id:'JE_d53',t:null,x:'Wipe Bench&HighChairs(Outdoor& Waiting Area)&Spider Web',g:'Others'},
+  {id:'JE_d54',t:null,x:'Wipe all Cabinet',g:'Others'},
+  {id:'JE_d55',t:null,x:'Wipe TV Screen & Fire Hose Area',g:'Others'},
+  {id:'JE_d56',t:null,x:'Wipe Shoes Racks',g:'Others'}
+  ], check: [
+  {id:'JE_c1',t:null,x:'JEIP1 Shower Room Ceiling Light'},
+  {id:'JE_c2',t:null,x:'JEIP2 Shower Room Ceiling Light'},
+  {id:'JE_c3',t:null,x:'JEIP2 Baby Shower Area Light'},
+  {id:'JE_c4',t:null,x:'JEOP1 Shower Room Ceiling Light'},
+  {id:'JE_c5',t:null,x:'JEIP1 Counter Light'},
+  {id:'JE_c6',t:null,x:'JEOP2 Pool Spotlight'},
+  {id:'JE_c7',t:null,x:'JEOP2 Pool Spotlight'},
+  {id:'JE_c8',t:null,x:'JEOP1 Pool Spotlight'},
+  {id:'JE_c9',t:null,x:'JEIP1 Pool Spotlight'},
+  {id:'JE_c10',t:null,x:'JE Hallway Light'},
+  {id:'JE_c11',t:null,x:'JE Awning (Alignment)'},
+  {id:'JE_c12',t:null,x:'JE Clock (2 JEIP1 , 1 JEOP 2, 1 JEOP1, 1 JEIP2)'},
+  {id:'JE_c13',t:null,x:'JE Hairdrying Powerpoint'},
+  {id:'JE_c14',t:null,x:'JE TV Powerpoint'},
+  {id:'JE_c15',t:null,x:'JE LED Signage Powerpoint'},
+  {id:'JE_c16',t:null,x:'JE Counter Powerpoint'},
+  {id:'JE_c17',t:null,x:'JE Water Dispensor Powerpoint'},
+  {id:'JE_c18',t:null,x:'JEIP1 Wifi & CCTV Cable'},
+  {id:'JE_c19',t:null,x:'JEIP2 Wifi & CCTV Cable'},
+  {id:'JE_c20',t:null,x:'JE Pressure Jet Power Point'},
+  {id:'JE_c21',t:null,x:'JEIP1 Exhaust Fan'},
+  {id:'JE_c22',t:null,x:'JEIP2 Exhaust Fan'},
+  {id:'JE_c23',t:null,x:'JEIP1 Shower Heater'},
+  {id:'JE_c24',t:null,x:'JEOP1 Shower Heater'},
+  {id:'JE_c25',t:null,x:'JEIP2 Shower Heater'},
+  {id:'JE_c26',t:null,x:'JE1 DB Box (Burn, Trip ,etc)'},
+  {id:'JE_c27',t:null,x:'JE2 DB Box  (Burn, Trip ,etc)'},
+  {id:'JE_c28',t:null,x:'JE 4 Pump Panel  (Burn, Trip ,etc)'},
+  {id:'JE_c29',t:null,x:'JEIP1 Pump Timer'},
+  {id:'JE_c30',t:null,x:'JEIP2 Pump Timer'},
+  {id:'JE_c31',t:null,x:'JEOP1 Pump Timer'},
+  {id:'JE_c32',t:null,x:'JEOP2 Pump Timer'},
+  {id:'JE_c33',t:null,x:'JEIP Pump Room Light'},
+  {id:'JE_c34',t:null,x:'JEIP1 2 Pump Checking (Manual On 1 by 1, Leaking)'},
+  {id:'JE_c35',t:null,x:'JEOP1 4 Pump Checking (Manual On 1 by 1, Leaking)'},
+  {id:'JE_c36',t:null,x:'JEIP2 2 Pump Checking (Manual On 1 by 1, Leaking)'},
+  {id:'JE_c37',t:null,x:'JEOP2 4 Pump Checking (Manual On 1 by 1 , Leaking)'},
+  {id:'JE_c38',t:null,x:'JEIP1 Heatpump Timer & Correct Temperature'},
+  {id:'JE_c39',t:null,x:'JEIP2 Heatpump Timer & Correct Temperature'},
+  {id:'JE_c40',t:null,x:'JEOP1 Heatpump Timer & Correct Temperature'},
+  {id:'JE_c41',t:null,x:'JEOP2 Heatpump Timer & Correct Temperature'},
+  {id:'JE_c42',t:null,x:'JEIP1 Shower room (Vertical bars, Shower Head, Grey Basket,                                        Wall mount, Hose, Soap Dispenser, Hanger                                       , Door Lock, Door Hinges, Top Cover)'},
+  {id:'JE_c43',t:null,x:'JEIP2 Shower room (Vertical bars, Shower Head, Grey Basket,                                        Wall mount, Hose, Soap Dispenser,                                        Hanger, Door Lock, Door Hinges)'},
+  {id:'JE_c44',t:null,x:'JEOP1 Shower room (Vertical bars, Shower Head, Grey Basket,                                        Wall mount, Hose, Soap Dispenser,                                        Hanger, Door Lock, Door Hinges)'},
+  {id:'JE_c45',t:null,x:'JEIP2 Baby Tub (Shower Head, Hose, Drain hose, Tub Stability,                                 Soap Dispenser, Mixer)'},
+  {id:'JE_c46',t:null,x:'JEIP1 Baby Tub (Shower Head, Hose, Drain hose, Soap Dispenser                                , Mixer Leaking, Insulator, Aluminium Tape'},
+  {id:'JE_c47',t:null,x:'JEIP1 Rinse Off (Hose , Shower Head, Mixer)'},
+  {id:'JE_c48',t:null,x:'JEIP2 Rinse Off (Hose , Shower Head, Mixer)'},
+  {id:'JE_c49',t:null,x:'JEOP1 Rinse Off (Hose , Shower Head, Mixer)'},
+  {id:'JE_c50',t:null,x:'JE Chemical Room Long hose (Leaking, Break , etc)'},
+  {id:'JE_c51',t:null,x:'JEIP2 Long hose (Leaking, Break , etc)'},
+  {id:'JE_c52',t:null,x:'JEIP1 Changing Table & Mat (Screw, Stability, Board)'},
+  {id:'JE_c53',t:null,x:'JE Toyogo Cabinet'},
+  {id:'JE_c54',t:null,x:'JEIP1 Basin & Mirror'},
+  {id:'JE_c55',t:null,x:'JEIP1 Props (6 Noodles, 6 Backfloats, 6 Sinking Rings,                          Floating Ball)'},
+  {id:'JE_c56',t:null,x:'JEIP2 Props (6 Noodles, 6 Backfloats, 6 Sinking Rings,                          Floating Ball)'},
+  {id:'JE_c57',t:null,x:'JEOP1 Props (6 Noodles, 6 Backfloats, 6 Sinking Rings,                          Floating Ball)'},
+  {id:'JE_c58',t:null,x:'JEOP2 Props (6 Noodles, 6 Backfloats, 6 Sinking Rings,                          Floating Ball)'},
+  {id:'JE_c59',t:null,x:'JE LifeBouy'},
+  {id:'JE_c60',t:null,x:'JEIP1 Pool Staircase'},
+  {id:'JE_c61',t:null,x:'JEIP2 Pool Staircase'},
+  {id:'JE_c62',t:null,x:'JE Signage Board'},
+  {id:'JE_c63',t:null,x:'JE Paint (Broken Paint wall, Putty if needed)'},
+  {id:'JE_c64',t:null,x:'JEOP1 HandRail (Rusty, Paint peeling , putty if needed)'},
+  {id:'JE_c65',t:null,x:'JEOP1 Outdoor Shade (Wire Rope Support)'},
+  {id:'JE_c66',t:null,x:'JEOP1 Pool Divider (straighten , support rope)'},
+  {id:'JE_c67',t:null,x:'JEOP2 Outdoor Shade (Wire Rope Support)'},
+  {id:'JE_c68',t:null,x:'JEOP2 HandRail (Rusty, Paint peeling , putty if needed)'},
+  {id:'JE_c69',t:null,x:'JEOP1 HandRail (Rusty, Paint peeling , putty if needed)'},
+  {id:'JE_c70',t:null,x:'JEOP2 Pool Divider (straighten , support rope)'},
+  {id:'JE_c71',t:null,x:'JEIP2 Pool Divider (straighten , support rope)'},
+  {id:'JE_c72',t:null,x:'JEIP1 Pool Divider (straighten , support rope)'},
+  {id:'JE_c73',t:null,x:'JE Shoe Racks'},
+  {id:'JE_c74',t:null,x:'JEIP1 Check Robot Pool'},
+  {id:'JE_c75',t:null,x:'JEIP1 Pool Skimmer Basket'},
+  {id:'JE_c76',t:null,x:'JE Check SpiderWeb'},
+  {id:'JE_c77',t:null,x:'JEIP1 Shower Room Top Bracket Rusty'},
+  {id:'JE_c78',t:null,x:'JEIP2 Shower Room Top Bracket Rusty'},
+  {id:'JE_c79',t:null,x:'JE Teaching Platform (inside Pool and Deck)'},
+  {id:'JE_c80',t:null,x:'JEIP1 Salt Chlorinator'},
+  {id:'JE_c81',t:null,x:'JEIP2 Salt Chlorinator'},
+  {id:'JE_c82',t:null,x:'JEOP1 Salt Chlorinator'},
+  {id:'JE_c83',t:null,x:'JEOP2 Salt Chlorinator'},
+  {id:'JE_c84',t:null,x:'Check Tool Box (Hammer, Chain Wrench, Monkey plier, Testpen, Driver, Scraper)'},
+  {id:'JE_c85',t:null,x:'Pool Thermometer'},
+  {id:'JE_c86',t:null,x:'White Tape'},
+  {id:'JE_c87',t:null,x:'WD40'},
+  {id:'JE_c88',t:null,x:'Rubber washer (shower head)'},
+  {id:'JE_c89',t:null,x:'Rubber washer (Mixer)'},
+  {id:'JE_c90',t:null,x:'O-ring'},
+  {id:'JE_c91',t:null,x:'Adjustable Spray Nozzle'},
+  {id:'JE_c92',t:null,x:'Hose End Connector'},
+  {id:'JE_c93',t:null,x:'Hose Reapir Connector'},
+  {id:'JE_c94',t:null,x:'Tap Connector'},
+  {id:'JE_c95',t:null,x:'Spare Shower Hose'},
+  {id:'JE_c96',t:null,x:'Spare Shower Head'},
+  {id:'JE_c97',t:null,x:'Shower Head Holder Wall Mount'},
+  {id:'JE_c98',t:null,x:'Shower Head Holder Slide Bar'},
+  {id:'JE_c99',t:null,x:'Grey Basket'},
+  {id:'JE_c100',t:null,x:'Cleaning Chemical - Stain Remover'},
+  {id:'JE_c101',t:null,x:'Cleaning Tools - Hand Brush'},
+  {id:'JE_c102',t:null,x:'2 Mop & Buckets Checking'},
+  {id:'JE_c103',t:null,x:'Spongemop'},
+  {id:'JE_c104',t:null,x:'Scraper'},
+  {id:'JE_c105',t:null,x:'Pool divider Hook Cover'},
+  {id:'JE_c106',t:null,x:'Chemical Room Floor'},
+  {id:'JE_c107',t:null,x:'Chemical Room (Chlorine Drum)'},
+  {id:'JE_c108',t:null,x:'Chemical Room (Acid Drum)'},
+  {id:'JE_c109',t:null,x:'Chemical Room (Bucket, Stick, Cup)'}
+  ] },
+  HB: { label: 'HB', daily: [
+  {id:'HB_d1',t:15,x:'Watertest (Ta and Salt, Acid, Refill Test Kit)*Facing Counter CCTV',g:'Water Test / Dosing'},
+  {id:'HB_d2',t:15,x:'Dosing bicarb and salt bags (Acid dose later)',g:'Water Test / Dosing'},
+  {id:'HB_d3',t:null,x:'Send watertest report to Group chat',g:'Water Test / Dosing'},
+  {id:'HB_d4',t:5,x:'Dosing Acid (Refer to Morning report)*Ready Bucket near Pool',g:'Water Test / Dosing'},
+  {id:'HB_d5',t:30,x:'Night Watertest and Dosing',g:'Water Test / Dosing'},
+  {id:'HB_d6',t:20,x:'Backwash',g:'Pool Maintenance'},
+  {id:'HB_d7',t:90,x:'Pool Scrub (Wall,Ledge,Corner,Floor)',g:'Pool Maintenance'},
+  {id:'HB_d8',t:10,x:'Check and Clean the pool divider(Floating Ball, Rope)',g:'Pool Maintenance'},
+  {id:'HB_d9',t:60,x:'Manual Vacuum Pool',g:'Pool Maintenance'},
+  {id:'HB_d10',t:5,x:'Check and Clear Skimmer',g:'Pool Maintenance'},
+  {id:'HB_d11',t:10,x:'Clean Pump Basket',g:'Pool Maintenance'},
+  {id:'HB_d12',t:5,x:'Check&Clean Robot Filter&Wipe Robot Panel',g:'Pool Maintenance'},
+  {id:'HB_d13',t:30,x:'Check and Clean the Pump Equipment &Chemical Room',g:'Pool Maintenance'},
+  {id:'HB_d14',t:20,x:'Inspect (Lighting, Changing Table, Shower Room, Water Dispenser, HairDryer, Pool Platform, Clock, WiFi)',g:'Checklist'},
+  {id:'HB_d15',t:10,x:'Inspect (Lighting, Changing Table, Shower Room,WaterDispenser)',g:'Checklist'},
+  {id:'HB_d16',t:10,x:'Inspect (HairDryer, Pool Platform, Clock, WiFi)',g:'Checklist'},
+  {id:'HB_d17',t:5,x:'Check Salt Chlorinator Cell (Calcium)',g:'Checklist'},
+  {id:'HB_d18',t:3,x:'Check Pump Timer (Time is accurate)',g:'Checklist'},
+  {id:'HB_d19',t:3,x:'Check Heatpump Timer (Time is accurate)',g:'Checklist'},
+  {id:'HB_d20',t:3,x:'Check Exhaust Fan Timer (Time is accurate)',g:'Checklist'},
+  {id:'HB_d21',t:10,x:'Pressure Jet Backdoor Area *Caution on dehumifier*',g:'Facility Management'},
+  {id:'HB_d22',t:15,x:'Scrap off Algae, Jet the floor & Floortrap',g:'Facility Management'},
+  {id:'HB_d23',t:40,x:'Pressure Jet Pool Deck&Staircase',g:'Facility Management'},
+  {id:'HB_d24',t:20,x:'Pressure Jet Rinse off Area',g:'Facility Management'},
+  {id:'HB_d25',t:5,x:'Wipe Puddle off into Pool Deck',g:'Facility Management'},
+  {id:'HB_d26',t:5,x:'Remove Hair at Hairdying Area',g:'Facility Management'},
+  {id:'HB_d27',t:5,x:'Clean Up Hairdrying Area(Plant,Corner,Table)',g:'Facility Management'},
+  {id:'HB_d28',t:90,x:'Pressure Jet Baby Shower Area&Jet Hairdyer Area *First if got 3 person in branch*',g:'Facility Management'},
+  {id:'HB_d29',t:20,x:'Pressure Jet Baby Shower Tub (Algae, Mold) *Dry Wipe after*',g:'Facility Management'},
+  {id:'HB_d30',t:45,x:'Pressure Jet 25 Shower Rooms',g:'Facility Management'},
+  {id:'HB_d31',t:35,x:'Clear Floor Trap (Rinse Off, Shower Room)',g:'Facility Management'},
+  {id:'HB_d32',t:60,x:'Pressure Jet Entrance and Lounge (Remove Water)  *First if got 3 person in branch*',g:'Facility Management'},
+  {id:'HB_d33',t:20,x:'Check Dry sump area (Smelly need to rinse with water)',g:'Facility Management'},
+  {id:'HB_d34',t:20,x:'Clean 3 Wall Fans & 1 Standing Fan',g:'Facility Management'},
+  {id:'HB_d35',t:15,x:'Clean filter and Wipe clean Air-Cooler fan',g:'Facility Management'},
+  {id:'HB_d36',t:15,x:'Wipe Pump Rouver Door',g:'Facility Management'},
+  {id:'HB_d37',t:10,x:'Wipe Heatpump Rouver Door',g:'Facility Management'},
+  {id:'HB_d38',t:30,x:'Clean Lounge Ledge & Floating Ball',g:'Facility Management'},
+  {id:'HB_d39',t:10,x:'Wipe Shower Heatpump Rouver Door',g:'Facility Management'},
+  {id:'HB_d40',t:15,x:'Clean Rust off Heatpump/Dosing Area/Shower Room',g:'Facility Management'},
+  {id:'HB_d41',t:30,x:'Apply and Wipe with WD4D(SignageLogo, Fire extinguishers, SideDoorHandle, ShowerHandle,BackDoorHandle, RinseOffRod)',g:'Facility Management'},
+  {id:'HB_d42',t:30,x:'Clean 12 Baby Shower Tub & Baby Shower Tub Divider',g:'Facility Management'},
+  {id:'HB_d43',t:5,x:'Wipe TV Screen&Fire Hose Area',g:'Facility Management'},
+  {id:'HB_d44',t:30,x:'Wipe Deck Glass wall',g:'Others'},
+  {id:'HB_d45',t:15,x:'Wipe Lounge Glass Wall',g:'Others'},
+  {id:'HB_d46',t:15,x:'Wipe Glass wall near the Exhaust Fan',g:'Others'},
+  {id:'HB_d47',t:15,x:'Wipe all Handrail',g:'Others'},
+  {id:'HB_d48',t:20,x:'Clean 12 Baby Changing Table (Top& Bottom& Portable tub)',g:'Others'},
+  {id:'HB_d49',t:5,x:'Clean 3 Baby Chairs',g:'Others'},
+  {id:'HB_d50',t:5,x:'Wipe Water Dispenser, Coffee Machine&Table Top',g:'Others'},
+  {id:'HB_d51',t:20,x:'Wipe Bench, Table&Chairs',g:'Others'},
+  {id:'HB_d52',t:20,x:'Wipe 16 Toyogo Cabinets',g:'Others'},
+  {id:'HB_d53',t:10,x:'Wipe Shoes Racks',g:'Others'},
+  {id:'HB_d54',t:10,x:'Wipe Counter Table&Wall',g:'Others'}
+  ], check: [
+  {id:'HB_c1',t:null,x:'HB Shower Room Down Light'},
+  {id:'HB_c2',t:null,x:'HB Baby Shower Area Light'},
+  {id:'HB_c3',t:null,x:'HB Shower Room Down Light'},
+  {id:'HB_c4',t:null,x:'HB Counter Light'},
+  {id:'HB_c5',t:null,x:'HB Pool Downlight'},
+  {id:'HB_c6',t:null,x:'HB Entrance Light'},
+  {id:'HB_c7',t:null,x:'HB Lounge Light'},
+  {id:'HB_c8',t:null,x:'HB Clock'},
+  {id:'HB_c9',t:null,x:'HB Hairdrying Powerpoint'},
+  {id:'HB_c10',t:null,x:'HB TV,Wall Fan, Cooler Powerpoint'},
+  {id:'HB_c11',t:null,x:'HB Shuttle Door'},
+  {id:'HB_c12',t:null,x:'HB Counter Powerpoint'},
+  {id:'HB_c13',t:null,x:'HB Water Dispensor Powerpoint'},
+  {id:'HB_c14',t:null,x:'HB Wifi & CCTV Cable'},
+  {id:'HB_c15',t:null,x:'HB Pressure Jet Power Point'},
+  {id:'HB_c16',t:null,x:'HB Exhaust Fan'},
+  {id:'HB_c17',t:null,x:'HB 3 Shower Heaters'},
+  {id:'HB_c18',t:null,x:'HB DB Box (Burn, Trip ,etc)'},
+  {id:'HB_c19',t:null,x:'HB Main Pump Panel  (Burn, Trip ,etc)'},
+  {id:'HB_c20',t:null,x:'HB Main 6 Pump Timer'},
+  {id:'HB_c21',t:null,x:'HB Sub Pump Panel  (Burn, Trip ,etc)'},
+  {id:'HB_c22',t:null,x:'HB Sub 2 Pump Timer'},
+  {id:'HB_c23',t:null,x:'HB Pump Room Light'},
+  {id:'HB_c24',t:null,x:'HB Heatpump 2 Pump Checking (Manual On 1 by 1, Leaking)'},
+  {id:'HB_c25',t:null,x:'HB Main 4 Pump Checking (Manual On 1 by 1, Leaking)'},
+  {id:'HB_c26',t:null,x:'JEIP2 2 Pump Checking (Manual On 1 by 1, Leaking)'},
+  {id:'HB_c27',t:null,x:'JEOP2 4 Pump Checking (Manual On 1 by 1 , Leaking)'},
+  {id:'HB_c28',t:null,x:'JEIP1 Heatpump Timer & Correct Temperature'},
+  {id:'HB_c29',t:null,x:'JEIP2 Heatpump Timer & Correct Temperature'},
+  {id:'HB_c30',t:null,x:'JEOP1 Heatpump Timer & Correct Temperature'},
+  {id:'HB_c31',t:null,x:'JEOP2 Heatpump Timer & Correct Temperature'},
+  {id:'HB_c32',t:null,x:'JEIP1 Shower room (Vertical bars, Shower Head, Grey Basket,                                        Wall mount, Hose, Soap Dispenser, Hanger                                       , Door Lock, Door Hinges, Top Cover)'},
+  {id:'HB_c33',t:null,x:'JEIP2 Shower room (Vertical bars, Shower Head, Grey Basket,                                        Wall mount, Hose, Soap Dispenser,                                        Hanger, Door Lock, Door Hinges)'},
+  {id:'HB_c34',t:null,x:'JEOP1 Shower room (Vertical bars, Shower Head, Grey Basket,                                        Wall mount, Hose, Soap Dispenser,                                        Hanger, Door Lock, Door Hinges)'},
+  {id:'HB_c35',t:null,x:'JEIP2 Baby Tub (Shower Head, Hose, Drain hose, Tub Stability,                                 Soap Dispenser, Mixer)'},
+  {id:'HB_c36',t:null,x:'JEIP1 Baby Tub (Shower Head, Hose, Drain hose, Soap Dispenser                                , Mixer Leaking, Insulator, Aluminium Tape'},
+  {id:'HB_c37',t:null,x:'JEIP1 Rinse Off (Hose , Shower Head, Mixer)'},
+  {id:'HB_c38',t:null,x:'JEIP2 Rinse Off (Hose , Shower Head, Mixer)'},
+  {id:'HB_c39',t:null,x:'JEOP1 Rinse Off (Hose , Shower Head, Mixer)'},
+  {id:'HB_c40',t:null,x:'JE Chemical Room Long hose (Leaking, Break , etc)'},
+  {id:'HB_c41',t:null,x:'JEIP2 Long hose (Leaking, Break , etc)'},
+  {id:'HB_c42',t:null,x:'JEIP1 Changing Table & Mat (Screw, Stability, Board)'},
+  {id:'HB_c43',t:null,x:'JE Toyogo Cabinet'},
+  {id:'HB_c44',t:null,x:'JEIP1 Basin & Mirror'},
+  {id:'HB_c45',t:null,x:'JEIP1 Props (6 Noodles, 6 Backfloats, 6 Sinking Rings,                          Floating Ball)'},
+  {id:'HB_c46',t:null,x:'JEIP2 Props (6 Noodles, 6 Backfloats, 6 Sinking Rings,                          Floating Ball)'},
+  {id:'HB_c47',t:null,x:'JEOP1 Props (6 Noodles, 6 Backfloats, 6 Sinking Rings,                          Floating Ball)'},
+  {id:'HB_c48',t:null,x:'JEOP2 Props (6 Noodles, 6 Backfloats, 6 Sinking Rings,                          Floating Ball)'},
+  {id:'HB_c49',t:null,x:'JE LifeBouy'},
+  {id:'HB_c50',t:null,x:'JEIP1 Pool Staircase'},
+  {id:'HB_c51',t:null,x:'JEIP2 Pool Staircase'},
+  {id:'HB_c52',t:null,x:'JE Signage Board'},
+  {id:'HB_c53',t:null,x:'JE Paint (Broken Paint wall, Putty if needed)'},
+  {id:'HB_c54',t:null,x:'JEOP1 HandRail (Rusty, Paint peeling , putty if needed)'},
+  {id:'HB_c55',t:null,x:'JEOP1 Outdoor Shade (Wire Rope Support)'},
+  {id:'HB_c56',t:null,x:'JEOP1 Pool Divider (straighten , support rope)'},
+  {id:'HB_c57',t:null,x:'JEOP2 Outdoor Shade (Wire Rope Support)'},
+  {id:'HB_c58',t:null,x:'JEOP2 HandRail (Rusty, Paint peeling , putty if needed)'},
+  {id:'HB_c59',t:null,x:'JEOP1 HandRail (Rusty, Paint peeling , putty if needed)'},
+  {id:'HB_c60',t:null,x:'JEOP2 Pool Divider (straighten , support rope)'},
+  {id:'HB_c61',t:null,x:'JEIP2 Pool Divider (straighten , support rope)'},
+  {id:'HB_c62',t:null,x:'JEIP1 Pool Divider (straighten , support rope)'},
+  {id:'HB_c63',t:null,x:'JE Shoe Racks'},
+  {id:'HB_c64',t:null,x:'JEIP1 Check Robot Pool'},
+  {id:'HB_c65',t:null,x:'JEIP1 Pool Skimmer Basket'},
+  {id:'HB_c66',t:null,x:'JE Check SpiderWeb'},
+  {id:'HB_c67',t:null,x:'JEIP1 Shower Room Top Bracket Rusty'},
+  {id:'HB_c68',t:null,x:'JEIP2 Shower Room Top Bracket Rusty'},
+  {id:'HB_c69',t:null,x:'JE Teaching Platform (inside Pool and Deck)'},
+  {id:'HB_c70',t:null,x:'JEIP1 Salt Chlorinator'},
+  {id:'HB_c71',t:null,x:'JEIP2 Salt Chlorinator'},
+  {id:'HB_c72',t:null,x:'JEOP1 Salt Chlorinator'},
+  {id:'HB_c73',t:null,x:'JEOP2 Salt Chlorinator'},
+  {id:'HB_c74',t:null,x:'Check Tool Box (Hammer, Chain Wrench, Monkey plier, Testpen, Driver, Scraper)'},
+  {id:'HB_c75',t:null,x:'Pool Thermometer'},
+  {id:'HB_c76',t:null,x:'White Tape'},
+  {id:'HB_c77',t:null,x:'WD40'},
+  {id:'HB_c78',t:null,x:'Rubber washer (shower head)'},
+  {id:'HB_c79',t:null,x:'Rubber washer (Mixer)'},
+  {id:'HB_c80',t:null,x:'O-ring'},
+  {id:'HB_c81',t:null,x:'Adjustable Spray Nozzle'},
+  {id:'HB_c82',t:null,x:'Hose End Connector'},
+  {id:'HB_c83',t:null,x:'Hose Reapir Connector'},
+  {id:'HB_c84',t:null,x:'Tap Connector'},
+  {id:'HB_c85',t:null,x:'Spare Shower Hose'},
+  {id:'HB_c86',t:null,x:'Spare Shower Head'},
+  {id:'HB_c87',t:null,x:'Shower Head Holder Wall Mount'},
+  {id:'HB_c88',t:null,x:'Shower Head Holder Slide Bar'},
+  {id:'HB_c89',t:null,x:'Grey Basket'},
+  {id:'HB_c90',t:null,x:'Cleaning Chemical - Stain Remover'},
+  {id:'HB_c91',t:null,x:'Cleaning Tools - Hand Brush'},
+  {id:'HB_c92',t:null,x:'2 Mop & Buckets Checking'},
+  {id:'HB_c93',t:null,x:'Spongemop'},
+  {id:'HB_c94',t:null,x:'Scraper'},
+  {id:'HB_c95',t:null,x:'Pool divider Hook Cover'},
+  {id:'HB_c96',t:null,x:'Chemical Room Floor'},
+  {id:'HB_c97',t:null,x:'Chemical Room (Chlorine Drum)'},
+  {id:'HB_c98',t:null,x:'Chemical Room (Acid Drum)'},
+  {id:'HB_c99',t:null,x:'Chemical Room (Bucket, Stick, Cup)'}
+  ] },
+  HS: { label: 'HS', daily: [
+  {id:'HS_d1',t:30,x:'Watertest (Ta and Salt, Acid, Refill Test Kit)*Facing Counter CCTV',g:'Water Test / Dosing'},
+  {id:'HS_d2',t:5,x:'Dosing bicarb and salt bags (Acid dose later)',g:'Water Test / Dosing'},
+  {id:'HS_d3',t:null,x:'Send watertest report to Group chat',g:'Water Test / Dosing'},
+  {id:'HS_d4',t:3,x:'Dosing Acid (Refer to Morning report)*Ready Bucket near Pool',g:'Water Test / Dosing'},
+  {id:'HS_d5',t:30,x:'Night Watertest and Dosing',g:'Water Test / Dosing'},
+  {id:'HS_d6',t:20,x:'Backwash',g:'Pool Maintenance'},
+  {id:'HS_d7',t:40,x:'Pool Scrub (Wall,Ledge,Corner,Floor)',g:'Pool Maintenance'},
+  {id:'HS_d8',t:10,x:'Check and Clean the pool divider(Floating Ball, Rope)',g:'Pool Maintenance'},
+  {id:'HS_d9',t:5,x:'Check and Clear Skimmer',g:'Pool Maintenance'},
+  {id:'HS_d10',t:40,x:'Manual Vacuum Pool',g:'Pool Maintenance'},
+  {id:'HS_d11',t:15,x:'Clean Pump Basket',g:'Pool Maintenance'},
+  {id:'HS_d12',t:30,x:'Check and Clean the Pump Equipment &Chemical Room',g:'Pool Maintenance'},
+  {id:'HS_d13',t:10,x:'Inspect (Lighting, Changing Table, Shower Room,WaterDispenser)',g:'Checklist'},
+  {id:'HS_d14',t:10,x:'Inspect (HairDryer, Pool Platform, Clock, WiFi)',g:'Checklist'},
+  {id:'HS_d15',t:20,x:'Check&Repair Shower Facilities(DoorLock,ShowerHead,Hose, Mixer, Hooks, Shampoo, ShowerHead Holder)',g:'Checklist'},
+  {id:'HS_d16',t:5,x:'Check Salt Chlorinator Cell (Calcium)',g:'Checklist'},
+  {id:'HS_d17',t:3,x:'Check Pump Timer (Time is accurate)',g:'Checklist'},
+  {id:'HS_d18',t:3,x:'Check Heatpump Timer (Time is accurate)',g:'Checklist'},
+  {id:'HS_d19',t:3,x:'Check Exhaust Fan Timer (Time is accurate)',g:'Checklist'},
+  {id:'HS_d20',t:20,x:'Clean Rust HandRail, Rusty Stain on Floor, Shower Equipment',g:'Facility Management'},
+  {id:'HS_d21',t:15,x:'Clean Exhaust Fan filter',g:'Facility Management'},
+  {id:'HS_d22',t:40,x:'Pressure Jet Pool Deck & RinseOff Area  (Use scrub for rinse off wall)',g:'Facility Management'},
+  {id:'HS_d23',t:10,x:'Pressure Jet Hairdrying Area(Corner,Table)',g:'Facility Management'},
+  {id:'HS_d24',t:15,x:'Pressure Jet Baby Shower Area',g:'Facility Management'},
+  {id:'HS_d25',t:25,x:'Pressure Jet Baby Shower Tub (Algae, Mold) *Dry Wipe after*',g:'Facility Management'},
+  {id:'HS_d26',t:40,x:'Pressure Shower Rooms & 2 Toilets',g:'Facility Management'},
+  {id:'HS_d27',t:30,x:'Clean All Floor Trap (Shower Room, Toilet, RinseOff)',g:'Facility Management'},
+  {id:'HS_d28',t:15,x:'Clean Fans',g:'Facility Management'},
+  {id:'HS_d29',t:5,x:'Wash 2 Basins',g:'Facility Management'},
+  {id:'HS_d30',t:20,x:'Wipe Vent covers & Big Air-con',g:'Facility Management'},
+  {id:'HS_d31',t:20,x:'Clean 2 Floor Mats at Staircase',g:'Facility Management'},
+  {id:'HS_d32',t:10,x:'Organize&Check DB room(make sure it\'s save, dry and spacious)',g:'Facility Management'},
+  {id:'HS_d33',t:15,x:'Clean off bugs on wall lounges and storeroom',g:'Facility Management'},
+  {id:'HS_d34',t:30,x:'Wipe Glass Wall at Deck Pool',g:'Facility Management'},
+  {id:'HS_d35',t:5,x:'Wipe dust on Side Door',g:'Facility Management'},
+  {id:'HS_d36',t:10,x:'Wipe Table&Chair, Lounge Cushion Seats (Check Condition)',g:'Facility Management'},
+  {id:'HS_d37',t:15,x:'Clean 8 Baby Shower Tub & Baby Shower Tub Divider',g:'Facility Management'},
+  {id:'HS_d38',t:10,x:'Wipe wall ledge behind countertop',g:'Facility Management'},
+  {id:'HS_d39',t:5,x:'Remove Hair with Roller tape at Hairdying Area',g:'Others'},
+  {id:'HS_d40',t:5,x:'Wipe Window Glass Entrance',g:'Others'},
+  {id:'HS_d41',t:5,x:'Wipe Entrance Glass Door Top',g:'Others'},
+  {id:'HS_d42',t:15,x:'Wipe Glass Wall Near Shoes Racks',g:'Others'},
+  {id:'HS_d43',t:5,x:'Wipe Glass Door Lounge',g:'Others'},
+  {id:'HS_d44',t:20,x:'Wipe Basin Mirror (Remove Rust from below)',g:'Others'},
+  {id:'HS_d45',t:5,x:'Wipe TV Screen & Back TV',g:'Others'},
+  {id:'HS_d46',t:5,x:'Wipe TV Powerpoint and Wire',g:'Others'},
+  {id:'HS_d47',t:20,x:'Clean 6 Baby Changing Table (Top& Bottom& Portable tub)',g:'Others'},
+  {id:'HS_d48',t:5,x:'Wipe Baby Chairs',g:'Others'},
+  {id:'HS_d49',t:10,x:'Wipe Benches',g:'Others'},
+  {id:'HS_d50',t:20,x:'Wipe all Toyogo Cabinets',g:'Others'},
+  {id:'HS_d51',t:5,x:'Wipe Water Dispenser, Coffee Machine&Table Top',g:'Others'},
+  {id:'HS_d52',t:20,x:'Wipe Shoe Racks & Top of shoe racks',g:'Others'},
+  {id:'HS_d53',t:10,x:'Wipe Counter Table',g:'Others'}
+  ], check: [
+  
+  ] },
+  BK: { label: 'BK', daily: [
+  {id:'BK_d1',t:20,x:'Watertest (Ta and Salt, Acid, Refill Test Kit)*Facing Counter CCTV',g:'Water Test / Dosing'},
+  {id:'BK_d2',t:5,x:'Dosing bicarb and salt bags (Acid dose later)',g:'Water Test / Dosing'},
+  {id:'BK_d3',t:null,x:'Send watertest report to Group chat',g:'Water Test / Dosing'},
+  {id:'BK_d4',t:3,x:'Dosing Acid (Refer to Morning report)*Ready Bucket near Pool',g:'Water Test / Dosing'},
+  {id:'BK_d5',t:30,x:'Water Test and Dosing',g:'Water Test / Dosing'},
+  {id:'BK_d6',t:30,x:'Backwash *Toilet Floor Trap',g:'Pool Maintenance'},
+  {id:'BK_d7',t:20,x:'Scrub off Algae in Pool Deck with Water (not pool water)',g:'Pool Maintenance'},
+  {id:'BK_d8',t:30,x:'Pool Scrub (Wall,Ledge,Corner,Floor)*Including Platfrom Area*',g:'Pool Maintenance'},
+  {id:'BK_d9',t:10,x:'Check and Clean the pool divider(Floating Ball, Rope)',g:'Pool Maintenance'},
+  {id:'BK_d10',t:5,x:'Check and Clear Skimmer',g:'Pool Maintenance'},
+  {id:'BK_d11',t:30,x:'Manual Vacuum Pool',g:'Pool Maintenance'},
+  {id:'BK_d12',t:15,x:'Clean Pump Baskets',g:'Pool Maintenance'},
+  {id:'BK_d13',t:15,x:'Clean Robot Filter',g:'Pool Maintenance'},
+  {id:'BK_d14',t:30,x:'Check and Clean the Pump Equipment &Chemical Room',g:'Pool Maintenance'},
+  {id:'BK_d15',t:10,x:'Inspect (Lighting, Changing Table, Shower Room,WaterDispenser)',g:'Checklist'},
+  {id:'BK_d16',t:10,x:'Inspect (HairDryer, Pool Platform, Clock, WiFi, Number Locker, Parking lot Banner)',g:'Checklist'},
+  {id:'BK_d17',t:20,x:'Check&Repair Shower Facilities(DoorLock,ShowerHead,Hose, Mixer, Hooks, Shampoo, ShowerHead Holder)',g:'Checklist'},
+  {id:'BK_d18',t:5,x:'Check Salt Chlorinator Cell (Calcium)',g:'Checklist'},
+  {id:'BK_d19',t:3,x:'Check Pump Timer (Time is accurate)',g:'Checklist'},
+  {id:'BK_d20',t:3,x:'Check Heatpump Timer (Time is accurate)',g:'Checklist'},
+  {id:'BK_d21',t:3,x:'Check Exhaust Fan Timer (Time is accurate)',g:'Checklist'},
+  {id:'BK_d22',t:30,x:'Scrub Baby shower Area floor with chemical',g:'Facility Management'},
+  {id:'BK_d23',t:20,x:'Scrub/Pressure Jet behind Baby tub Area with chemical',g:'Facility Management'},
+  {id:'BK_d24',t:30,x:'Pressure jet Floor Drain under Shower Tub',g:'Facility Management'},
+  {id:'BK_d25',t:40,x:'Take out Drain Cover and Jet drain gutter',g:'Facility Management'},
+  {id:'BK_d26',t:20,x:'Pressure Jet Hallway and rinse off floor',g:'Facility Management'},
+  {id:'BK_d27',t:30,x:'Pressure Jet Shower Room',g:'Facility Management'},
+  {id:'BK_d28',t:20,x:'Pressure Jet 2 Toilets',g:'Facility Management'},
+  {id:'BK_d29',t:20,x:'Scrub Stairs with Water',g:'Facility Management'},
+  {id:'BK_d30',t:20,x:'Clean off 2 main floor trap',g:'Facility Management'},
+  {id:'BK_d31',t:10,x:'Clean toilet floor trap',g:'Facility Management'},
+  {id:'BK_d32',t:15,x:'Wipe 2 Ceiling Air Vent (Counter)',g:'Facility Management'},
+  {id:'BK_d33',t:15,x:'Clean Standing Fan',g:'Facility Management'},
+  {id:'BK_d34',t:30,x:'Clean Rusty Stain on Floor and shower equipment',g:'Facility Management'},
+  {id:'BK_d35',t:5,x:'Check and Clean backdoor stairs and storeroom',g:'Facility Management'},
+  {id:'BK_d36',t:20,x:'Clean&Dry Baby Shower Tub & Baby Shower Tub Divider',g:'Facility Management'},
+  {id:'BK_d37',t:10,x:'Wash 2 Basin & Wipe Water Dispenser',g:'Facility Management'},
+  {id:'BK_d38',t:20,x:'Check and Clear for Rusty',g:'Facility Management'},
+  {id:'BK_d39',t:10,x:'Wipe Front glass door and glass wall',g:'Others'},
+  {id:'BK_d40',t:20,x:'Wipe Glass and Mirror',g:'Others'},
+  {id:'BK_d41',t:10,x:'Sweep Outside Entrance Door& 2 Balcony',g:'Others'},
+  {id:'BK_d42',t:5,x:'Wipe Staircase Handrail',g:'Others'},
+  {id:'BK_d43',t:5,x:'Clean Baby Chairs',g:'Others'},
+  {id:'BK_d44',t:15,x:'Wipe 5 Baby Changing Table (Top& Bottom& Portable tub)',g:'Others'},
+  {id:'BK_d45',t:15,x:'Wipe all Toyogo Cabinets',g:'Others'},
+  {id:'BK_d46',t:5,x:'Wipe TV Screen & Fire Hose Area',g:'Others'},
+  {id:'BK_d47',t:15,x:'Wipe Shoes Racks',g:'Others'}
+  ], check: [
+  
+  ] },
+  WWW: { label: 'WWW', daily: [
+  {id:'WWW_d1',t:30,x:'Watertest (Ta and Salt, Acid, Refill Test Kit)*Facing Counter CCTV',g:'Water Test / Dosing'},
+  {id:'WWW_d2',t:5,x:'Dosing bicarb and salt bags (Acid dose later)',g:'Water Test / Dosing'},
+  {id:'WWW_d3',t:null,x:'Send watertest report to Group chat',g:'Water Test / Dosing'},
+  {id:'WWW_d4',t:3,x:'Dosing Acid (Refer to Morning report)*Ready Bucket near Pool',g:'Water Test / Dosing'},
+  {id:'WWW_d5',t:30,x:'Water Test and Dosing',g:'Water Test / Dosing'},
+  {id:'WWW_d6',t:null,x:'Water Test and Dosing',g:'Water Test / Dosing'},
+  {id:'WWW_d7',t:20,x:'Backwash',g:'Pool Maintenance'},
+  {id:'WWW_d8',t:50,x:'Pool Scrub (Wall,Ledge,Corner,Floor)',g:'Pool Maintenance'},
+  {id:'WWW_d9',t:15,x:'Check and Clean the pool divider(Floating Ball, Rope)',g:'Pool Maintenance'},
+  {id:'WWW_d10',t:5,x:'Check and Clear Skimmer',g:'Pool Maintenance'},
+  {id:'WWW_d11',t:40,x:'Manual Vacuum Pool',g:'Pool Maintenance'},
+  {id:'WWW_d12',t:15,x:'Clean Pump Basket',g:'Pool Maintenance'},
+  {id:'WWW_d13',t:30,x:'Check and Clean the Pump Equipment &Chemical Room',g:'Pool Maintenance'},
+  {id:'WWW_d14',t:10,x:'Inspect (Lighting, Changing Table, Shower Room,WaterDispenser)',g:'Checklist'},
+  {id:'WWW_d15',t:10,x:'Inspect (HairDryer, Pool Platform, Clock, WiFi)',g:'Checklist'},
+  {id:'WWW_d16',t:15,x:'Inspect Tent (damage, dislocated, dirty, etc)',g:'Checklist'},
+  {id:'WWW_d17',t:20,x:'Check&Repair Shower Facilities(DoorLock,ShowerHead,Hose, Mixer, Hooks, Shampoo, ShowerHead Holder)',g:'Checklist'},
+  {id:'WWW_d18',t:5,x:'Check Salt Chlorinator Cell (Calcium)',g:'Checklist'},
+  {id:'WWW_d19',t:3,x:'Check Pump Timer (Time is accurate)',g:'Checklist'},
+  {id:'WWW_d20',t:3,x:'Check Heatpump Timer (Time is accurate)',g:'Checklist'},
+  {id:'WWW_d21',t:3,x:'Check Exhaust Fan Timer (Time is accurate)',g:'Checklist'},
+  {id:'WWW_d22',t:40,x:'Pressure Jet Pool Deck & Both Staircases& Entrance',g:'Facility Management'},
+  {id:'WWW_d23',t:50,x:'Pressure Jet Baby Shower Area & Changing Area',g:'Facility Management'},
+  {id:'WWW_d24',t:20,x:'Pressure Jet Baby Shower Tub (Algae, Mold) *Dry Wipe after*',g:'Facility Management'},
+  {id:'WWW_d25',t:30,x:'Pressure Jet Inside Shower Room and Outside (Remove Algae)',g:'Facility Management'},
+  {id:'WWW_d26',t:30,x:'Pressure Jet Front Entrance& BackAlley Area (Once a month)',g:'Facility Management'},
+  {id:'WWW_d27',t:30,x:'Pressure Jet Resting&Dining Table Area&Umbrella (Once a month)',g:'Facility Management'},
+  {id:'WWW_d28',t:35,x:'Pressure Jet Awning facing Resort side',g:'Facility Management'},
+  {id:'WWW_d29',t:20,x:'Check&Clean Robot Filter&Wipe Robot Panel',g:'Facility Management'},
+  {id:'WWW_d30',t:10,x:'Clean All Floor Trap (Shower Room, RinseOff)',g:'Facility Management'},
+  {id:'WWW_d31',t:10,x:'Floor Trap under Shower Tub (Quarterly)',g:'Facility Management'},
+  {id:'WWW_d32',t:20,x:'Clean Wall fan, standing fan',g:'Facility Management'},
+  {id:'WWW_d33',t:15,x:'Clean filter and Wipe clean Air-Cooler fan',g:'Facility Management'},
+  {id:'WWW_d34',t:20,x:'Clean 5 Baby Shower Tub & Baby Shower Tub Divider',g:'Facility Management'},
+  {id:'WWW_d35',t:10,x:'Wipe Pump Rouver door',g:'Facility Management'},
+  {id:'WWW_d36',t:10,x:'Wipe Store Rouver door',g:'Facility Management'},
+  {id:'WWW_d37',t:30,x:'Wipe Handrail & Staircase Handrail',g:'Facility Management'},
+  {id:'WWW_d38',t:5,x:'Clean 3 Baby Chairs',g:'Facility Management'},
+  {id:'WWW_d39',t:20,x:'Check and Clear for Rusty',g:'Facility Management'},
+  {id:'WWW_d40',t:20,x:'Clean 9 Baby Changing Table (Top& Bottom& Portable tub)',g:'Others'},
+  {id:'WWW_d41',t:5,x:'Wipe Water Dispenser',g:'Others'},
+  {id:'WWW_d42',t:20,x:'Wipe Bench (Outdoor&Waiting Area)',g:'Others'},
+  {id:'WWW_d43',t:20,x:'Wipe 9 Toyogo Cabinets & Other Cabinets',g:'Others'},
+  {id:'WWW_d44',t:15,x:'Wipe TV Screen & Fire Hose Area',g:'Others'},
+  {id:'WWW_d45',t:15,x:'Wipe Shoes Racks',g:'Others'},
+  {id:'WWW_d46',t:10,x:'Clean Counter Table & Employee Table',g:'Others'},
+  {id:'WWW_d47',t:20,x:'Check&Repair Shower Facilities(DoorLock,ShowerHead,Hose, Mixer, Hooks, Shampoo, ShowerHead Holder)',g:'Uncategorized'}
+  ], check: [
+  
+  ] },
+};
+
+const CAT_LABEL = { daily: 'Weekly Tasks', check: 'Checking List' };
+const NOT_CONFIGURED = firebaseConfig.apiKey === 'YOUR_API_KEY';
+
+let db = null;
+let me = '';
+let curOutlet = 'CC';
+let curCat = 'daily';
+let curFilter = 'all';
+let curSearch = '';
+let curSortOldest = false;
+let curGroup = 'All';
+let claimLock = false; // true while this device is mid-claim, blocks a second rapid tap from slipping through
+let state = {};        // {taskId: {status, claimedBy, claimedAt, doneBy, doneAt, actualMs, remark}}
+let noteOpen = {};      // local UI toggle only
+let unsubState = null, unsubActivity = null, unsubArchive = null;
+
+function formatClock(ms){
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const mm = String(m).padStart(2,'0');
+  const ss = String(s).padStart(2,'0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+function formatMins(ms){ return Math.round(ms / 60000); }
+
+function timeAgo(ts){
+  if(!ts) return '';
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if(s < 60) return 'just now';
+  if(s < 3600) return Math.floor(s/60) + 'm ago';
+  if(s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
+}
+
+// Relative for anything recent; switches to an actual date past 14 days so
+// long-since tasks (e.g. monthly items) are easy to pin down at a glance.
+function dateOrAgo(ts){
+  if(!ts) return '';
+  const days = (Date.now() - ts) / 86400000;
+  if(days < 14) return timeAgo(ts);
+  const d = new Date(ts);
+  const opts = { day:'numeric', month:'short' };
+  if(d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+  return d.toLocaleDateString(undefined, opts);
+}
+
+// Full date, weekday, and time — e.g. "Mon, 1 Sep · 3:15 PM"
+function fullDateTime(ts){
+  if(!ts) return '';
+  const d = new Date(ts);
+  const opts = { weekday:'short', day:'numeric', month:'short' };
+  if(d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+  const dateStr = d.toLocaleDateString(undefined, opts);
+  const timeStr = d.toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' });
+  return `${dateStr} · ${timeStr}`;
+}
+
+function toast(msg, opts){
+  const t = document.getElementById('toast');
+  t.innerHTML = '';
+  const span = document.createElement('span');
+  span.textContent = msg;
+  t.appendChild(span);
+  if(opts && opts.actionLabel && opts.onAction){
+    const btn = document.createElement('button');
+    btn.className = 'toast-action';
+    btn.textContent = opts.actionLabel;
+    btn.addEventListener('click', ()=>{
+      t.classList.remove('show');
+      clearTimeout(toast._tm);
+      opts.onAction();
+    });
+    t.appendChild(btn);
+  }
+  t.classList.add('show');
+  clearTimeout(toast._tm);
+  toast._tm = setTimeout(()=>t.classList.remove('show'), (opts && opts.actionLabel) ? 5000 : 2400);
+}
+
+function setConn(status){ // 'live' | 'err' | ''
+  const dot = document.getElementById('conn-dot');
+  dot.className = 'conn-dot' + (status ? ' ' + status : '');
+}
+
+function renderTabs(){
+  const ot = document.getElementById('outlet-tabs');
+  ot.innerHTML = '';
+  Object.keys(DATA).forEach(key=>{
+    const el = document.createElement('div');
+    el.className = 'tab' + (key===curOutlet ? ' active' : '');
+    el.textContent = DATA[key].label;
+    el.addEventListener('click', ()=>{
+      curOutlet = key;
+      if(curCat === 'check' && (!DATA[key].check || DATA[key].check.length === 0)) curCat = 'daily';
+      curGroup = 'All';
+      subscribeAll();
+    });
+    ot.appendChild(el);
+  });
+
+  const ct = document.getElementById('cat-tabs');
+  ct.innerHTML = '';
+  const availableCats = ['daily'];
+  if(DATA[curOutlet].check && DATA[curOutlet].check.length > 0) availableCats.push('check');
+  availableCats.forEach(cat=>{
+    const el = document.createElement('div');
+    el.className = 'subtab' + (cat===curCat ? ' active' : '');
+    el.textContent = CAT_LABEL[cat];
+    el.addEventListener('click', ()=>{ curCat = cat; curGroup = 'All'; subscribeAll(); });
+    ct.appendChild(el);
+  });
+
+  renderGroupTabs();
+}
+
+function renderGroupTabs(){
+  const gt = document.getElementById('group-tabs');
+  gt.innerHTML = '';
+  if(curCat !== 'daily'){ gt.style.display = 'none'; return; }
+  gt.style.display = 'flex';
+
+  const present = new Set(DATA[curOutlet].daily.map(it=>it.g));
+  const orderedGroups = GROUP_ORDER.filter(g=>present.has(g));
+  GROUP_ORDER.forEach(g=>present.delete(g));
+  const extraGroups = [...present]; // anything outside the standard 5 (e.g. a stray "Uncategorized")
+  const allGroups = ['All', ...orderedGroups, ...extraGroups];
+
+  allGroups.forEach(g=>{
+    const groupItems = g === 'All' ? DATA[curOutlet].daily : DATA[curOutlet].daily.filter(it=>it.g === g);
+    const done = groupItems.filter(it=>getRecord(it.id).status === 'done').length;
+    const chip = document.createElement('span');
+    chip.className = 'chip' + (curGroup === g ? ' active' : '');
+    const label = g === 'Pool Maintenance' ? '🏊 ' + g : g;
+    chip.textContent = `${label} (${done}/${groupItems.length})`;
+    chip.addEventListener('click', ()=>{ curGroup = g; renderGroupTabs(); renderList(); updateStatbar(); renderFilteredActivity(); });
+    gt.appendChild(chip);
+  });
+}
+
+function items(){ return DATA[curOutlet][curCat]; }
+function getRecord(id){ return state[id] || {status:'open'}; }
+function stateDocRef(){ return db.collection('maintenance_state').doc(`${curOutlet}_${curCat}`); }
+function activityColRef(){ return db.collection('activity').doc(curOutlet).collection('events'); }
+function archiveColRef(){ return db.collection('archive').doc(curOutlet).collection('weeks'); }
+
+// The stat bar reflects whichever group tab is selected (or the whole
+// list when "All" is picked), not the full Daily Task list regardless of view.
+function statsScope(){
+  if(curCat === 'daily' && curGroup !== 'All') return items().filter(it=>it.g === curGroup);
+  return items();
+}
+
+function computeStats(){
+  const all = statsScope();
+  let open=0, claimed=0, done=0, minsLeft=0, actualMins=0, budgetMinsDone=0;
+  all.forEach(it=>{
+    const r = getRecord(it.id);
+    if(r.status === 'done'){
+      done++;
+      if(r.actualMs) actualMins += formatMins(r.actualMs);
+      if(it.t) budgetMinsDone += it.t;
+    } else if(r.status === 'claimed') claimed++;
+    else open++;
+    if(r.status !== 'done' && it.t) minsLeft += it.t;
+  });
+  return {open, claimed, done, total: all.length, minsLeft, actualMins, budgetMinsDone};
+}
+
+function updateStatbar(){
+  const s = computeStats();
+  const pct = s.total ? Math.round((s.done/s.total)*100) : 0;
+  const scopeLabel = curCat === 'daily'
+    ? (curGroup === 'All' ? 'Showing: All Weekly Task groups' : `Showing: ${curGroup}`)
+    : `Showing: ${CAT_LABEL[curCat]}`;
+  document.getElementById('stat-scope').textContent = scopeLabel;
+  document.getElementById('stat-open').textContent = s.open;
+  document.getElementById('stat-claimed').textContent = s.claimed;
+  document.getElementById('stat-done').textContent = s.done;
+  document.getElementById('gauge-pct').textContent = pct + '%';
+  const minsWrap = document.getElementById('stat-mins-wrap');
+  const actualWrap = document.getElementById('stat-actual-wrap');
+  if(curCat === 'daily'){
+    minsWrap.style.display = '';
+    document.getElementById('stat-mins').textContent = s.minsLeft;
+    actualWrap.style.display = '';
+    document.getElementById('stat-actual').textContent = `${s.actualMins}/${s.budgetMinsDone}`;
+  } else {
+    minsWrap.style.display = 'none';
+    actualWrap.style.display = 'none';
+  }
+  const arc = document.getElementById('gauge-arc');
+  const CIRC = 264;
+  arc.setAttribute('stroke-dashoffset', CIRC - (CIRC*pct/100));
+}
+
+function statusLabel(r){
+  if(r.status === 'done') return 'Done';
+  if(r.status === 'claimed') return r.claimedBy ? r.claimedBy.split(' ')[0] + ' ⋯' : 'In progress';
+  return 'Open';
+}
+
+const GROUP_ORDER = ['Water Test / Dosing', 'Pool Maintenance', 'Checklist', 'Facility Management', 'Others'];
+
+// Typical service day per outlet — informational only (planning reference).
+// The actual "due" logic below is anchored to the shared Saturday cutoff instead,
+// since early or late coverage within the week is expected and shouldn't misfire.
+// TPY isn't set up in the app yet, so it's omitted here until its task list is added.
+const RESET_DOW = {
+  JE: 1, Tengah: 1, BK: 1,      // Monday
+  CC: 2, WWW: 2,                // Tuesday
+  HB: 3,                        // Wednesday
+  DR: 4, HS: 4,                 // Thursday
+  Lentor: 5,                    // Friday
+};
+const DOW_NAME = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+// Shared weekly cutoff: Saturday/Sunday are peak hours, so every outlet needs to be
+// fresh before then. "This week" is counted from the most recent Saturday 12pm, and
+// the hard deadline is the following Saturday 5am — right before doors open for peak.
+function currentWeekBoundary(){
+  const now = new Date();
+  const diff = (now.getDay() - 6 + 7) % 7; // days since last Saturday
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diff, 12, 0, 0, 0);
+  if(d.getTime() > now.getTime()) d.setDate(d.getDate() - 7);
+  return d.getTime();
+}
+function nextDeadline(){
+  const now = new Date();
+  const diff = (6 - now.getDay() + 7) % 7; // days until next Saturday
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff, 5, 0, 0, 0);
+  if(d.getTime() <= now.getTime()) d.setDate(d.getDate() + 7);
+  return d.getTime();
+}
+
+function groupRank(g){ const i = GROUP_ORDER.indexOf(g); return i === -1 ? 999 : i; }
+
+function renderList(){
+  const list = document.getElementById('task-list');
+  list.innerHTML = '';
+  const q = curSearch.trim().toLowerCase();
+  const filtered = items().filter(it=>{
+    const r = getRecord(it.id);
+    if(curFilter !== 'all' && r.status !== curFilter) return false;
+    if(q && !it.x.toLowerCase().includes(q)) return false;
+    if(curCat === 'daily' && curGroup !== 'All' && it.g !== curGroup) return false;
+    return true;
+  });
+  if(curSortOldest){
+    filtered.sort((a,b)=>(getRecord(a.id).lastDoneAt || 0) - (getRecord(b.id).lastDoneAt || 0));
+  }
+  if(filtered.length === 0){
+    list.innerHTML = '<div class="empty">No tasks match.</div>';
+    return;
+  }
+
+  const useGrouping = curCat === 'daily' && curGroup === 'All' && !curSortOldest;
+  if(useGrouping){
+    const groupsMap = {};
+    filtered.forEach(it=>{ (groupsMap[it.g] = groupsMap[it.g] || []).push(it); });
+    const groupNames = Object.keys(groupsMap).sort((a,b)=>groupRank(a)-groupRank(b));
+    groupNames.forEach(g=>{
+      const groupItems = groupsMap[g];
+      const isPool = g === 'Pool Maintenance';
+      appendGroupHeader(list, isPool ? '🏊 ' + g + ' — do these first' : g, groupItems, isPool);
+      groupItems.forEach(it=>appendTaskRow(list, it));
+    });
+  } else {
+    filtered.forEach(it=>appendTaskRow(list, it));
+  }
+}
+
+function appendGroupHeader(list, label, groupItems, isPool){
+  const done = groupItems.filter(it=>getRecord(it.id).status==='done').length;
+  const h = document.createElement('div');
+  h.className = 'group-header' + (isPool ? '' : ' other-group');
+  h.innerHTML = `<span>${label}</span><span class="group-count">${done}/${groupItems.length}</span>`;
+  list.appendChild(h);
+}
+
+function appendTaskRow(list, it){
+    const r = getRecord(it.id);
+    const row = document.createElement('div');
+    row.className = 'task';
+
+    let meta = '';
+    if(r.status === 'claimed'){
+      meta = `Claimed by ${r.claimedBy || '—'} on ${fullDateTime(r.claimedAt)} · <span class="live-timer" data-start="${r.claimedAt || Date.now()}">${formatClock(Date.now() - (r.claimedAt || Date.now()))}</span> elapsed`;
+    }
+    if(r.status === 'done'){
+      meta = `Done by ${r.doneBy || '—'} on <span class="tag-good">${fullDateTime(r.doneAt)}</span>`;
+      if(r.actualMs != null){
+        const actual = formatMins(r.actualMs);
+        if(it.t){
+          const cls = actual > it.t ? 'over-budget' : 'under-budget';
+          meta += ` · <span class="${cls}">${actual} min</span> (budget ${it.t})`;
+        } else {
+          meta += ` · ${actual} min`;
+        }
+      }
+    }
+    if(r.status !== 'done'){
+      if(r.lastDoneAt){
+        const days = (Date.now() - r.lastDoneAt) / 86400000;
+        const cls = days < 7 ? 'tag-good' : days < 14 ? 'tag-warn' : 'tag-bad';
+        const lastBit = `Last done <span class="${cls}">${fullDateTime(r.lastDoneAt)}</span>${r.lastDoneBy ? ' by ' + r.lastDoneBy : ''}`;
+        meta = meta ? meta + ' · ' + lastBit : lastBit;
+      } else if(r.status === 'open'){
+        meta = meta ? meta + ' · <span class="tag-bad">Never done before</span>' : '<span class="tag-bad">Never done before</span>';
+      }
+    }
+    if(r.remark) meta += (meta ? ' · ' : '') + `Note: <span class="tag-warn">${r.remark}</span>`;
+
+    row.innerHTML = `
+      <div class="task-main">
+        <div class="task-text">${it.x}</div>
+        ${meta ? `<div class="task-meta">${meta}</div>` : ''}
+      </div>
+      <div class="task-actions">
+        ${it.t ? `<span class="task-time">${it.t} min</span>` : ''}
+        <button class="note-btn${r.remark ? ' has-note' : ''}" title="Add note">✎</button>
+        ${r.status === 'claimed' && r.claimedBy === me ? `<button class="unclaim-btn" title="Undo claim">✕</button>` : ''}
+        <button class="status-btn ${r.status}">${statusLabel(r)}</button>
+      </div>
+    `;
+
+    row.querySelector('.status-btn').addEventListener('click', ()=>onTaskTap(it.id));
+    row.querySelector('.note-btn').addEventListener('click', ()=>toggleNote(row, it.id));
+    const unclaimBtn = row.querySelector('.unclaim-btn');
+    if(unclaimBtn) unclaimBtn.addEventListener('click', ()=>unclaimTask(it.id));
+
+    list.appendChild(row);
+
+    if(noteOpen[it.id]){
+      const box = document.createElement('div');
+      box.className = 'note-box open';
+      box.innerHTML = `<textarea id="note-${it.id}">${r.remark || ''}</textarea><br><button class="note-save">Save note</button>`;
+      box.querySelector('.note-save').addEventListener('click', ()=>saveNote(it.id));
+      list.appendChild(box);
+    }
+}
+
+function toggleNote(row, id){
+  noteOpen[id] = !noteOpen[id];
+  renderList();
+}
+
+async function saveNote(id){
+  const val = document.getElementById(`note-${id}`).value.trim();
+  await mutateRecord(id, (r)=>({...r, remark: val}));
+  noteOpen[id] = false;
+  toast('Note saved');
+}
+
+function requireMe(){
+  if(!me){
+    toast('Enter your name first');
+    document.getElementById('f-me').focus();
+    return false;
+  }
+  return true;
+}
+function requireDb(){
+  if(NOT_CONFIGURED || !db){
+    toast('Firebase is not configured yet — see the setup box above');
+    return false;
+  }
+  return true;
+}
+
+// Checks whether the person already has something claimed in the *other*
+// list for this outlet (Daily Task vs Checking List), since only the
+// currently-open list's state is held locally.
+async function findClaimInOtherList(){
+  const otherCat = curCat === 'daily' ? 'check' : 'daily';
+  if(otherCat === 'check' && (!DATA[curOutlet].check || DATA[curOutlet].check.length === 0)) return null;
+  try{
+    const snap = await db.collection('maintenance_state').doc(`${curOutlet}_${otherCat}`).get();
+    const tasks = (snap.exists && snap.data().tasks) || {};
+    const foundId = Object.keys(tasks).find(tid => tasks[tid] && tasks[tid].status === 'claimed' && tasks[tid].claimedBy === me);
+    if(foundId){
+      const item = DATA[curOutlet][otherCat].find(it=>it.id===foundId);
+      return { text: item ? item.x : foundId, cat: otherCat };
+    }
+  }catch(e){ console.error(e); }
+  return null;
+}
+
+async function onTaskTap(id){
+  if(!requireDb() || !requireMe()) return;
+  const r = getRecord(id);
+  if(r.status === 'open'){
+    if(claimLock){
+      toast('Just a moment — claiming your last task…');
+      return;
+    }
+    const existingId = Object.keys(state).find(tid=>{
+      const rec = state[tid];
+      return rec && rec.status === 'claimed' && rec.claimedBy === me;
+    });
+    if(existingId){
+      const existingItem = items().find(it=>it.id===existingId);
+      toast(`Finish or unclaim "${existingItem ? existingItem.x : 'your current task'}" first`);
+      return;
+    }
+    claimLock = true;
+    try{
+      const elsewhere = await findClaimInOtherList();
+      if(elsewhere){
+        toast(`Finish or unclaim "${elsewhere.text}" in ${CAT_LABEL[elsewhere.cat]} first`);
+        return;
+      }
+      // Re-check local state in case a claim landed while we were awaiting the network read above.
+      const stillOpen = getRecord(id).status === 'open';
+      const nowExisting = Object.keys(state).find(tid=>{
+        const rec = state[tid];
+        return rec && rec.status === 'claimed' && rec.claimedBy === me;
+      });
+      if(!stillOpen || nowExisting){
+        toast('That task changed — try again');
+        return;
+      }
+      await mutateRecord(id, rec=>({...rec, status:'claimed', claimedBy: me, claimedAt: Date.now()}));
+      logActivity('claimed', id);
+      toast('Claimed', { actionLabel: 'UNDO', onAction: ()=>unclaimTask(id) });
+    } finally {
+      claimLock = false;
+    }
+  } else if(r.status === 'claimed'){
+    if(r.claimedBy && r.claimedBy !== me){
+      toast(`Already claimed by ${r.claimedBy}`);
+      return;
+    }
+    openDoneModal(id);
+  } else if(r.status === 'done'){
+    if(confirm('Reopen this task?')){
+      await mutateRecord(id, rec=>({...rec, status:'open', claimedBy:null, claimedAt:null, doneBy:null, doneAt:null, actualMs:null}));
+      logActivity('reopened', id);
+      toast('Reopened');
+    }
+  }
+}
+
+// Shows the "mark done" modal with an optional note field, pre-filled with
+// any existing note. Confirming performs the same completion logic as
+// before, plus saves whatever note text is present.
+let doneModalTaskId = null;
+function openDoneModal(id){
+  doneModalTaskId = id;
+  const it = items().find(t=>t.id===id);
+  const r = getRecord(id);
+  document.getElementById('modal-task-name').textContent = it ? it.x : '';
+  document.getElementById('modal-note-input').value = r.remark || '';
+  document.getElementById('done-modal').classList.add('show');
+  setTimeout(()=>document.getElementById('modal-note-input').focus(), 50);
+}
+
+function closeDoneModal(){
+  document.getElementById('done-modal').classList.remove('show');
+  doneModalTaskId = null;
+}
+
+async function confirmDone(){
+  const id = doneModalTaskId;
+  if(!id) return;
+  const noteVal = document.getElementById('modal-note-input').value.trim();
+  closeDoneModal();
+
+  const r = getRecord(id);
+  const prevLastDoneAt = r.lastDoneAt, prevLastDoneBy = r.lastDoneBy, prevLastActualMs = r.lastActualMs;
+  const finishedAt = Date.now();
+  await mutateRecord(id, rec=>{
+    const actualMs = finishedAt - (rec.claimedAt || finishedAt);
+    return {...rec, status:'done', doneBy: me, doneAt: finishedAt, actualMs, remark: noteVal,
+      lastDoneAt: finishedAt, lastDoneBy: me, lastActualMs: actualMs};
+  });
+  logActivity('done', id);
+  toast('Marked done', { actionLabel: 'UNDO', onAction: ()=>undoDone(id, prevLastDoneAt, prevLastDoneBy, prevLastActualMs) });
+}
+
+// Undo an accidental claim — separate from the main tap so a stray tap on
+// "Open" can be reversed without walking it forward to Done first.
+async function unclaimTask(id){
+  if(!requireDb() || !requireMe()) return;
+  const r = getRecord(id);
+  if(r.status !== 'claimed' || r.claimedBy !== me) return;
+  await mutateRecord(id, rec=>({...rec, status:'open', claimedBy:null, claimedAt:null}));
+  logActivity('unclaimed', id);
+  toast('Unclaimed');
+}
+
+// Undo a "Marked done" tap — restores In Progress and rolls back the
+// last-completed history to whatever it was before this tap, so an
+// accidental tap doesn't pollute the neglect-tracking data.
+async function undoDone(id, prevLastDoneAt, prevLastDoneBy, prevLastActualMs){
+  if(!requireDb()) return;
+  await mutateRecord(id, rec=>({
+    ...rec, status:'claimed', doneBy:null, doneAt:null, actualMs:null,
+    lastDoneAt: prevLastDoneAt || null, lastDoneBy: prevLastDoneBy || null, lastActualMs: prevLastActualMs || null
+  }));
+  logActivity('unclaimed', id);
+  toast('Undone — back to In progress');
+}
+
+// Per-task merge write — only this task's field changes, so two teams editing
+// different tasks at the same time never clobber each other.
+async function mutateRecord(id, fn){
+  const current = state[id] || {status:'open'};
+  const updated = fn(current);
+  state[id] = updated;          // optimistic local update for instant feedback
+  renderList();
+  updateStatbar();
+  try{
+    await stateDocRef().set({ tasks: { [id]: updated } }, { merge: true });
+  }catch(e){
+    console.error(e);
+    toast('Could not save — check your connection');
+  }
+}
+
+async function logActivity(action, id){
+  const it = items().find(t=>t.id===id);
+  try{
+    await activityColRef().add({ ts: Date.now(), who: me, action, cat: curCat, grp: (it && it.g) || null, text: it ? it.x : (id || '') });
+  }catch(e){ console.error(e); }
+}
+
+function renderActivity(log){
+  const el = document.getElementById('activity-feed');
+  if(!log || log.length === 0){ el.innerHTML = '<div class="empty">No activity yet.</div>'; return; }
+  el.innerHTML = '';
+  log.slice(0,20).forEach(ev=>{
+    const verb = ev.action === 'claimed' ? 'claimed' : ev.action === 'done' ? 'marked done' : ev.action === 'unclaimed' ? 'unclaimed' : 'reopened';
+    const row = document.createElement('div');
+    row.className = 'feed-row';
+    row.innerHTML = `<span class="feed-who">${ev.who || '—'}</span><span>${verb} "${ev.text}"</span><span class="feed-when">${timeAgo(ev.ts)}</span>`;
+    el.appendChild(row);
+  });
+}
+
+function renderArchiveList(arch){
+  const el = document.getElementById('archive-list');
+  if(!arch || arch.length === 0){ el.innerHTML = '<div class="empty">No past weeks recorded yet.</div>'; return; }
+  el.innerHTML = '';
+  arch.forEach(a=>{
+    const row = document.createElement('div');
+    row.className = 'archive-row';
+    row.style.cursor = a.snapshotTasks ? 'pointer' : 'default';
+    row.innerHTML = `
+      <div class="archive-main">
+        <div class="a-title">${CAT_LABEL[a.cat] || a.cat} — reset by ${a.by || '—'}</div>
+        <div class="a-meta">${new Date(a.ts).toLocaleDateString()} · ${a.done}/${a.total} completed${a.snapshotTasks ? ' · tap for detail' : ''}</div>
+      </div>
+      <div class="archive-pct">${a.total ? Math.round((a.done/a.total)*100) : 0}%</div>`;
+    if(a.snapshotTasks){
+      row.addEventListener('click', ()=>showArchiveDetail(a));
+    }
+    el.appendChild(row);
+
+    if(a._open && a.snapshotTasks){
+      const box = document.createElement('div');
+      box.style.cssText = 'margin:-4px 0 8px;padding:10px 12px;background:var(--deck-raised);border:1px solid var(--line);border-radius:8px;font-size:14px;';
+      const catItems = DATA[curOutlet][a.cat] || [];
+      const lines = catItems.map(it=>{
+        const r = a.snapshotTasks[it.id];
+        if(!r || r.status === 'open') return null;
+        const who = r.status === 'done' ? (r.doneBy || '—') : (r.claimedBy || '—');
+        const label = r.status === 'done' ? 'Done' : 'In progress';
+        return `<div style="padding:3px 0;border-top:1px solid var(--line-soft);">${it.x} — <strong>${label}</strong> by ${who}</div>`;
+      }).filter(Boolean);
+      box.innerHTML = lines.length ? lines.join('') : '<div class="empty">Nothing was marked in this snapshot.</div>';
+      el.appendChild(box);
+    }
+  });
+}
+
+function showArchiveDetail(a){
+  a._open = !a._open;
+  renderArchiveList(window._lastArchive || []);
+}
+
+function subscribeState(){
+  if(unsubState) unsubState();
+  unsubState = stateDocRef().onSnapshot(doc=>{
+    state = (doc.exists && doc.data().tasks) || {};
+    renderGroupTabs();
+    renderList();
+    updateStatbar();
+    updateWeekStatus();
+    setConn('live');
+  }, err=>{ console.error(err); setConn('err'); toast('Sync error — check Firebase config/rules'); });
+}
+
+function subscribeActivity(){
+  if(unsubActivity) unsubActivity();
+  unsubActivity = activityColRef().orderBy('ts','desc').limit(80).onSnapshot(snap=>{
+    window._lastActivityRaw = snap.docs.map(d=>d.data());
+    renderFilteredActivity();
+  }, err=>console.error(err));
+}
+
+// Re-applies the cat/group filter against the cached activity feed —
+// called both on new Firestore data and whenever the group tab changes locally.
+function renderFilteredActivity(){
+  const raw = window._lastActivityRaw || [];
+  const filtered = raw.filter(ev=>{
+    if(ev.cat !== curCat) return false;
+    if(curCat === 'daily' && curGroup !== 'All' && ev.grp !== curGroup) return false;
+    return true;
+  });
+  renderActivity(filtered.slice(0, 20));
+}
+
+function subscribeArchive(){
+  if(unsubArchive) unsubArchive();
+  window._lastArchive = [];
+  updateWeekStatus();
+  unsubArchive = archiveColRef().orderBy('ts','desc').limit(30).onSnapshot(snap=>{
+    window._lastArchive = snap.docs.map(d=>d.data()).filter(a=>a.cat===curCat).slice(0,10);
+    renderArchiveList(window._lastArchive);
+    updateWeekStatus();
+  }, err=>console.error(err));
+}
+
+function updateWeekStatus(){
+  const el = document.getElementById('week-status');
+  const dow = RESET_DOW[curOutlet];
+  if(curCat !== 'daily' || dow === undefined){
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'flex';
+
+  const mostRecentReset = (window._lastArchive && window._lastArchive[0]) ? window._lastArchive[0].ts : null;
+  const dayName = DOW_NAME[dow];
+  const boundary = currentWeekBoundary();
+  const deadline = nextDeadline();
+  const hoursToDeadline = (deadline - Date.now()) / 3600000;
+  const deadlineStr = new Date(deadline).toLocaleString(undefined, {weekday:'short', hour:'numeric', minute:'2-digit'});
+
+  const poolItems = DATA[curOutlet].daily.filter(it=>it.g === 'Pool Maintenance');
+  const poolDone = poolItems.filter(it=>getRecord(it.id).status === 'done').length;
+  const poolReady = poolItems.length === 0 || poolDone === poolItems.length;
+  const poolWarning = !poolReady
+    ? ` <span style="color:#B0472A;font-weight:700;">🏊 ${poolItems.length - poolDone} Pool Maintenance task${poolItems.length-poolDone===1?'':'s'} still open before peak.</span>`
+    : '';
+
+  if(!mostRecentReset || mostRecentReset < boundary){
+    // Not yet reset for this week's cycle.
+    const urgent = hoursToDeadline <= 24;
+    el.className = 'week-status ' + (urgent ? 'overdue' : 'due');
+    const whenText = !mostRecentReset ? "No week has been started yet." : `Last reset was before this week's cycle.`;
+    el.innerHTML = `
+      <div class="ws-text">${whenText} ${DATA[curOutlet].label} is usually covered on <strong>${dayName}s</strong> — needs to be fresh and done before peak starts (<strong>${deadlineStr}</strong>).</div>
+      <button id="ws-reset-btn">Start this week ↻</button>`;
+    document.getElementById('ws-reset-btn').addEventListener('click', startNewWeek);
+  } else if(hoursToDeadline <= 24 && !poolReady){
+    // Reset already happened this week, but the clock's running out and pool work isn't finished.
+    el.className = 'week-status overdue';
+    el.innerHTML = `<div class="ws-text">⏰ Peak starts <strong>${deadlineStr}</strong> — less than a day away.${poolWarning}</div>`;
+  } else {
+    el.className = 'week-status fresh';
+    el.innerHTML = `<div class="ws-text">✓ <strong>This week's list is fresh</strong> — started ${dateOrAgo(mostRecentReset)}. Needs to stay ready before peak starts <strong>${deadlineStr}</strong>.${poolWarning}</div>`;
+  }
+}
+
+function subscribeAll(){
+  renderTabs();
+  if(!requireDb()) return;
+  subscribeState();
+  subscribeActivity();
+  subscribeArchive();
+}
+
+async function startNewWeek(){
+  if(!requireDb() || !requireMe()) return;
+  const fullItems = items(); // always the whole list for this category, regardless of which group tab is selected
+  const doneCount = fullItems.filter(it=>getRecord(it.id).status==='done').length;
+  const s = { done: doneCount, total: fullItems.length };
+  const typed = prompt(`Start a new week for ${DATA[curOutlet].label} — ${CAT_LABEL[curCat]}?\n\nThis reopens every task (${s.done}/${s.total} currently done). The full detail is saved to Past Weeks first, so nothing is lost — but it will look like a fresh list afterward.\n\nType RESET to confirm:`);
+  if(!typed || typed.trim().toUpperCase() !== 'RESET') return;
+
+  try{
+    const snap = await stateDocRef().get();
+    const tasks = (snap.exists && snap.data().tasks) || {};
+
+    // Full detail is preserved here even though the summary view only shows counts.
+    await archiveColRef().add({ ts: Date.now(), by: me, cat: curCat, done: s.done, total: s.total, snapshotTasks: tasks });
+
+    const resetTasks = {};
+    Object.keys(tasks).forEach(id=>{
+      resetTasks[id] = {
+        status:'open', remark: tasks[id].remark || '',
+        claimedBy:null, claimedAt:null, doneBy:null, doneAt:null, actualMs:null,
+        lastDoneAt: tasks[id].lastDoneAt || null, lastDoneBy: tasks[id].lastDoneBy || null, lastActualMs: tasks[id].lastActualMs || null
+      };
+    });
+    await stateDocRef().set({ tasks: resetTasks }, { merge: false });
+    await logActivity('reopened', null);
+    toast('New week started');
+  }catch(e){
+    console.error(e);
+    toast('Could not start new week — check your connection');
+  }
+}
+
+document.getElementById('f-me').addEventListener('input', (e)=>{
+  me = e.target.value.trim();
+  try{ localStorage.setItem('maintenance-my-name', me); }catch(err){}
+  document.getElementById('me-badge').style.display = me ? '' : 'none';
+  document.getElementById('me-badge').textContent = me;
+});
+
+document.getElementById('f-search').addEventListener('input', (e)=>{
+  curSearch = e.target.value;
+  renderList();
+});
+
+document.querySelectorAll('.chip[data-filter]').forEach(chip=>{
+  chip.addEventListener('click', ()=>{
+    document.querySelectorAll('.chip[data-filter]').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active');
+    curFilter = chip.dataset.filter;
+    renderList();
+  });
+});
+
+document.getElementById('chip-sort-oldest').addEventListener('click', (e)=>{
+  curSortOldest = !curSortOldest;
+  e.target.classList.toggle('active', curSortOldest);
+  renderList();
+});
+
+document.getElementById('btn-newweek').addEventListener('click', startNewWeek);
+
+document.getElementById('modal-cancel').addEventListener('click', closeDoneModal);
+document.getElementById('modal-confirm').addEventListener('click', confirmDone);
+document.getElementById('done-modal').addEventListener('click', (e)=>{
+  if(e.target.id === 'done-modal') closeDoneModal();
+});
+
+(function init(){
+  try{
+    const saved = localStorage.getItem('maintenance-my-name');
+    if(saved){
+      me = saved;
+      document.getElementById('f-me').value = me;
+      document.getElementById('me-badge').style.display = '';
+      document.getElementById('me-badge').textContent = me;
+    }
+  }catch(e){ /* no saved name yet */ }
+
+  if(NOT_CONFIGURED){
+    document.getElementById('setup-banner').style.display = 'block';
+    renderTabs();
+    renderList();
+    updateStatbar();
+    setConn('err');
+  } else {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    subscribeAll();
+  }
+
+  setInterval(()=>{
+    document.querySelectorAll('.live-timer').forEach(el=>{
+      const start = parseInt(el.dataset.start, 10);
+      if(!isNaN(start)) el.textContent = formatClock(Date.now() - start);
+    });
+  }, 1000);
+})();
+</script>
+</body>
+</html>
