@@ -50,6 +50,11 @@
   .snap-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;}
   .snap-outlet{font-family:'Archivo',sans-serif;font-weight:800;font-size:20px;}
   .snap-active{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--teal-deep);background:#E3EEEE;padding:3px 9px;border-radius:20px;}
+  .snap-oncall{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;color:var(--teal-deep);
+    background:#E3EEEE;padding:6px 10px;border-radius:6px;margin-bottom:12px;
+  }
+  .snap-oncall.empty{color:var(--ink-soft);background:var(--deck);font-weight:400;}
   .snap-row{display:flex;align-items:center;gap:10px;padding:6px 0;}
   .snap-label{flex:0 0 108px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);}
   .snap-bar{flex:1;height:9px;background:var(--deck);border-radius:6px;overflow:hidden;border:1px solid var(--line);}
@@ -63,6 +68,15 @@
   /* Attention list */
   .att-row{display:flex;align-items:center;gap:10px;padding:11px 12px;background:var(--deck-raised);border:1px solid var(--line);border-radius:8px;margin-bottom:8px;}
   .att-outlet{font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:700;background:var(--ink);color:var(--deck-raised);padding:4px 8px;border-radius:6px;flex:0 0 auto;}
+  .att-outlet-head{
+    display:flex;justify-content:space-between;align-items:center;gap:10px;
+    margin:18px 0 8px;font-family:'Archivo',sans-serif;font-weight:800;font-size:15px;
+  }
+  .att-outlet-head:first-child{margin-top:0;}
+  .att-outlet-count{
+    font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:600;color:#8a2f1c;
+    background:var(--danger-bg,#FBEAE5);padding:3px 9px;border-radius:20px;
+  }
   .att-main{flex:1;min-width:0;}
   .att-text{font-size:14.5px;line-height:1.35;}
   .att-meta{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);margin-top:2px;}
@@ -104,7 +118,8 @@
 
   <section>
     <h2>Needs attention</h2>
-    <p class="hint">Everything across every outlet that's never been done, or hasn't been done in 21+ days — worst first.</p>
+    <p class="hint">Never done, or not done in 14+ days — worst first.</p>
+    <div class="toggle-row" id="att-outlet-toggle"></div>
     <div id="att-list"></div>
   </section>
 
@@ -1277,14 +1292,15 @@ function buildSnapCard(outlet){
   const activeNames = new Set();
   Object.values(tasks).forEach(r=>{ if(r && r.status==='claimed' && r.claimedBy) activeNames.add(r.claimedBy); });
   Object.values(checkTasks).forEach(r=>{ if(r && r.status==='claimed' && r.claimedBy) activeNames.add(r.claimedBy); });
+  const namesList = [...activeNames];
 
   const card = document.createElement('div');
   card.className = 'snap-card';
   card.innerHTML = `
     <div class="snap-head">
       <div class="snap-outlet">${DATA[outlet].label}</div>
-      ${activeNames.size ? `<div class="snap-active">${activeNames.size} active now</div>` : ''}
     </div>
+    ${namesList.length ? `<div class="snap-oncall">🔧 On duty: ${namesList.join(', ')}</div>` : `<div class="snap-oncall empty">No one currently active</div>`}
     ${groupRowsHtml}
     ${check ? `
     <div class="snap-row" style="margin-top:4px;padding-top:8px;border-top:1px dashed var(--line);">
@@ -1327,6 +1343,20 @@ function renderSnapshot(){
   });
 }
 
+let curAttentionOutlet = 'ALL';
+
+function orderedOutletKeys(){
+  const byDay = {};
+  Object.keys(DATA).forEach(outlet=>{
+    const dow = RESET_DOW[outlet];
+    const key = dow === undefined ? 'unscheduled' : dow;
+    (byDay[key] = byDay[key] || []).push(outlet);
+  });
+  const dayKeys = [1,2,3,4,5].filter(d=>byDay[d]);
+  if(byDay['unscheduled']) dayKeys.push('unscheduled');
+  return dayKeys.flatMap(k=>byDay[k]);
+}
+
 function renderAttention(){
   const el = document.getElementById('att-list');
   const flagged = [];
@@ -1341,25 +1371,61 @@ function renderAttention(){
           flagged.push({ outlet, cat, text: it.x, never: true, days: Infinity });
         } else {
           const days = (Date.now() - lastDoneAt) / 86400000;
-          if(days >= 21) flagged.push({ outlet, cat, text: it.x, never: false, days, lastDoneAt, lastDoneBy: r.lastDoneBy });
+          if(days >= 14) flagged.push({ outlet, cat, text: it.x, never: false, days, lastDoneAt, lastDoneBy: r.lastDoneBy });
         }
       });
     });
   });
-  flagged.sort((a,b)=>b.days - a.days);
 
-  if(flagged.length === 0){ el.innerHTML = '<div class="empty">Nothing flagged — everything is either done or was done within the last 3 weeks. Nice.</div>'; return; }
+  const byOutlet = {};
+  flagged.forEach(f=>{ (byOutlet[f.outlet] = byOutlet[f.outlet] || []).push(f); });
+  Object.values(byOutlet).forEach(list=>list.sort((a,b)=>b.days - a.days));
+
+  // Tabs: outlet order follows the weekly schedule, each showing its own flagged count.
+  const toggle = document.getElementById('att-outlet-toggle');
+  toggle.innerHTML = '';
+  const allChip = document.createElement('span');
+  allChip.className = 'chip' + (curAttentionOutlet === 'ALL' ? ' active' : '');
+  allChip.textContent = `All (${flagged.length})`;
+  allChip.addEventListener('click', ()=>{ curAttentionOutlet = 'ALL'; renderAttention(); });
+  toggle.appendChild(allChip);
+
+  orderedOutletKeys().forEach(outlet=>{
+    const count = (byOutlet[outlet] || []).length;
+    const chip = document.createElement('span');
+    chip.className = 'chip' + (curAttentionOutlet === outlet ? ' active' : '');
+    chip.textContent = `${DATA[outlet].label} (${count})`;
+    chip.addEventListener('click', ()=>{ curAttentionOutlet = outlet; renderAttention(); });
+    toggle.appendChild(chip);
+  });
+
+  if(flagged.length === 0){ el.innerHTML = '<div class="empty">Nothing flagged — everything is either done or was done within the last 2 weeks. Nice.</div>'; return; }
+
+  const outletKeys = curAttentionOutlet === 'ALL'
+    ? Object.keys(byOutlet).sort((a,b)=>byOutlet[b].length - byOutlet[a].length)
+    : (byOutlet[curAttentionOutlet] ? [curAttentionOutlet] : []);
+
+  if(outletKeys.length === 0){ el.innerHTML = '<div class="empty">Nothing flagged for this outlet. Nice.</div>'; return; }
+
   el.innerHTML = '';
-  flagged.slice(0,60).forEach(f=>{
-    const row = document.createElement('div');
-    row.className = 'att-row';
-    row.innerHTML = `
-      <span class="att-outlet">${DATA[f.outlet].label}</span>
-      <div class="att-main">
-        <div class="att-text">${f.text}</div>
-        <div class="att-meta"><span class="att-cat">${CAT_LABEL[f.cat]}</span> · <span class="att-bad">${f.never ? 'Never done before' : dateOrAgo(f.lastDoneAt) + (f.lastDoneBy ? ' by ' + f.lastDoneBy : '')}</span></div>
-      </div>`;
-    el.appendChild(row);
+  outletKeys.forEach(outlet=>{
+    const items = byOutlet[outlet];
+    if(curAttentionOutlet === 'ALL'){
+      const head = document.createElement('div');
+      head.className = 'att-outlet-head';
+      head.innerHTML = `<span>${DATA[outlet].label}</span><span class="att-outlet-count">${items.length} flagged</span>`;
+      el.appendChild(head);
+    }
+    items.forEach(f=>{
+      const row = document.createElement('div');
+      row.className = 'att-row';
+      row.innerHTML = `
+        <div class="att-main">
+          <div class="att-text">${f.text}</div>
+          <div class="att-meta"><span class="att-cat">${CAT_LABEL[f.cat]}</span> · <span class="att-bad">${f.never ? 'Never done before' : dateOrAgo(f.lastDoneAt) + (f.lastDoneBy ? ' by ' + f.lastDoneBy : '')}</span></div>
+        </div>`;
+      el.appendChild(row);
+    });
   });
 }
 
