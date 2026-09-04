@@ -381,10 +381,13 @@ const dateKey = d => d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()
 // date, invisible until a supervisor manually looks up that date. Treating
 // the operational day as not changing until well past any realistic
 // knock-off time avoids all of that.
-const DAY_CUTOFF_HOUR = 5;
+const DAY_CUTOFF_HOUR = 6;
+const DAY_CUTOFF_MINUTE = 30;
 function operationalNow(){
   const d = new Date();
-  if(d.getHours() < DAY_CUTOFF_HOUR) d.setDate(d.getDate()-1);
+  const beforeCutoff = d.getHours() < DAY_CUTOFF_HOUR ||
+    (d.getHours() === DAY_CUTOFF_HOUR && d.getMinutes() < DAY_CUTOFF_MINUTE);
+  if(beforeCutoff) d.setDate(d.getDate()-1);
   return d;
 }
 const todayKey = () => dateKey(operationalNow());
