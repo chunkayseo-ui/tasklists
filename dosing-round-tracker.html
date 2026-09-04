@@ -78,6 +78,11 @@ button.btn.sm,a.btn.sm,span.btn.sm{padding:9px 14px;font-size:13px}
    solid color as a completed state, so the button doesn't read as already-done. */
 button.btn.inprogress{background:var(--warn-soft);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
 button.btn.warn{background:var(--warn);border-color:var(--warn);color:#fff}
+/* Bright, hard-to-miss trigger for reporting a problem -- this is the one
+   button on a stop card that should visually shout, since it's the path from
+   "technician noticed something" to "supervisor can plan a fix". */
+button.btn.urgent{background:var(--urgent);border-color:var(--urgent);color:#fff}
+button.btn.urgent:hover{background:color-mix(in srgb,var(--urgent) 88%,black)}
 button.btn:disabled{opacity:.4;cursor:not-allowed}
 button.link{border:0;background:transparent;color:var(--ink-3);padding:4px;font:400 13px/1.4 "IBM Plex Sans",sans-serif;cursor:pointer;text-decoration:underline}
 
@@ -306,7 +311,6 @@ details.panel[open] summary::after{content:"▴"}
 .issue-form textarea{font-family:"IBM Plex Sans",sans-serif;font-size:14px;padding:10px 11px;
   border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);
   width:100%;resize:vertical;box-sizing:border-box}
-.link.issue-open{color:var(--urgent);text-decoration:none;font-weight:600}
 
 /* overview: outlet status grid */
 .outlet-status-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:8px}
@@ -1559,7 +1563,7 @@ function issueBlock(s){
         <button class="btn sm" id="cancel-issue" style="flex:1">Cancel</button>
       </div>
     </div>`
-    : `<button class="link issue-open" data-openissue="${s.outlet}" style="align-self:flex-start">⚠ Report an issue</button>`;
+    : `<button class="btn urgent sm issue-open" data-openissue="${s.outlet}" style="align-self:flex-start">⚠ Report an issue</button>`;
   return `${list}${trigger}`;
 }
 
@@ -1718,23 +1722,43 @@ function outletStatusGrid(rounds){
 // coming back to it tonight on their own. Deduped the same way the Supervisor
 // board dedupes shared-outlet jobs, so two technicians' mirrored copies of
 // the same job don't show up twice.
+// Any job still undone at a stop the technician has already LEFT -- must-do
+// jobs first (those are the ones that should never really be skipped), but
+// also optional "if time allows" and ad-hoc jobs, since a skipped optional
+// job (like the CC water feature that only got 4 of 5 jobs before Sharul
+// moved on) is exactly the kind of thing a supervisor wants to be able to
+// spot too, even though it never blocked leaving. Deduped the same way the
+// Supervisor board dedupes shared-outlet jobs, so two technicians' mirrored
+// copies of the same job don't show up twice.
 function unfinishedJobs(rounds){
   const seen = new Set(), out = [];
   rounds.forEach(r => r.stops.forEach(s => {
     if(!s.departAt) return;
-    s.tasks.filter(t => t.kind==="required" && !t.doneAt).forEach(t => {
+    s.tasks.filter(t => !t.doneAt).forEach(t => {
       const k = s.outlet+"|"+t.kind+"|"+t.name+"|"+(t.pool||"");
       if(seen.has(k)) return; seen.add(k);
-      out.push({outlet:s.outlet, pool:t.pool||null, name:t.name, person:r.person, departAt:s.departAt});
+      out.push({outlet:s.outlet, pool:t.pool||null, name:t.name, kind:t.kind, person:r.person, departAt:s.departAt});
     });
   }));
+  // Must-do first (the ones that matter most), then optional, then ad-hoc;
+  // within each, in outlet order, so the list reads the same way the
+  // checklist itself does.
+  const kindOrder = {required:0, optional:1, adhoc:2};
+  const outletOrder = new Map(OUTLETS.map((o,i)=>[o.code,i]));
+  out.sort((a,b) => {
+    const k = (kindOrder[a.kind] ?? 3) - (kindOrder[b.kind] ?? 3);
+    return k || ((outletOrder.get(a.outlet) ?? 999) - (outletOrder.get(b.outlet) ?? 999));
+  });
   return out;
 }
 function unfinishedJobsBlock(rounds){
   const list = unfinishedJobs(rounds);
-  if(!list.length) return `<p class="note" style="margin:0">Nothing left open — every must-do job at every stop left tonight is done.</p>`;
+  if(!list.length) return `<p class="note" style="margin:0">Nothing left open — every job at every stop left tonight is done.</p>`;
+  const tagOf = k => k==="required" ? '<span class="tag req">Must do</span>'
+              : k==="optional" ? '<span class="tag opt">If time allows</span>'
+              : '<span class="tag add">Added</span>';
   const rows = list.map(x => `<div class="issue-row">
-    <span class="issue-desc"><strong>${esc(x.outlet)}</strong>${x.pool?` <span class="tag pool">${esc(x.pool)}</span>`:""} — ${esc(x.name)}</span>
+    <span class="issue-desc"><strong>${esc(x.outlet)}</strong>${x.pool?` <span class="tag pool">${esc(x.pool)}</span>`:""} — ${esc(x.name)} ${tagOf(x.kind)}</span>
     <span class="mono muted issue-meta">left by ${esc(x.person)} · ${clockOf(x.departAt)}</span>
   </div>`).join("");
   return `<div class="issue-list">${rows}</div>`;
@@ -2256,6 +2280,12 @@ function routeCard(r, proj, byCode){
       : left
       ? `<span class="tag req">${left} must-do left open</span>`
       : `<span class="tag st-done">All done</span>`;
+    // Any issue raised at this outlet (still open or already planned, but not
+    // yet resolved) shows right here too -- a supervisor scanning routes
+    // shouldn't have to separately check Overview to see that a stop they're
+    // looking at has a heater replacement pending.
+    const issueN = openIssuesFor(o.code).length;
+    const issueTag = issueN ? `<span class="tag urgent">${issueN} issue${issueN>1?"s":""}</span>` : "";
     // A covering stop's note wraps to its own full-width line (flex-wrap on
     // .route-stop already handles this) rather than squeezing into the row.
     const noteLine = (o.covering && o.coveringNote)
@@ -2266,7 +2296,7 @@ function routeCard(r, proj, byCode){
       ${o.covering?'<span class="tag covering">Covering</span>':""}
       <span class="mono muted">${arr}${dep?" – "+dep:" – on site"}</span>
       <span class="mono muted" style="margin-left:auto">${doneN}/${o.tasks.length} jobs</span>
-      ${status}
+      ${status}${issueTag}
       ${noteLine}
     </div>`;
   }).join("");
