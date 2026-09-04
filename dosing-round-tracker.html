@@ -257,6 +257,8 @@ details.panel[open] summary::after{content:"▴"}
 .extra-item .extra-name{flex:1;overflow-wrap:anywhere}
 .extra-add{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:9px}
 .extra-add input[type=text]{flex:1 1 160px}
+.extra-add select.pool-pick{flex:0 0 auto;padding:9px 10px;font-size:13.5px}
+.tag.pool{background:var(--accent-soft);color:var(--accent)}
 .chk{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--ink-2);white-space:nowrap;cursor:pointer}
 .chk input{width:16px;height:16px;accent-color:var(--accent)}
 .tog{font:500 12.5px/1 "IBM Plex Sans",sans-serif;padding:7px 11px;border-radius:999px;
@@ -541,25 +543,42 @@ function scheduledToday(){
   return list.length ? list : OUTLETS.map(o => o.code);
 }
 function tasksFor(outlet){
-  // Most outlets are a single pool, so the branch's required tasks apply as-is.
-  // An outlet with named pools (JE today) gets each required task repeated
-  // once per pool, labelled with the pool it's for, instead of one task that
-  // doesn't say which of several physical pools it covers.
+  // Most outlets are a single pool, so the branch's jobs apply as-is. An outlet
+  // with named pools (JE today) needs the must-do list AND any shared "if time
+  // allows" job repeated once per pool -- every physical pool needs its own
+  // water test, its own vacuuming -- labelled with the pool it's for instead of
+  // one task that doesn't say which of several physical pools it covers.
   const pools = (OUTLETS.find(o => o.code===outlet) || {}).pools;
-  // The pool name is kept as its own field (not folded into the task name) so
-  // the stop card can group same-pool tasks under one heading instead of
-  // repeating "JEIP1 — " on every one of its 3 lines.
-  const req = pools
-    ? pools.flatMap(p => state.cfg.required.map(n => ({id:uid(), name:n, pool:p, kind:"required", startedAt:null, doneAt:null})))
-    : state.cfg.required.map(n => ({id:uid(), name:n, kind:"required", startedAt:null, doneAt:null}));
-  const asg = (state.cfg.assigned[outlet] || []).map(n => ({id:uid(), name:n, kind:"optional", startedAt:null, doneAt:null}));
   // One-time extras only feed NEW rounds on the day they were added — a last-minute
   // job shouldn't need to be remembered and removed by hand before the next visit.
   const today = todayKey();
-  const ex  = (state.cfg.extra[outlet] || [])
-    .filter(e => !e.oneTime || e.addedDate === today)
+  const extraList = (state.cfg.extra[outlet] || []).filter(e => !e.oneTime || e.addedDate === today);
+
+  if(!pools){
+    const req = state.cfg.required.map(n => ({id:uid(), name:n, kind:"required", startedAt:null, doneAt:null}));
+    const asg = (state.cfg.assigned[outlet] || []).map(n => ({id:uid(), name:n, kind:"optional", startedAt:null, doneAt:null}));
+    const ex  = extraList.map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null}));
+    return req.concat(asg).concat(ex);
+  }
+
+  // A pooled outlet can also get an ad-hoc job that isn't tied to any one pool
+  // (e.g. "restock chemical shed") — those are added with no e.pool and are
+  // listed first, unheaded, same as the flat list above. Every pool-tagged job
+  // (required, shared "if time allows", and any extra added for that specific
+  // pool) is then grouped together in pool order, so each pool's jobs land
+  // under exactly one heading instead of getting split if an ad-hoc job for
+  // that pool was added after the standing ones.
+  const wholeOutlet = extraList
+    .filter(e => !e.pool)
     .map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null}));
-  return req.concat(asg).concat(ex);
+  const perPool = pools.flatMap(p => {
+    const req = state.cfg.required.map(n => ({id:uid(), name:n, pool:p, kind:"required", startedAt:null, doneAt:null}));
+    const asg = (state.cfg.assigned[outlet] || []).map(n => ({id:uid(), name:n, pool:p, kind:"optional", startedAt:null, doneAt:null}));
+    const ex  = extraList.filter(e => e.pool === p)
+      .map(e => ({id:uid(), name:e.name, pool:p, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null}));
+    return req.concat(asg).concat(ex);
+  });
+  return wholeOutlet.concat(perPool);
 }
 
 // Drops one-time extras whose day has passed, so the supervisor never has to
@@ -675,41 +694,50 @@ function withRound(fn, errMsg){
  * started or finished is never touched, so nobody's real timing data gets
  * rewritten out from under them.
  */
+// job may carry a `pool` field (the physical pool it's tagged to, e.g. "JEIP1")
+// -- add/remove matches on name+kind+pool so a job scoped to one pool never
+// touches another pool's identical-looking task.
 async function syncExtraToLiveRounds(outlet, job, action){
   const today = todayKey();
   const jobs = Object.values(state.rounds).filter(r => r.date === today);
+  const matches = t => t.name === job.name && t.kind === job.kind && (t.pool||null) === (job.pool||null);
   for(const orig of jobs){
     const r = clone(orig);
     const s = r.stops.find(x => x.outlet === outlet && !x.departAt);
     if(!s) continue;
     let changed = false;
     if(action === "add"){
-      if(!s.tasks.some(t => t.name === job.name && t.kind === job.kind)){
-        s.tasks.push({id:uid(), name:job.name, kind:job.kind, startedAt:null, doneAt:null});
+      if(!s.tasks.some(matches)){
+        s.tasks.push(Object.assign({id:uid(), name:job.name, kind:job.kind, startedAt:null, doneAt:null}, job.pool ? {pool:job.pool} : {}));
         changed = true;
       }
     } else {
       const before = s.tasks.length;
-      s.tasks = s.tasks.filter(t => !(t.name === job.name && t.kind === job.kind && !t.startedAt));
+      s.tasks = s.tasks.filter(t => !(matches(t) && !t.startedAt));
       changed = s.tasks.length !== before;
     }
     if(changed){ try{ await saveRound(r); }catch(e){} }
   }
 }
 
-// The must-do list and the shared optional pool aren't per-outlet, so a single
-// edit (rename, delete, or a per-outlet toggle) can add/drop a job at several
-// outlets at once. This diffs the config before vs. after an edit and pushes
-// each individual add/remove into today's open rounds via the same function
-// per-branch jobs use above, so shared-job edits get the same "takes effect
-// immediately" treatment instead of only applying to rounds started later.
+// The must-do list and the shared optional pool of jobs aren't per-outlet, so a
+// single edit (rename, delete, or a per-outlet toggle) can add/drop a job at
+// several outlets at once. This diffs the config before vs. after an edit and
+// pushes each individual add/remove into today's open rounds via the same
+// function per-branch jobs use above, so shared-job edits get the same "takes
+// effect immediately" treatment instead of only applying to rounds started
+// later. For an outlet with physical pools, both the must-do list and any
+// toggled "if time allows" job always apply to every pool, so the diff is
+// expanded to one entry per pool -- matching how tasksFor() builds them.
 function poolTasksFor(c, outletCode){
   const req = c.required.map(n => ({name:n, kind:"required"}));
   const opt = (c.assigned[outletCode] || []).map(n => ({name:n, kind:"optional"}));
-  return req.concat(opt);
+  const flat = req.concat(opt);
+  const pools = (OUTLETS.find(o => o.code===outletCode) || {}).pools;
+  return pools ? pools.flatMap(p => flat.map(j => Object.assign({pool:p}, j))) : flat;
 }
 async function syncPoolChangeToLiveRounds(before, after){
-  const key = j => j.kind+"|"+j.name;
+  const key = j => j.kind+"|"+j.name+"|"+(j.pool||"");
   for(const o of OUTLETS){
     const b = poolTasksFor(before, o.code), a = poolTasksFor(after, o.code);
     const bKeys = new Set(b.map(key)), aKeys = new Set(a.map(key));
@@ -1034,19 +1062,26 @@ function runRound(r){
 // than re-reading "JEIP1 — " on every single line in a list of 12.
 function taskListHtml(s){
   if(!s.tasks.some(t => t.pool)) return s.tasks.map(t => taskRow(s,t)).join("");
+  // Group strictly by pool rather than by adjacency in the array. A job added
+  // mid-round -- a shared job toggled on, or an ad-hoc job for one pool -- is
+  // pushed onto the END of an already-open round's task list (see
+  // syncExtraToLiveRounds), not spliced back in next to its pool's other jobs,
+  // so grouping can't assume same-pool tasks already sit together.
+  const whole = [], byPool = new Map();
+  s.tasks.forEach(t => {
+    if(!t.pool){ whole.push(t); return; }
+    if(!byPool.has(t.pool)) byPool.set(t.pool, []);
+    byPool.get(t.pool).push(t);
+  });
   // Each pool gets one of 4 colors, cycled in the order its jobs first show up,
   // so a technician can tell "am I still under JEIP1 or did I move to JEIP2"
   // at a glance instead of re-reading the heading text every time.
-  const poolIx = new Map();
-  let lastPool = null, out = "";
-  s.tasks.forEach(t => {
-    if(t.pool && t.pool !== lastPool){
-      if(!poolIx.has(t.pool)) poolIx.set(t.pool, poolIx.size % 4 + 1);
-      out += `<div class="pool-head pool-c${poolIx.get(t.pool)}">${esc(t.pool)}</div>`;
-      lastPool = t.pool;
-    }
-    out += taskRow(s,t);
-  });
+  let out = whole.map(t => taskRow(s,t)).join("");
+  let ix = 0;
+  for(const [pool, tasks] of byPool){
+    out += `<div class="pool-head pool-c${(ix++ % 4) + 1}">${esc(pool)}</div>`;
+    out += tasks.map(t => taskRow(s,t)).join("");
+  }
   return out;
 }
 
@@ -1622,17 +1657,27 @@ function taskPanel(){
   const assign = OUTLETS.map(o => {
     const on = state.cfg.assigned[o.code] || [];
     const togs = state.cfg.optional.map(n => `<button class="tog" data-assign="${o.code}|${esc(n)}" aria-pressed="${on.includes(n)}">${esc(n)}</button>`).join("");
+    // A job added just for this outlet can be tagged to one of its physical pools
+    // (e.g. "replace ladder pad" only applies to JEIP2) or left untagged for
+    // something that isn't any one pool's job, like restocking the chemical shed.
     const extras = (state.cfg.extra[o.code] || []).map(e => `<div class="extra-item">
         <span class="extra-name">${esc(e.name)}</span>
+        ${e.pool ? `<span class="tag pool">${esc(e.pool)}</span>` : ""}
         ${e.kind==="required" ? '<span class="tag req">Must do</span>' : '<span class="tag opt">If time allows</span>'}
         ${e.oneTime ? '<span class="tag once">One-time</span>' : '<span class="tag rec">Recurring</span>'}
         <button class="link" data-rmextra="${o.code}|${e.id}">remove</button>
       </div>`).join("");
+    const poolPick = o.pools ? `<select id="extra-pool-${o.code}" class="pool-pick">
+        <option value="">Whole outlet</option>
+        ${o.pools.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join("")}
+      </select>` : "";
     return `<div class="assign-block">
       <div class="assign-row"><span class="oc">${esc(o.code)}</span>${togs || '<span class="note">No shared job to toggle</span>'}</div>
+      ${o.pools ? `<p class="note" style="margin:6px 0 0">${esc(o.code)} has ${o.pools.length} pools (${o.pools.join(", ")}) — the must-do list and any shared job you toggle on above apply to all of them automatically. For a job below, pick one pool it's specific to, or leave it "Whole outlet" for something like restocking chemicals.</p>` : ""}
       ${extras ? `<div class="extra-list">${extras}</div>` : ""}
       <div class="extra-add">
         <input type="text" id="extra-new-${o.code}" placeholder="Add a job just for ${esc(o.code)}">
+        ${poolPick}
         <label class="chk"><input type="checkbox" id="extra-req-${o.code}"> Must do</label>
         <label class="chk"><input type="checkbox" id="extra-once-${o.code}" checked> One-time (won't carry to the next visit)</label>
         <button class="btn sm" data-addextra="${o.code}">Add</button>
@@ -1804,20 +1849,24 @@ function wire(){
   each("[data-addextra]", b => {
     const outlet = b.dataset.addextra;
     const inp = $("#extra-new-"+outlet), chk = $("#extra-req-"+outlet), onceChk = $("#extra-once-"+outlet);
+    const poolSel = $("#extra-pool-"+outlet);
     const v = inp ? inp.value.trim() : ""; if(!v) return;
     const kind = (chk&&chk.checked) ? "required" : "optional";
     const oneTime = !onceChk || onceChk.checked;
+    const pool = (poolSel && poolSel.value) ? poolSel.value : undefined;
     const c = cfg();
-    c.extra[outlet] = (c.extra[outlet]||[]).concat([{id:uid(), name:v, kind, oneTime, addedDate: todayKey()}]);
+    const entry = {id:uid(), name:v, kind, oneTime, addedDate: todayKey()};
+    if(pool) entry.pool = pool;
+    c.extra[outlet] = (c.extra[outlet]||[]).concat([entry]);
     saveCfg(c);
-    syncExtraToLiveRounds(outlet, {name:v, kind}, "add");
+    syncExtraToLiveRounds(outlet, {name:v, kind, pool}, "add");
   });
   each("[data-rmextra]", b => {
     const [outlet, id] = two(b.dataset.rmextra); const c = cfg();
     const removed = (c.extra[outlet]||[]).find(e => e.id === id);
     c.extra[outlet] = (c.extra[outlet]||[]).filter(e => e.id !== id);
     saveCfg(c);
-    if(removed) syncExtraToLiveRounds(outlet, {name:removed.name, kind:removed.kind}, "remove");
+    if(removed) syncExtraToLiveRounds(outlet, {name:removed.name, kind:removed.kind, pool:removed.pool}, "remove");
   });
   document.querySelectorAll('[id^="extra-new-"]').forEach(inp => inp.addEventListener("keydown", e => {
     if(e.key === "Enter"){ const outlet = inp.id.slice("extra-new-".length); const b = document.querySelector('[data-addextra="'+outlet+'"]'); if(b) b.click(); }
