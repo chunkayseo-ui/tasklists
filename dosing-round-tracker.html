@@ -137,6 +137,8 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 
 /* tasks */
 .tasks{display:flex;flex-direction:column;gap:1px;background:var(--line-soft);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.pool-head{background:var(--surface-2);padding:7px 12px 6px;font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--accent)}
+.pool-head:not(:first-child){border-top:1px solid var(--line-soft)}
 .task{background:var(--surface);padding:11px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .task.running{background:var(--warn-soft)}
 .task.finished{background:var(--surface-2)}
@@ -531,8 +533,11 @@ function tasksFor(outlet){
   // once per pool, labelled with the pool it's for, instead of one task that
   // doesn't say which of several physical pools it covers.
   const pools = (OUTLETS.find(o => o.code===outlet) || {}).pools;
+  // The pool name is kept as its own field (not folded into the task name) so
+  // the stop card can group same-pool tasks under one heading instead of
+  // repeating "JEIP1 — " on every one of its 3 lines.
   const req = pools
-    ? pools.flatMap(p => state.cfg.required.map(n => ({id:uid(), name:p+" — "+n, kind:"required", startedAt:null, doneAt:null})))
+    ? pools.flatMap(p => state.cfg.required.map(n => ({id:uid(), name:n, pool:p, kind:"required", startedAt:null, doneAt:null})))
     : state.cfg.required.map(n => ({id:uid(), name:n, kind:"required", startedAt:null, doneAt:null}));
   const asg = (state.cfg.assigned[outlet] || []).map(n => ({id:uid(), name:n, kind:"optional", startedAt:null, doneAt:null}));
   // One-time extras only feed NEW rounds on the day they were added — a last-minute
@@ -1010,6 +1015,20 @@ function runRound(r){
   </div>`;
 }
 
+// Most stops are a flat job list. A stop whose tasks carry a `pool` (JE
+// today) instead gets a heading above each pool's own 3 jobs, so a
+// technician sees "JEIP1" once and reads straight down its jobs, rather
+// than re-reading "JEIP1 — " on every single line in a list of 12.
+function taskListHtml(s){
+  if(!s.tasks.some(t => t.pool)) return s.tasks.map(t => taskRow(s,t)).join("");
+  let lastPool = null, out = "";
+  s.tasks.forEach(t => {
+    if(t.pool && t.pool !== lastPool){ out += `<div class="pool-head">${esc(t.pool)}</div>`; lastPool = t.pool; }
+    out += taskRow(s,t);
+  });
+  return out;
+}
+
 function taskRow(s, t){
   const running = t.startedAt && !t.doneAt, finished = !!t.doneAt;
   const status = finished ? '<span class="tag st-done">Done</span>'
@@ -1105,7 +1124,7 @@ function stopCard(s, i, r, isHeading){
            <button class="btn big" style="flex:1" data-canceldepart="${s.outlet}">Cancel</button>
          </div>`;
     body = `<div class="stop-body">
-      <div class="tasks">${s.tasks.map(t => taskRow(s,t)).join("")}</div>
+      <div class="tasks">${taskListHtml(s)}</div>
       ${adding ? `
       <div class="addbox">
         <input type="text" id="newtask" placeholder="What else did you do here?" autocomplete="off">
