@@ -171,6 +171,11 @@ button.btn.act.done,span.btn.act.done{background:var(--ok-soft);color:var(--ok);
    isn't allowed to act on it. */
 span.btn.act{cursor:default}
 span.btn.act.inprogress{background:var(--warn-soft);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
+/* A finished job that isn't this technician's own claim -- greyed out
+   instead of the "mine, reopenable" green, so a job someone else already
+   did never looks like something worth (or possible) to tap. */
+span.btn.act.done.locked{background:var(--surface-2);color:var(--ink-3);border-color:var(--line)}
+.task-conflict{display:block;width:100%;font-size:11px;line-height:1.4;color:var(--warn);margin-top:2px}
 .mark{width:20px;height:20px;border-radius:50%;flex:none;display:grid;place-items:center;font:600 11px/1 "IBM Plex Mono",monospace;
   border:1px solid var(--line);background:var(--surface-2);color:var(--ink-3)}
 .task.finished .mark{background:var(--ok);border-color:var(--ok);color:#fff}
@@ -418,6 +423,28 @@ function othersOn(code){
     if(r.stops.some(s => s.outlet === code)) names.add(r.person);
   });
   return [...names];
+}
+
+// Two technicians can each end up with their own independent copy of the
+// same physical job at a shared outlet -- most often because both already
+// had that outlet in their round before live claim-syncing ever connected
+// the two copies, so each finished "their" copy under their own name with
+// nobody the wiser. If another round's copy of this exact job (same outlet,
+// name, kind, pool) is ALSO finished but credited to someone else, that's a
+// live conflict: this task's own claimedBy can't be trusted as sole truth,
+// so it should never be treated as editable purely off this round's own
+// data. Returns the other claimer's name, or null if every round agrees.
+function conflictingClaimer(outlet, t){
+  if(!t.doneAt || !t.claimedBy) return null;
+  const today = todayKey();
+  for(const r of Object.values(state.rounds)){
+    if(r.date !== today || !r.stops) continue;
+    const s = r.stops.find(x => x.outlet === outlet);
+    if(!s) continue;
+    const m = s.tasks.find(x => x.name===t.name && x.kind===t.kind && (x.pool||null)===(t.pool||null));
+    if(m && m.doneAt && m.claimedBy && m.claimedBy !== t.claimedBy) return m.claimedBy;
+  }
+  return null;
 }
 
 /* ================= storage ================= */
@@ -1238,31 +1265,50 @@ function taskListHtml(s){
 
 function taskRow(s, t){
   const running = t.startedAt && !t.doneAt, finished = !!t.doneAt;
+  // A finished job whose claim is contradicted by another round's copy of
+  // the same job can't be trusted as this round's alone to edit, no matter
+  // whose name is on it here -- see conflictingClaimer.
+  const conflict = finished ? conflictingClaimer(s.outlet, t) : null;
   // Whether the technician looking at this screen is the one who claimed it.
   // Only the claimer gets a live action button on their own claim; a
   // teammate at the same outlet sees who has it, but can't act on it.
-  const mine = !!t.claimedBy && t.claimedBy === state.me;
+  const mine = !!t.claimedBy && t.claimedBy === state.me && !conflict;
   const status = finished ? '<span class="tag st-done">Done</span>'
                : running  ? '<span class="tag st-prog">In Progress</span>'
                           : '<span class="tag st-open">Open</span>';
   const tag = t.kind==="required" ? '<span class="tag req">Must do</span>'
             : t.kind==="optional" ? '<span class="tag opt">If time allows</span>'
             : '<span class="tag add">Added</span>';
-  let time = "", act = "";
+  let time = "", act = "", conflictNote = "";
   const key = s.outlet+"|"+t.id;
+  const range = (t.startedAt && t.doneAt) ? `${clockOf(t.startedAt)}–${clockOf(t.doneAt)}` : "";
   if(finished){
-    time = `<span class="task-time" style="color:var(--ok)">${dur(mins(t.startedAt,t.doneAt))}</span>`;
+    if(mine){
+      time = `<span class="task-time" style="color:var(--ok)">${dur(mins(t.startedAt,t.doneAt))}${range?" · "+range:""}</span>`;
+    } else {
+      // Someone else's finished job: say who and when, not just that it's done.
+      const credit = conflict || t.claimedBy;
+      time = `<span class="task-time muted">${credit?esc(credit)+" · ":""}${range||dur(mins(t.startedAt,t.doneAt))}</span>`;
+    }
     if(!s.departAt){
       // Tapping Done again is the reopen action -- a native confirm() prompt
       // guards it (wired in wire()), same two-step feel as before without a
-      // second row of buttons crowding an already tight task row.
+      // second row of buttons crowding an already tight task row. A job
+      // that isn't mine (including a conflicted one) renders as a plain,
+      // greyed-out span -- same "Done" label, but visibly not a button and
+      // wired to nothing, so it can't be mistaken for something tappable.
       act = mine
         ? `<button class="btn sm act done" data-taskreopen="${key}">Done</button>`
-        : `<span class="btn sm act done" aria-hidden="true">Done</span>`;
+        : `<span class="btn sm act done locked" aria-hidden="true">Done</span>`;
+    }
+    if(conflict){
+      conflictNote = `<span class="task-conflict">Also recorded as done by ${esc(conflict)} — ask a supervisor to confirm which is right before it's reopened.</span>`;
     }
   } else if(running){
-    time = `<span class="task-time" style="color:var(--warn)">${liveDur(t.startedAt)}</span>`;
     const who = esc(t.claimedBy || "Claimed");
+    time = mine
+      ? `<span class="task-time" style="color:var(--warn)">${liveDur(t.startedAt)}</span>`
+      : `<span class="task-time muted">${who}${t.startedAt?" · since "+clockOf(t.startedAt):""}</span>`;
     // Deliberately not colored like "Done" (which reads as already-finished) —
     // the name button IS the finish action, so it's labeled and colored to
     // match "still in progress, tap when you're actually done" instead. The
@@ -1285,6 +1331,7 @@ function taskRow(s, t){
     <span class="task-main">
       <span class="task-name">${esc(t.name)}</span>
       <span class="task-meta">${status}${tag}${del}</span>
+      ${conflictNote}
     </span>
     ${time}${act}
   </div>`;
