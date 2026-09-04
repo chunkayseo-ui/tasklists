@@ -463,6 +463,13 @@ const dateKey = d => d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()
 // knock-off time avoids all of that.
 const DAY_CUTOFF_HOUR = 6;
 const DAY_CUTOFF_MINUTE = 30;
+// A technician can't arrive somewhere new without first tapping "Leave" at
+// wherever they were -- so a travel gap this short almost always means Leave
+// wasn't tapped until they were already at (or arriving at) the next stop,
+// not that the drive genuinely took under 2 minutes. Flagging it turns an
+// invisible logging slip into something a supervisor can actually see and
+// follow up on.
+const SHORT_TRAVEL_MIN = 2;
 function operationalNow(){
   const d = new Date();
   const beforeCutoff = d.getHours() < DAY_CUTOFF_HOUR ||
@@ -1671,8 +1678,14 @@ function stopCard(s, i, r, isHeading){
     // warning text — easy to hit by accident. A second confirming tap only kicks
     // in when something's actually still open; the common case (everything done)
     // stays a single tap.
+    // Once every must-do job is done, this is exactly the moment a technician
+    // is about to walk out -- a nudge right here, not buried in a menu, is the
+    // best chance of getting Leave tapped when it actually happens instead of
+    // later at the next outlet (which is what quietly turns real travel time
+    // into a false "0 minutes" on the Routes tab).
     const leaveBlock = !left
-      ? `<button class="btn primary big" data-depart="${s.outlet}">Leave ${esc(s.outlet)}</button>`
+      ? `<p class="note" style="margin:0">All must-do jobs done here. Tap <strong>Leave</strong> right when you actually head out — that's what starts the drive-time count to your next stop.</p>
+         <button class="btn primary big" data-depart="${s.outlet}">Leave ${esc(s.outlet)}</button>`
       : !departConfirm
       ? `<p class="note" style="margin:0;color:var(--warn)">${left} must-do job${left>1?"s":""} still open.</p>
          <button class="btn big" data-askdepart="${s.outlet}">Leave ${esc(s.outlet)}</button>`
@@ -2359,9 +2372,19 @@ function routeCard(r, proj, byCode){
     // earlier stop in the sequence is guaranteed departed by this point (see
     // the comment on onSiteNow/lastIdx above), so seq[i-1].departAt always
     // exists here.
-    const gap = i > 0
-      ? `<div class="travel-gap"><span>▼ travel ${dur(mins(seq[i-1].departAt, o.arriveAt))}</span><span class="ln"></span></div>`
-      : "";
+    const gap = (() => {
+      if(i === 0) return "";
+      const gapMin = mins(seq[i-1].departAt, o.arriveAt);
+      // A technician physically can't arrive here without first tapping Leave
+      // at the previous stop -- so a gap this short almost always means Leave
+      // was tapped late (once they'd already reached this outlet), not that
+      // the drive was really near-instant. Flagged so it can be checked with
+      // the technician rather than trusted at face value.
+      const short = gapMin < SHORT_TRAVEL_MIN
+        ? ` <span class="tag req" title="Leave was likely tapped late at the previous stop, not right when they actually left">⚠ check timing</span>`
+        : "";
+      return `<div class="travel-gap"><span>▼ travel ${dur(gapMin)}</span>${short}<span class="ln"></span></div>`;
+    })();
     // The X/Y jobs count is clickable -- expands to the actual list of what's
     // done and what isn't at this stop, right on the Routes tab, instead of a
     // supervisor having to switch to Supervisor/Overview to see which job is
