@@ -62,13 +62,13 @@ h2.sec{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:19px;
 .sec-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .row-2{display:flex;gap:8px}
 
-button.btn,a.btn{font:600 14px/1 "IBM Plex Sans",sans-serif;padding:13px 18px;border-radius:8px;
-  border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
-a.btn{display:inline-block;text-decoration:none}
+button.btn,a.btn,span.btn{font:600 14px/1 "IBM Plex Sans",sans-serif;padding:13px 18px;border-radius:8px;
+  border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;display:inline-block}
+a.btn{text-decoration:none}
 button.btn:focus-visible,a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 button.btn.primary,a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 button.btn.big,a.btn.big{width:100%;padding:16px;font-size:16px}
-button.btn.sm,a.btn.sm{padding:9px 14px;font-size:13px}
+button.btn.sm,a.btn.sm,span.btn.sm{padding:9px 14px;font-size:13px}
 /* Soft amber for "still in progress, tap when done" — deliberately not the same
    solid color as a completed state, so the button doesn't read as already-done. */
 button.btn.inprogress{background:var(--warn-soft);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
@@ -161,10 +161,16 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 .task-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
 .task-time{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:13px;white-space:nowrap}
 .task .act{flex:none}
-/* min-width above stops the job name from being squeezed arbitrarily thin —
-   once it and the two confirm buttons can't both fit on one line, this wraps
-   onto its own row instead of crushing the name column. */
-.undo-confirm{display:flex;gap:8px;flex:none;margin-left:auto}
+/* The X (cancel claim) + claimer's-name (finish) button pair shown on a job
+   the current technician has running. */
+.act-group{display:flex;gap:6px;flex:none}
+button.btn.act.cancel{padding:9px 11px;background:var(--surface);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
+button.btn.act.done,span.btn.act.done{background:var(--ok-soft);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 35%,transparent)}
+/* A <span> rather than <button> for a job someone else claimed or finished —
+   shows their name/status without looking clickable to a technician who
+   isn't allowed to act on it. */
+span.btn.act{cursor:default}
+span.btn.act.inprogress{background:var(--warn-soft);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
 .mark{width:20px;height:20px;border-radius:50%;flex:none;display:grid;place-items:center;font:600 11px/1 "IBM Plex Mono",monospace;
   border:1px solid var(--line);background:var(--surface-2);color:var(--ink-3)}
 .task.finished .mark{background:var(--ok);border-color:var(--ok);color:#fff}
@@ -390,7 +396,6 @@ const state = {
   pickingExtraFor:null,  // outlet code chosen in that picker, waiting on its optional note
   notingOutlet:null,     // outlet code whose covering-note box is open (add or edit)
   adding:null,           // outlet code whose "add task" box is open
-  confirmUndo:null,      // "outlet|taskId" of an Undo pending a second confirming tap
   confirmDepart:null,    // outlet code of a Leave-with-open-must-do pending a second confirming tap
   confirmReopen:null,    // outlet code of a Reopen (undo a departure) pending a second confirming tap
   timeByGroup:"job",     // "Time by job" section: "job" (aggregate) or "outlet" (grouped per branch)
@@ -574,9 +579,9 @@ function tasksFor(outlet){
   const extraList = (state.cfg.extra[outlet] || []).filter(e => !e.oneTime || e.addedDate === today);
 
   if(!pools){
-    const req = state.cfg.required.map(n => ({id:uid(), name:n, kind:"required", startedAt:null, doneAt:null}));
-    const asg = (state.cfg.assigned[outlet] || []).map(n => ({id:uid(), name:n, kind:"optional", startedAt:null, doneAt:null}));
-    const ex  = extraList.map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null}));
+    const req = state.cfg.required.map(n => ({id:uid(), name:n, kind:"required", startedAt:null, doneAt:null, claimedBy:null}));
+    const asg = (state.cfg.assigned[outlet] || []).map(n => ({id:uid(), name:n, kind:"optional", startedAt:null, doneAt:null, claimedBy:null}));
+    const ex  = extraList.map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null}));
     return req.concat(asg).concat(ex);
   }
 
@@ -589,12 +594,12 @@ function tasksFor(outlet){
   // that pool was added after the standing ones.
   const wholeOutlet = extraList
     .filter(e => !e.pool)
-    .map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null}));
+    .map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null}));
   const perPool = pools.flatMap(p => {
-    const req = state.cfg.required.map(n => ({id:uid(), name:n, pool:p, kind:"required", startedAt:null, doneAt:null}));
-    const asg = (state.cfg.assigned[outlet] || []).map(n => ({id:uid(), name:n, pool:p, kind:"optional", startedAt:null, doneAt:null}));
+    const req = state.cfg.required.map(n => ({id:uid(), name:n, pool:p, kind:"required", startedAt:null, doneAt:null, claimedBy:null}));
+    const asg = (state.cfg.assigned[outlet] || []).map(n => ({id:uid(), name:n, pool:p, kind:"optional", startedAt:null, doneAt:null, claimedBy:null}));
     const ex  = extraList.filter(e => e.pool === p)
-      .map(e => ({id:uid(), name:e.name, pool:p, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null}));
+      .map(e => ({id:uid(), name:e.name, pool:p, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null}));
     return req.concat(asg).concat(ex);
   });
   return wholeOutlet.concat(perPool);
@@ -625,7 +630,13 @@ function normalizeRound(r){
   r.stops = r.stops.map(s => Object.assign(
     {outlet:s.outlet, arriveAt:null, departAt:null, fixIn:null, fixOut:null, covering:false, coveringNote:""},
     s,
-    {tasks: Array.isArray(s.tasks) ? s.tasks : tasksFor(s.outlet)}
+    {tasks: (Array.isArray(s.tasks) ? s.tasks : tasksFor(s.outlet)).map(t =>
+      // Rounds saved before per-technician claiming existed have no
+      // `claimedBy`. A task that was already started under the old
+      // single-technician-per-round model was implicitly "claimed" by the
+      // round's own owner, so that's the safe default to backfill -- an
+      // untouched (never-started) task just gets an explicit null.
+      Object.assign({claimedBy: t.startedAt ? r.person : null}, t))}
   ));
   return r;
 }
@@ -658,16 +669,23 @@ async function loadHistory(date){
 function activeStop(r){ return r ? r.stops.find(s => s.arriveAt && !s.departAt) : null; }
 function nextStop(r){ return r ? r.stops.find(s => !s.arriveAt) : null; }
 function lastDeparture(r){ const d = r ? r.stops.filter(s=>s.departAt) : []; return d.length ? d[d.length-1].departAt : null; }
+// The task THIS round's own owner currently has running -- not just any task
+// that happens to be mid-claim in r.stops. Two technicians can now cover the
+// same outlet, and a claim either of them makes gets mirrored into the
+// other's round too (see syncTaskToOtherRounds) so they can each see it's
+// taken; without the claimedBy check here, a teammate's claim showing up in
+// my own round would look like MY current job and wrongly block me from
+// claiming something else of my own.
 function runningTask(r){
   if(!r) return null;
-  for(const s of r.stops){ const t = s.tasks.find(x => x.startedAt && !x.doneAt); if(t) return {stop:s, task:t}; }
+  for(const s of r.stops){ const t = s.tasks.find(x => x.startedAt && !x.doneAt && x.claimedBy === r.person); if(t) return {stop:s, task:t}; }
   return null;
 }
 function crewState(r){
   if(!r || !r.stops.some(s => s.arriveAt)) return {k:"idle", label:"Not started"};
   const a = activeStop(r);
   if(a){
-    const rt = a.tasks.find(t => t.startedAt && !t.doneAt);
+    const rt = a.tasks.find(t => t.startedAt && !t.doneAt && t.claimedBy === r.person);
     return {k:"onsite", label: rt ? a.outlet+" · "+rt.name : "At "+a.outlet, since: rt ? rt.startedAt : a.arriveAt};
   }
   if(nextStop(r)) return {k:"travel", label:"Travelling", since:lastDeparture(r)};
@@ -727,7 +745,7 @@ async function syncExtraToLiveRounds(outlet, job, action){
     let changed = false;
     if(action === "add"){
       if(!s.tasks.some(matches)){
-        s.tasks.push(Object.assign({id:uid(), name:job.name, kind:job.kind, startedAt:null, doneAt:null}, job.pool ? {pool:job.pool} : {}));
+        s.tasks.push(Object.assign({id:uid(), name:job.name, kind:job.kind, startedAt:null, doneAt:null, claimedBy:null}, job.pool ? {pool:job.pool} : {}));
         changed = true;
       }
     } else {
@@ -736,6 +754,33 @@ async function syncExtraToLiveRounds(outlet, job, action){
       changed = s.tasks.length !== before;
     }
     if(changed){ try{ await saveRound(r); }catch(e){} }
+  }
+}
+
+/*
+ * Technician-side push, the counterpart to syncExtraToLiveRounds above: when
+ * a technician claims, cancels a claim on, finishes, or reopens ONE task,
+ * mirror that same change into every OTHER technician's round covering the
+ * same outlet today (matched by name+kind+pool, same key as the sync above).
+ * This is what lets two technicians working the same outlet see each other's
+ * claims live -- Kay claiming a job shows up as "Kay" on Fik's copy of that
+ * outlet too, and Fik can't also claim it -- without merging their rounds
+ * into one shared document. Only reaches a stop that hasn't been departed in
+ * the OTHER round; a technician's own already-finished visit is never
+ * rewritten by someone else's action elsewhere.
+ */
+async function syncTaskToOtherRounds(outlet, task, patch){
+  const mine = myId(), today = todayKey();
+  const matches = t => t.name === task.name && t.kind === task.kind && (t.pool||null) === (task.pool||null);
+  const others = Object.values(state.rounds).filter(r => r.id !== mine && r.date === today);
+  for(const orig of others){
+    const r = clone(orig);
+    const s = r.stops.find(x => x.outlet === outlet && !x.departAt);
+    if(!s) continue;
+    const t = s.tasks.find(matches);
+    if(!t) continue;
+    Object.assign(t, patch);
+    try{ await saveRound(r); }catch(e){}
   }
 }
 
@@ -782,11 +827,23 @@ function arrive(code){
   });
 }
 function depart(code){
+  let autoClosed = [], stopOutlet = null;
   withRound(r => {
     const s = r.stops.find(x=>x.outlet===code); if(!s || !s.arriveAt || s.departAt) return false;
-    s.tasks.forEach(t => { if(t.startedAt && !t.doneAt) t.doneAt = new Date().toISOString(); });
+    // Only auto-close jobs the departing technician themselves claimed. A
+    // coworker also covering this outlet may still be mid-job on something
+    // that got mirrored into this round too (see syncTaskToOtherRounds) --
+    // leaving here must never silently finish someone else's still-running work.
+    s.tasks.forEach(t => {
+      if(t.startedAt && !t.doneAt && t.claimedBy === r.person){
+        t.doneAt = new Date().toISOString();
+        autoClosed.push({name:t.name, kind:t.kind, pool:t.pool||null, doneAt:t.doneAt});
+      }
+    });
     s.departAt = new Date().toISOString();
+    stopOutlet = s.outlet;
   }, "Couldn't record the departure. Try again.").then(async () => {
+    for(const task of autoClosed) await syncTaskToOtherRounds(stopOutlet, task, {doneAt:task.doneAt});
     const fix = await getFix(); if(!fix) return;
     withRound(r => { const s = r.stops.find(x=>x.outlet===code); if(!s || s.fixOut) return false; s.fixOut = fix; });
   });
@@ -863,9 +920,14 @@ function reopenStop(code){
   }, "Couldn't reopen that. Try again.");
 }
 
+// Claiming stamps the technician's own name onto the job (t.claimedBy), then
+// mirrors that claim into any other technician's round covering the same
+// outlet today, so a coworker sees "Claimed by Kay" instead of a plain Open
+// job they could also claim.
 function claimTask(code, tid){
   const rt = runningTask(myRound());
   if(rt && rt.task.id !== tid){ flash("Finish “"+rt.task.name+"” first — one job at a time keeps the timings honest."); return; }
+  let claimed = null, stopOutlet = null;
   withRound(r => {
     const s = r.stops.find(x=>x.outlet===code); if(!s) return false;
     const t = s.tasks.find(x=>x.id===tid); if(!t || t.startedAt) return false;
@@ -874,37 +936,77 @@ function claimTask(code, tid){
       s.arriveAt = new Date().toISOString();
     }
     t.startedAt = new Date().toISOString();
-  }, "Couldn't claim that job. Try again.");
+    t.claimedBy = state.me;
+    claimed = {name:t.name, kind:t.kind, pool:t.pool||null, startedAt:t.startedAt, claimedBy:t.claimedBy};
+    stopOutlet = s.outlet;
+  }, "Couldn't claim that job. Try again.").then(() => {
+    if(claimed) syncTaskToOtherRounds(stopOutlet, claimed, {startedAt:claimed.startedAt, claimedBy:claimed.claimedBy});
+  });
 }
+// The X shown next to a job the technician just claimed -- undoes an
+// accidental claim immediately, no confirmation needed (unlike reopening a
+// finished job below, this can only ever throw away a job that hasn't been
+// worked on). Only the technician who claimed it can cancel it: a coworker
+// seeing "Claimed by Kay" can't clear Kay's claim out from under her.
+function cancelClaim(code, tid){
+  let reset = null, stopOutlet = null;
+  withRound(r => {
+    const s = r.stops.find(x=>x.outlet===code); if(!s || s.departAt) return false;
+    const t = s.tasks.find(x=>x.id===tid); if(!t || !t.startedAt || t.doneAt) return false;
+    if(t.claimedBy !== state.me) return false;
+    t.startedAt = null; t.claimedBy = null;
+    reset = {name:t.name, kind:t.kind, pool:t.pool||null};
+    stopOutlet = s.outlet;
+  }, "Couldn't undo that. Try again.").then(() => {
+    if(reset) syncTaskToOtherRounds(stopOutlet, reset, {startedAt:null, claimedBy:null});
+  });
+}
+// Tapping the technician's own name (shown on a running job) marks it done.
+// Only the claimer can finish their own claimed job.
 function finishTask(code, tid){
+  let finished = null, stopOutlet = null;
   withRound(r => {
     const s = r.stops.find(x=>x.outlet===code); if(!s) return false;
     const t = s.tasks.find(x=>x.id===tid); if(!t || !t.startedAt || t.doneAt) return false;
+    if(t.claimedBy !== state.me) return false;
     t.doneAt = new Date().toISOString();
-  }, "Couldn't mark that done. Try again.");
+    finished = {name:t.name, kind:t.kind, pool:t.pool||null, doneAt:t.doneAt};
+    stopOutlet = s.outlet;
+  }, "Couldn't mark that done. Try again.").then(() => {
+    if(finished) syncTaskToOtherRounds(stopOutlet, finished, {doneAt:finished.doneAt});
+  });
 }
-// Reopens a job marked Done by mistake, back to Open (unclaimed) — both the
-// start and finish times are cleared. It does NOT go back to "In Progress":
+// Reopens a job marked Done by mistake, back to Open (unclaimed) — start,
+// finish, and claim are all cleared. It does NOT go back to "In Progress":
 // keeping the old start time meant the elapsed timer kept counting from
 // whenever it was first claimed (possibly hours earlier), and it also sat as
 // the round's one "current" job, blocking every other job from being claimed
 // until this one was re-finished. Resetting to Open avoids both — it can be
 // re-claimed whenever, with an accurate fresh duration, and doesn't block
-// other work in the meantime.
+// other work in the meantime. The confirm step lives in the click handler (a
+// native confirm() on the Done button), so only the claimer sees a clickable
+// Done button to begin with.
 function undoTask(code, tid){
+  let reset = null, stopOutlet = null;
   withRound(r => {
     const s = r.stops.find(x=>x.outlet===code); if(!s || s.departAt) return false;
     const t = s.tasks.find(x=>x.id===tid); if(!t || !t.doneAt) return false;
+    if(t.claimedBy !== state.me) return false;
     t.startedAt = null;
     t.doneAt = null;
-  }, "Couldn't undo that. Try again.");
+    t.claimedBy = null;
+    reset = {name:t.name, kind:t.kind, pool:t.pool||null};
+    stopOutlet = s.outlet;
+  }, "Couldn't undo that. Try again.").then(() => {
+    if(reset) syncTaskToOtherRounds(stopOutlet, reset, {startedAt:null, doneAt:null, claimedBy:null});
+  });
 }
 function addTask(code, name){
   const n = (name||"").trim(); if(!n) return;
   state.adding = null;
   withRound(r => {
     const s = r.stops.find(x=>x.outlet===code); if(!s) return false;
-    s.tasks.push({id:uid(), name:n, kind:"adhoc", startedAt:null, doneAt:null});
+    s.tasks.push({id:uid(), name:n, kind:"adhoc", startedAt:null, doneAt:null, claimedBy:null});
   }, "Couldn't add that job. Try again.");
 }
 function removeTask(code, tid){
@@ -1113,6 +1215,10 @@ function taskListHtml(s){
 
 function taskRow(s, t){
   const running = t.startedAt && !t.doneAt, finished = !!t.doneAt;
+  // Whether the technician looking at this screen is the one who claimed it.
+  // Only the claimer gets a live action button on their own claim; a
+  // teammate at the same outlet sees who has it, but can't act on it.
+  const mine = !!t.claimedBy && t.claimedBy === state.me;
   const status = finished ? '<span class="tag st-done">Done</span>'
                : running  ? '<span class="tag st-prog">In Progress</span>'
                           : '<span class="tag st-open">Open</span>';
@@ -1120,29 +1226,36 @@ function taskRow(s, t){
             : t.kind==="optional" ? '<span class="tag opt">If time allows</span>'
             : '<span class="tag add">Added</span>';
   let time = "", act = "";
+  const key = s.outlet+"|"+t.id;
   if(finished){
     time = `<span class="task-time" style="color:var(--ok)">${dur(mins(t.startedAt,t.doneAt))}</span>`;
-    const key = s.outlet+"|"+t.id;
     if(!s.departAt){
-      act = state.confirmUndo === key
-        ? `<span class="undo-confirm">
-             <button class="btn sm act warn" data-undo="${key}">Yes, undo</button>
-             <button class="btn sm act" data-cancelundo="${key}">Cancel</button>
-           </span>`
-        : `<button class="btn sm act" data-askundo="${key}">Undo</button>`;
+      // Tapping Done again is the reopen action -- a native confirm() prompt
+      // guards it (wired in wire()), same two-step feel as before without a
+      // second row of buttons crowding an already tight task row.
+      act = mine
+        ? `<button class="btn sm act done" data-taskreopen="${key}">Done</button>`
+        : `<span class="btn sm act done" aria-hidden="true">Done</span>`;
     }
   } else if(running){
     time = `<span class="task-time" style="color:var(--warn)">${liveDur(t.startedAt)}</span>`;
+    const who = esc(t.claimedBy || "Claimed");
     // Deliberately not colored like "Done" (which reads as already-finished) —
-    // this button IS the finish action, so it's labeled and colored to match
-    // "still in progress, tap when you're actually done" instead.
-    act = `<button class="btn sm act inprogress" data-done="${s.outlet}|${t.id}">In Progress</button>`;
+    // the name button IS the finish action, so it's labeled and colored to
+    // match "still in progress, tap when you're actually done" instead. The
+    // X next to it undoes an accidental claim right away, no confirm needed.
+    act = mine
+      ? `<span class="act-group">
+           <button class="btn sm act cancel" data-cancel="${key}" aria-label="Cancel claim on ${esc(t.name)}">✕</button>
+           <button class="btn sm act inprogress" data-finish="${key}">${who}</button>
+         </span>`
+      : `<span class="btn sm act inprogress" aria-hidden="true">${who}</span>`;
   } else if(!s.departAt){
-    act = `<button class="btn sm act" data-claim="${s.outlet}|${t.id}">Claim</button>`;
+    act = `<button class="btn sm act" data-claim="${key}">Open</button>`;
   } else { time = `<span class="task-time muted">not done</span>`; }
 
   const del = (!t.startedAt && t.kind==="adhoc" && !s.departAt)
-    ? `<button class="link" data-rmtask="${s.outlet}|${t.id}" aria-label="Remove ${esc(t.name)}">remove</button>` : "";
+    ? `<button class="link" data-rmtask="${key}" aria-label="Remove ${esc(t.name)}">remove</button>` : "";
 
   return `<div class="task ${running?"running":""} ${finished?"finished":""}">
     <span class="mark">${finished?"✓":(running?"▶":"")}</span>
@@ -1251,7 +1364,7 @@ function stopCard(s, i, r, isHeading){
 /* ---------- supervisor ---------- */
 function iso(h,m){ const d=new Date(); d.setHours(h,m,0,0); return d.toISOString(); }
 function sampleRound(){
-  const mk = (n,k,a,b) => ({id:uid(), name:n, kind:k, startedAt:a, doneAt:b});
+  const mk = (n,k,a,b) => ({id:uid(), name:n, kind:k, startedAt:a, doneAt:b, claimedBy:a?"Sample round":null});
   return {id:"sample", person:"Sample round", date:todayKey(), stops:[
     {outlet:"JE", arriveAt:iso(7,58), departAt:iso(8,26), tasks:[
       mk("Water test & dosing","required",iso(7,59),iso(8,14)), mk("Manual vacuum pool","optional",iso(8,14),iso(8,25))]},
@@ -1822,12 +1935,13 @@ function wire(){
   each("[data-cancelreopen]", b => { state.confirmReopen = null; render(); });
   each("[data-reopen]", b => { state.confirmReopen = null; reopenStop(b.dataset.reopen); });
   each("[data-claim]",  b => { const [o,t] = two(b.dataset.claim); claimTask(o,t); });
-  each("[data-done]",   b => { const [o,t] = two(b.dataset.done);  finishTask(o,t); });
-  // Undo needs a second tap to confirm, so an accidental press near the button
-  // (task rows sit close together) can't silently reopen a finished job.
-  each("[data-askundo]",   b => { state.confirmUndo = b.dataset.askundo; render(); });
-  each("[data-cancelundo]",b => { state.confirmUndo = null; render(); });
-  each("[data-undo]",   b => { const [o,t] = two(b.dataset.undo);  state.confirmUndo = null; undoTask(o,t); });
+  // X on a running job -- undoes an accidental claim right away, no confirm.
+  each("[data-cancel]", b => { const [o,t] = two(b.dataset.cancel); cancelClaim(o,t); });
+  // Tapping the claimer's own name on a running job marks it done.
+  each("[data-finish]", b => { const [o,t] = two(b.dataset.finish); finishTask(o,t); });
+  // Tapping Done again reopens it -- guarded by a native confirm() rather than
+  // a second row of buttons, since only the claimer ever sees this control.
+  each("[data-taskreopen]", b => { const [o,t] = two(b.dataset.taskreopen); if(confirm("Reopen this task?")) undoTask(o,t); });
   each("[data-rmtask]", b => { const [o,t] = two(b.dataset.rmtask); removeTask(o,t); });
   each("[data-openadd]",b => { state.adding = b.dataset.openadd; render(); const i=$("#newtask"); if(i) i.focus(); });
   on("#cancel-add", () => { state.adding = null; render(); });
