@@ -22,6 +22,11 @@
   --travel:#42509B; --travel-soft:#E3E5F5;
   --ok:#256B4C; --ok-soft:#DDEEE5;
   --warn:#8A590D; --warn-soft:#F6EAD4;
+  /* A problem a technician can't fix themselves (broken equipment, needs a
+     contractor) is a different kind of "attention needed" than the amber
+     --warn already used for in-progress/must-do — this is reserved for
+     Urgent-priority issues so they stand out from routine in-progress work. */
+  --urgent:#B23A2E; --urgent-soft:#F8DEDA;
   --shadow:0 1px 2px rgba(14,26,31,.08),0 6px 18px -8px rgba(14,26,31,.22);
   --r:10px;
   /* A stop with several named pools (JE today) tags each pool's heading with
@@ -283,6 +288,39 @@ details.panel[open] summary::after{content:"▴"}
 .tog[aria-pressed="true"]{background:var(--travel);border-color:var(--travel);color:#fff}
 .tog:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
+/* nav badge -- small count shown on the Overview tab when issues need attention */
+.nav-badge{display:inline-block;background:var(--urgent);color:#fff;border-radius:999px;
+  font:700 10px/1.6 "IBM Plex Mono",monospace;padding:0 6px;margin-left:5px;vertical-align:middle}
+
+/* issue reporting (technician side) + issue rows shared with the overview board */
+.tag.urgent{background:var(--urgent-soft);color:var(--urgent)}
+.tag.medium{background:var(--travel-soft);color:var(--travel)}
+.tag.low{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
+.issue-list{display:flex;flex-direction:column;gap:6px}
+.issue-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.issue-desc{flex:1 1 160px}
+.issue-meta{margin-left:auto;white-space:nowrap}
+.issue-form{background:var(--surface-2);border:1px dashed var(--line);border-radius:9px;padding:11px 12px;
+  display:flex;flex-direction:column;gap:9px}
+.issue-form textarea{font-family:"IBM Plex Sans",sans-serif;font-size:14px;padding:10px 11px;
+  border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);
+  width:100%;resize:vertical;box-sizing:border-box}
+.link.issue-open{color:var(--urgent);text-decoration:none;font-weight:600}
+
+/* overview: outlet status grid */
+.outlet-status-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:8px}
+.outlet-status{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:11px 12px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.outlet-status .oc{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:18px;
+  text-transform:uppercase;letter-spacing:.02em}
+
+/* overview: issue cards (supervisor planning) */
+.issue-card{padding:13px 14px;display:flex;flex-direction:column;gap:8px}
+.issue-card-head{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.issue-card-desc{margin:0;font-weight:600;font-size:14.5px;line-height:1.4}
+.issue-meta-row{display:flex;gap:7px;flex-wrap:wrap}
+
 @media(max-width:520px){
   .brand h1{font-size:21px}
   .stop{padding-left:44px}
@@ -301,6 +339,7 @@ details.panel[open] summary::after{content:"▴"}
     </div>
     <div class="seg" role="group" aria-label="View">
       <button id="btn-tech" aria-pressed="true">Technician</button>
+      <button id="btn-overview" aria-pressed="false">Overview</button>
       <button id="btn-mgr" aria-pressed="false">Supervisor</button>
       <button id="btn-routes" aria-pressed="false">Routes</button>
     </div>
@@ -428,7 +467,12 @@ const state = {
   pending:{},            // docPath -> {data, tries} — writes not yet confirmed saved to the team
   panelsOpen:{},         // panel key -> open/closed, kept across redraws (the view is rebuilt often)
   viewDate: null,        // supervisor board: which day is showing (set to today at boot)
-  historyCache:{}        // date string -> {rounds:[...], loading:bool} — past days, fetched once and kept
+  historyCache:{},       // date string -> {rounds:[...], loading:bool} — past days, fetched once and kept
+  issues:{},             // id -> issue — problems flagged (by a technician) or tasks assigned (by a supervisor) that
+                          // need a plan and a date, not routine nightly checklist jobs
+  reportingIssue:null,   // outlet code whose "report an issue" form is open, on the technician's own round
+  addingIssue:false,     // whether the Overview "+ Add a task for an outlet" form is open
+  planningIssue:null     // issue id whose plan/edit form is open, on the Overview board
 };
 const myId = () => state.me ? todayKey()+"__"+slug(state.me) : null;
 const myRound = () => state.rounds[myId()] || null;
@@ -472,6 +516,10 @@ function conflictingTask(outlet, t){
 const local = {
   read(){ try{ return JSON.parse(localStorage.getItem("drt.rounds")||"{}"); }catch(e){ return {}; } },
   write(all){ try{ localStorage.setItem("drt.rounds", JSON.stringify(all)); }catch(e){} }
+};
+const localIssues = {
+  read(){ try{ return JSON.parse(localStorage.getItem("drt.issues")||"{}"); }catch(e){ return {}; } },
+  write(all){ try{ localStorage.setItem("drt.issues", JSON.stringify(all)); }catch(e){} }
 };
 
 /*
@@ -522,6 +570,7 @@ async function initDb(){
     state.cfg.extra = pruned.extra;
     if(pruned.changed) localStorage.setItem("drt.cfg", JSON.stringify(state.cfg));
     state.rounds = normalizeRounds(local.read());
+    state.issues = localIssues.read();
     render(); return;
   }
   // While a doc has a write of ours still pending, ignore incoming snapshots for it —
@@ -552,6 +601,19 @@ async function initDb(){
       Object.keys(state.pending).forEach(p => { if(p.startsWith("dosing_rounds/")){ const id=p.slice(14); if(state.rounds[id]) next[id]=state.rounds[id]; } });
       state.rounds = normalizeRounds(next); render();
     }, ()=>{});
+  // Issues aren't scoped to today -- a problem raised last week and still
+  // waiting on a contractor needs to stay visible until it's actually
+  // resolved, not fall off the board at midnight the way a round does. The
+  // limit just keeps a very old, long-running board from pulling an
+  // unbounded amount of data; resolved issues are what ages out first in
+  // practice since open/planned ones are what everyone keeps adding to.
+  db.collection("dosing_issues").orderBy("raisedAt","desc").limit(500).onSnapshot(
+    s => {
+      const next={};
+      s.docs.forEach(d => { const p="dosing_issues/"+d.id; if(!state.pending[p]) next[d.id] = clone(Object.assign({id:d.id}, d.data())); });
+      Object.keys(state.pending).forEach(p => { if(p.startsWith("dosing_issues/")){ const id=p.slice(14); if(state.issues[id]) next[id]=state.issues[id]; } });
+      state.issues = next; render();
+    }, ()=>{});
   render();
 }
 
@@ -567,6 +629,11 @@ async function saveRoster(members){
 async function saveCfg(cfg){
   state.cfg = cfg; render();
   await persist("dosing_config/tasks", clone(cfg), () => localStorage.setItem("drt.cfg", JSON.stringify(cfg)));
+}
+async function saveIssue(issue){
+  state.issues[issue.id] = issue; render();
+  await persist("dosing_issues/"+issue.id, (()=>{ const c=clone(issue); delete c.id; return c; })(),
+    () => { const all = localIssues.read(); all[issue.id] = issue; localIssues.write(all); });
 }
 
 // A one-off alert (blocked action, save failure) — shown as a toast fixed to the
@@ -1087,14 +1154,97 @@ function removeTask(code, tid){
   });
 }
 
+/*
+ * ================= issues =================
+ * A separate track from the nightly checklist: something a technician
+ * notices but can't fix on the spot (a broken instant heater, a cracked
+ * tile) needs a supervisor to plan and schedule a real fix, not a checkbox.
+ * Issues aren't tied to a single night's round -- they live in their own
+ * collection, keyed to the outlet, and stay visible (Open -> Planned ->
+ * Resolved) until someone actually closes them out, however many nights
+ * that takes.
+ */
+const issueUid = () => "iss-"+Date.now().toString(36)+"-"+uid();
+const PRIORITIES = ["low","medium","urgent"];
+
+// Every not-yet-resolved issue logged against one outlet, most recent first --
+// what a technician sees on that outlet's stop card (so they don't re-report
+// something already flagged) and what feeds the outlet grid on Overview.
+function openIssuesFor(outlet){
+  return Object.values(state.issues).filter(i => i.outlet===outlet && i.status!=="resolved")
+    .sort((a,b) => a.raisedAt < b.raisedAt ? 1 : -1);
+}
+
+// A technician flags a problem they can't fix themselves, right from the
+// outlet stop they're standing at -- or a supervisor gets ahead of one,
+// assigning a non-urgent task to an outlet before anyone's even reported it
+// (see addIssueBlock, on Overview). Either way it starts life as "open" --
+// unplanned, just on the board -- until a supervisor commits to a plan.
+function reportIssue(outlet, description, priority, raisedBy){
+  const desc = (description||"").trim().slice(0,500);
+  if(!desc || !outlet) return;
+  saveIssue({
+    id: issueUid(), outlet, description: desc,
+    priority: PRIORITIES.includes(priority) ? priority : "medium",
+    status: "open",
+    raisedBy: raisedBy || state.me || "Supervisor",
+    raisedAt: new Date().toISOString(),
+    assignee: null, targetDate: null, notes: "", resolvedAt: null
+  });
+}
+
+// Supervisor commits to a plan: who's handling it and by when, with room for
+// a running note (contractor booked, parts on order, etc). Re-saving an
+// already-planned issue with new details is just editing the plan in place.
+function planIssue(id, patch){
+  const cur = state.issues[id]; if(!cur) return;
+  const next = clone(cur);
+  next.status = "planned";
+  if(PRIORITIES.includes(patch.priority)) next.priority = patch.priority;
+  next.assignee = (patch.assignee||"").trim().slice(0,60) || null;
+  next.targetDate = patch.targetDate || null;
+  next.notes = (patch.notes||"").trim().slice(0,500);
+  saveIssue(next);
+}
+
+// Closes it out -- fixed, whether or not it was ever formally "planned" first
+// (a quick fix doesn't need the full planning form).
+function resolveIssue(id){
+  const cur = state.issues[id]; if(!cur) return;
+  const next = clone(cur);
+  next.status = "resolved";
+  next.resolvedAt = new Date().toISOString();
+  saveIssue(next);
+}
+
+// Back onto the board if a "resolved" problem turns out not to have stuck,
+// or a planned one needs to be pulled back to square one. Assignee/target
+// date/notes are left as-is rather than wiped -- they're still useful
+// history for whoever picks it up again.
+function reopenIssue(id){
+  const cur = state.issues[id]; if(!cur) return;
+  const next = clone(cur);
+  next.status = "open";
+  next.resolvedAt = null;
+  saveIssue(next);
+}
+
 /* ================= render ================= */
 function render(){
   renderConn();
   $("#hdr-date").textContent = DAYNAME[operationalNow().getDay()]+" "+todayKey();
   $("#btn-tech").setAttribute("aria-pressed", state.role==="tech");
+  $("#btn-overview").setAttribute("aria-pressed", state.role==="overview");
   $("#btn-mgr").setAttribute("aria-pressed", state.role==="mgr");
   $("#btn-routes").setAttribute("aria-pressed", state.role==="routes");
-  $("#view").innerHTML = state.role==="tech" ? techView() : state.role==="routes" ? routesView() : mgrView();
+  // A small red count on the Overview tab itself -- so a supervisor glancing
+  // at the nav bar (not even inside Overview yet) can tell something needs
+  // planning, without having to check.
+  const openIssueN = Object.values(state.issues).filter(i => i.status!=="resolved").length;
+  $("#btn-overview").innerHTML = "Overview" + (openIssueN ? ` <span class="nav-badge">${openIssueN}</span>` : "");
+  $("#view").innerHTML = state.role==="tech" ? techView()
+    : state.role==="overview" ? overviewView()
+    : state.role==="routes" ? routesView() : mgrView();
   wire();
 }
 
@@ -1365,6 +1515,54 @@ function taskRow(s, t){
   </div>`;
 }
 
+function priorityTag(p){
+  return p==="urgent" ? '<span class="tag urgent">Urgent</span>'
+       : p==="low"    ? '<span class="tag low">Low</span>'
+       :                '<span class="tag medium">Medium</span>';
+}
+
+// A compact, read-only line for an open issue already logged at this outlet —
+// shown to every technician there, whether or not they're the one who raised
+// it, mainly so nobody re-reports the same broken heater twice.
+function issueSummaryRow(issue){
+  const planned = issue.status==="planned"
+    ? `<span class="tag st-prog">${issue.targetDate?"Target "+esc(issue.targetDate):"Planned"}</span>`
+    : `<span class="tag st-open">Needs planning</span>`;
+  return `<div class="issue-row">
+    <span class="issue-desc">${esc(issue.description)}</span>
+    ${priorityTag(issue.priority)}${planned}
+    <span class="mono muted issue-meta">by ${esc(issue.raisedBy)}</span>
+  </div>`;
+}
+
+// Any open issues already on this outlet, plus the trigger/inline form to
+// report a new one. Shown on every stop card regardless of visit status —
+// a technician might notice something on arrival, mid-job, or only think to
+// mention it as they're leaving.
+function issueBlock(s){
+  const open = openIssuesFor(s.outlet);
+  const list = open.length ? `<div class="issue-list">${open.map(issueSummaryRow).join("")}</div>` : "";
+  const reporting = state.reportingIssue === s.outlet;
+  const trigger = reporting ? `
+    <div class="issue-form">
+      <textarea id="issue-desc" rows="2" maxlength="500"
+        placeholder="What's wrong, and what needs to happen? e.g. Instant heater not working — needs a replacement arranged"></textarea>
+      <div class="row-2">
+        <select id="issue-priority">
+          <option value="low">Low — can wait</option>
+          <option value="medium" selected>Medium</option>
+          <option value="urgent">Urgent</option>
+        </select>
+      </div>
+      <div class="row-2">
+        <button class="btn primary sm" data-submitissue="${s.outlet}" style="flex:1">Report to supervisor</button>
+        <button class="btn sm" id="cancel-issue" style="flex:1">Cancel</button>
+      </div>
+    </div>`
+    : `<button class="link issue-open" data-openissue="${s.outlet}" style="align-self:flex-start">⚠ Report an issue</button>`;
+  return `${list}${trigger}`;
+}
+
 function stopCard(s, i, r, isHeading){
   const done = !!s.departAt, active = !!s.arriveAt && !done;
   const open = activeStop(r);
@@ -1456,7 +1654,234 @@ function stopCard(s, i, r, isHeading){
       <span class="stop-times">${times}</span>
     </div>
     ${s.covering ? coveringNoteBlock(s) : ""}
+    ${issueBlock(s)}
     ${body}</div>`;
+}
+
+/* ---------- overview ----------
+ * The supervisor's one-click "how's tonight going" screen: always today,
+ * no date picker to fiddle with first. Four things a supervisor actually
+ * checks in sequence -- are outlets getting done, who's where right now,
+ * what got left behind, and what's waiting on a decision from them.
+ */
+function fmtWhen(iso){
+  const d = new Date(iso);
+  const today = todayKey() === dateKey(d);
+  return (today ? "" : d.getDate()+" "+MONTH_ABBR[d.getMonth()]+", ") + pad(d.getHours())+":"+pad(d.getMinutes());
+}
+
+function overviewStats(rounds){
+  const outletCodes = new Set();
+  rounds.forEach(r => r.stops.forEach(s => outletCodes.add(s.outlet)));
+  let outletsDone = 0;
+  outletCodes.forEach(code => {
+    const stops = [];
+    rounds.forEach(r => { const s = r.stops.find(x => x.outlet===code); if(s) stops.push(s); });
+    const anyOnSite = stops.some(s => s.arriveAt && !s.departAt);
+    const anyDeparted = stops.some(s => s.departAt);
+    if(!anyOnSite && anyDeparted) outletsDone++;
+  });
+  const activeTechs = rounds.filter(r => ["onsite","travel"].includes(crewState(r).k)).length;
+  const jobsDone = rounds.reduce((n,r) => n + totals(r).tasksDone, 0);
+  return {outletsTotal: outletCodes.size, outletsDone, activeTechs, jobsDone};
+}
+
+// Every outlet, whether or not anyone's covering it tonight -- "not started"
+// is as much a status a supervisor needs to see as "in progress" or "done".
+function outletStatusGrid(rounds){
+  const cards = OUTLETS.map(o => {
+    const stops = [];
+    rounds.forEach(r => { const s = r.stops.find(x => x.outlet===o.code); if(s) stops.push({s, person:r.person}); });
+    const issueN = openIssuesFor(o.code).length;
+    const issueTag = issueN ? `<span class="tag urgent">${issueN} issue${issueN>1?"s":""}</span>` : "";
+    if(!stops.length){
+      return `<div class="outlet-status"><span class="oc">${esc(o.code)}</span><span class="tag st-open">Not started</span>${issueTag}</div>`;
+    }
+    const onSite = stops.filter(x => x.s.arriveAt && !x.s.departAt);
+    const departed = stops.filter(x => x.s.departAt);
+    const names = [...new Set(stops.map(x => x.person))];
+    const tag = onSite.length ? '<span class="tag st-prog">In progress</span>'
+              : departed.length ? '<span class="tag st-done">Done</span>'
+              : '<span class="tag st-open">Not started</span>';
+    return `<div class="outlet-status">
+      <span class="oc">${esc(o.code)}</span>
+      ${tag}${issueTag}
+      <span class="mono muted">${esc(names.join(", "))}</span>
+    </div>`;
+  }).join("");
+  return `<div class="outlet-status-grid">${cards}</div>`;
+}
+
+// A must-do job still open at a stop the technician has already LEFT -- as
+// opposed to one that's simply still in progress -- is the one kind of
+// "unfinished" that genuinely needs a supervisor's attention: nobody's
+// coming back to it tonight on their own. Deduped the same way the Supervisor
+// board dedupes shared-outlet jobs, so two technicians' mirrored copies of
+// the same job don't show up twice.
+function unfinishedJobs(rounds){
+  const seen = new Set(), out = [];
+  rounds.forEach(r => r.stops.forEach(s => {
+    if(!s.departAt) return;
+    s.tasks.filter(t => t.kind==="required" && !t.doneAt).forEach(t => {
+      const k = s.outlet+"|"+t.kind+"|"+t.name+"|"+(t.pool||"");
+      if(seen.has(k)) return; seen.add(k);
+      out.push({outlet:s.outlet, pool:t.pool||null, name:t.name, person:r.person, departAt:s.departAt});
+    });
+  }));
+  return out;
+}
+function unfinishedJobsBlock(rounds){
+  const list = unfinishedJobs(rounds);
+  if(!list.length) return `<p class="note" style="margin:0">Nothing left open — every must-do job at every stop left tonight is done.</p>`;
+  const rows = list.map(x => `<div class="issue-row">
+    <span class="issue-desc"><strong>${esc(x.outlet)}</strong>${x.pool?` <span class="tag pool">${esc(x.pool)}</span>`:""} — ${esc(x.name)}</span>
+    <span class="mono muted issue-meta">left by ${esc(x.person)} · ${clockOf(x.departAt)}</span>
+  </div>`).join("");
+  return `<div class="issue-list">${rows}</div>`;
+}
+
+const PRIORITY_ORDER = {urgent:0, medium:1, low:2};
+// Most urgent first; within the same priority, whoever's been waiting
+// longest surfaces first, so an old Medium doesn't get buried forever
+// under a stream of newer ones.
+function issueSortCompare(a,b){
+  const p = (PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1);
+  return p || (a.raisedAt < b.raisedAt ? -1 : 1);
+}
+
+// The supervisor-facing issue card: read-only summary, or the plan/edit form
+// when this is the one card currently open for editing.
+function issueCard(issue){
+  const editing = state.planningIssue === issue.id;
+  const rosterOpts = state.roster.map(n => `<option value="${esc(n)}" ${issue.assignee===n?"selected":""}>${esc(n)}</option>`).join("");
+  const meta = `<span class="mono muted">reported by ${esc(issue.raisedBy)} · ${fmtWhen(issue.raisedAt)}</span>`;
+  let body;
+  if(editing){
+    body = `<div class="issue-form">
+      <div class="row-2">
+        <select id="plan-priority-${issue.id}">
+          <option value="low" ${issue.priority==="low"?"selected":""}>Low</option>
+          <option value="medium" ${(!issue.priority||issue.priority==="medium")?"selected":""}>Medium</option>
+          <option value="urgent" ${issue.priority==="urgent"?"selected":""}>Urgent</option>
+        </select>
+        <input type="date" id="plan-date-${issue.id}" value="${issue.targetDate||""}" aria-label="Target fix date">
+      </div>
+      <select id="plan-assignee-${issue.id}" aria-label="Assigned to">
+        <option value="">Unassigned</option>
+        <option value="Contractor" ${issue.assignee==="Contractor"?"selected":""}>Contractor</option>
+        ${rosterOpts}
+      </select>
+      <textarea id="plan-notes-${issue.id}" rows="2" maxlength="500"
+        placeholder="Plan notes — e.g. contractor booked for Friday, parts on order">${esc(issue.notes||"")}</textarea>
+      <div class="row-2">
+        <button class="btn primary sm" data-saveplan="${issue.id}" style="flex:1">Save plan</button>
+        <button class="btn sm" data-cancelplan="${issue.id}" style="flex:1">Cancel</button>
+      </div>
+    </div>`;
+  } else {
+    const planRow = (issue.status==="planned" || issue.assignee) ? `<div class="issue-meta-row">
+      ${issue.status==="planned" ? `<span class="tag st-prog">${issue.targetDate?"Target "+esc(issue.targetDate):"Planned"}</span>` : ""}
+      ${issue.assignee ? `<span class="tag pool">${esc(issue.assignee)}</span>` : ""}
+    </div>` : "";
+    body = `${planRow}
+    ${issue.notes ? `<p class="note" style="margin:0">${esc(issue.notes)}</p>` : ""}
+    <div class="row-2">
+      ${issue.status!=="resolved" ? `<button class="btn sm" data-planissue="${issue.id}" style="flex:1">${issue.status==="planned"?"Edit plan":"Plan this"}</button>` : ""}
+      ${issue.status!=="resolved"
+        ? `<button class="btn sm" data-resolveissue="${issue.id}" style="flex:1">Mark resolved</button>`
+        : `<button class="btn sm" data-reopenissue="${issue.id}" style="flex:1">Reopen</button>`}
+    </div>`;
+  }
+  return `<div class="card issue-card">
+    <div class="issue-card-head">
+      <span class="tag pool">${esc(issue.outlet)}</span>${priorityTag(issue.priority)}
+      ${issue.status==="resolved" ? `<span class="tag st-done">Resolved ${fmtWhen(issue.resolvedAt)}</span>` : ""}
+    </div>
+    <p class="issue-card-desc">${esc(issue.description)}</p>
+    ${meta}
+    ${body}
+  </div>`;
+}
+
+// Lets a supervisor get ahead of a problem instead of only reacting to one a
+// technician reports -- "replace that worn ladder pad at JEIP2 sometime this
+// week" doesn't need to wait for anyone to notice it's broken first. Lands
+// in the exact same board as a technician-raised issue (just a different
+// raisedBy), so it shows up the same way on that outlet's stop card too.
+function addIssueBlock(){
+  if(!state.addingIssue){
+    return `<button class="btn sm" id="open-addissue" style="align-self:flex-start">+ Add a task for an outlet</button>`;
+  }
+  const opts = OUTLETS.map(o => `<option value="${esc(o.code)}">${esc(o.code)}</option>`).join("");
+  return `<div class="issue-form">
+    <div class="row-2">
+      <select id="addissue-outlet" aria-label="Outlet">${opts}</select>
+      <select id="addissue-priority" aria-label="Priority">
+        <option value="low" selected>Low — can wait</option>
+        <option value="medium">Medium</option>
+        <option value="urgent">Urgent</option>
+      </select>
+    </div>
+    <textarea id="addissue-desc" rows="2" maxlength="500"
+      placeholder="What needs to be done? e.g. Replace worn ladder pad at JEIP2"></textarea>
+    <div class="row-2">
+      <button class="btn primary sm" id="submit-addissue" style="flex:1">Add task</button>
+      <button class="btn sm" id="cancel-addissue" style="flex:1">Cancel</button>
+    </div>
+  </div>`;
+}
+
+function issueBoard(){
+  const all = Object.values(state.issues);
+  const open = all.filter(i => i.status==="open").sort(issueSortCompare);
+  const planned = all.filter(i => i.status==="planned").sort(issueSortCompare);
+  const resolved = all.filter(i => i.status==="resolved").sort((a,b) => a.resolvedAt < b.resolvedAt ? 1 : -1).slice(0,30);
+  const section = (title, list, emptyMsg) => `<div class="stack" style="gap:8px">
+    <div class="eyebrow">${title}${list.length?" ("+list.length+")":""}</div>
+    ${list.length ? list.map(issueCard).join("") : `<p class="note" style="margin:0">${emptyMsg}</p>`}
+  </div>`;
+  const resolvedBlock = resolved.length ? `<details class="panel"><summary>Resolved recently (${resolved.length})</summary>
+    <div class="panel-body">${resolved.map(issueCard).join("")}</div></details>` : "";
+  return `${section("Needs planning", open, "Nothing waiting on a plan.")}
+    ${section("Planned", planned, "Nothing scheduled right now.")}
+    ${resolvedBlock}`;
+}
+
+function overviewView(){
+  const rounds = roundsForDate(todayKey());
+  const stats = overviewStats(rounds);
+  const openN = Object.values(state.issues).filter(i => i.status!=="resolved").length;
+  const urgentN = Object.values(state.issues).filter(i => i.status!=="resolved" && i.priority==="urgent").length;
+
+  return `
+  <div class="kpis">
+    <div class="kpi"><div class="v">${stats.outletsDone}<span style="font-size:15px;color:var(--ink-3)">/${stats.outletsTotal||OUTLETS.length}</span></div><div class="k eyebrow">Outlets done</div></div>
+    <div class="kpi"><div class="v" style="color:var(--accent)">${stats.jobsDone}</div><div class="k eyebrow">Jobs done</div></div>
+    <div class="kpi"><div class="v" style="color:var(--travel)">${stats.activeTechs}</div><div class="k eyebrow">Active now</div></div>
+    <div class="kpi"><div class="v" style="color:${urgentN?"var(--urgent)":"var(--ink)"}">${openN}</div><div class="k eyebrow">Open issues${urgentN?" · "+urgentN+" urgent":""}</div></div>
+  </div>
+
+  <div class="stack" style="gap:9px">
+    <h2 class="sec">Outlets tonight</h2>
+    ${outletStatusGrid(rounds)}
+  </div>
+
+  <div class="stack" style="gap:9px">
+    <h2 class="sec">Technicians right now</h2>
+    ${rounds.length ? `<div class="crew">${rounds.map(r => crewRow(r,true)).join("")}</div>` : `<p class="note" style="margin:0">No rounds started tonight yet.</p>`}
+  </div>
+
+  <div class="stack" style="gap:9px">
+    <h2 class="sec">Left open tonight</h2>
+    ${unfinishedJobsBlock(rounds)}
+  </div>
+
+  <div class="stack" style="gap:9px">
+    <h2 class="sec">Issues &amp; tasks</h2>
+    <p class="note" style="margin:0">Problems flagged by the team, or tasks you've assigned to an outlet — anything that needs a plan and a date, not routine checklist jobs.</p>
+    ${addIssueBlock()}
+    ${issueBoard()}
+  </div>`;
 }
 
 /* ---------- supervisor ---------- */
@@ -1474,6 +1899,25 @@ function sampleRound(){
       mk("Water test & dosing","required",iso(10,43),null)]},
     {outlet:"WWW", arriveAt:null, departAt:null, tasks:[mk("Water test & dosing","required",null,null)]}
   ]};
+}
+
+// One technician's row in a "crew" list -- shared by the Supervisor board and
+// the Overview tab so the two never drift apart on what "on site" or a
+// job/on-site/travel summary actually shows.
+function crewRow(r, isToday){
+  const cs = crewState(r), t = totals(r), span = t.onSite + t.travel;
+  const bar = span ? `<div class="bar" role="img" aria-label="${t.onSite} minutes on site, ${t.travel} minutes travelling">
+      <span class="s-on" style="width:${t.onSite/span*100}%"></span><span class="s-tr" style="width:${t.travel/span*100}%"></span></div>` : "";
+  // Live "since" ticking only makes sense for today — a past day's unfinished stop
+  // shouldn't grow a duration against the current clock.
+  const chip = isToday
+    ? `<span class="chip ${cs.k}"><span class="dot"></span>${esc(cs.label)}${cs.since?" · "+liveDur(cs.since):""}</span>`
+    : `<span class="chip ${cs.k==="onsite"||cs.k==="travel"?"idle":cs.k}"><span class="dot"></span>${cs.k==="onsite"||cs.k==="travel"?"Not checked out":esc(cs.label)}</span>`;
+  return `<div class="crew-row"><div class="crew-top">
+      <span class="crew-name">${esc(r.person)}</span>
+      ${chip}
+      <span class="crew-where mono">${t.tasksDone} jobs · ${dur(t.onSite)} on site · ${dur(t.travel)} travel</span>
+    </div>${bar}</div>`;
 }
 
 function mgrView(){
@@ -1517,21 +1961,7 @@ function mgrView(){
   const agg = rounds.reduce((a,r)=>{const t=totals(r);a.on+=t.onSite;a.tr+=t.travel;a.done+=t.done;a.tot+=t.total;a.tk+=t.tasksDone;return a;},{on:0,tr:0,done:0,tot:0,tk:0});
   const share = (agg.on+agg.tr) ? Math.round(agg.tr/(agg.on+agg.tr)*100) : 0;
 
-  const crew = rounds.map(r => {
-    const cs = crewState(r), t = totals(r), span = t.onSite + t.travel;
-    const bar = span ? `<div class="bar" role="img" aria-label="${t.onSite} minutes on site, ${t.travel} minutes travelling">
-        <span class="s-on" style="width:${t.onSite/span*100}%"></span><span class="s-tr" style="width:${t.travel/span*100}%"></span></div>` : "";
-    // Live "since" ticking only makes sense for today — a past day's unfinished stop
-    // shouldn't grow a duration against the current clock.
-    const chip = isToday
-      ? `<span class="chip ${cs.k}"><span class="dot"></span>${esc(cs.label)}${cs.since?" · "+liveDur(cs.since):""}</span>`
-      : `<span class="chip ${cs.k==="onsite"||cs.k==="travel"?"idle":cs.k}"><span class="dot"></span>${cs.k==="onsite"||cs.k==="travel"?"Not checked out":esc(cs.label)}</span>`;
-    return `<div class="crew-row"><div class="crew-top">
-        <span class="crew-name">${esc(r.person)}</span>
-        ${chip}
-        <span class="crew-where mono">${t.tasksDone} jobs · ${dur(t.onSite)} on site · ${dur(t.travel)} travel</span>
-      </div>${bar}</div>`;
-  }).join("");
+  const crew = rounds.map(r => crewRow(r, isToday)).join("");
 
   // Every job on the board today, across every stop of every round -- not just
   // ones someone has picked up. A pooled outlet (JE) puts the same job list
@@ -2132,9 +2562,46 @@ function wire(){
   document.querySelectorAll('[id^="extra-new-"]').forEach(inp => inp.addEventListener("keydown", e => {
     if(e.key === "Enter"){ const outlet = inp.id.slice("extra-new-".length); const b = document.querySelector('[data-addextra="'+outlet+'"]'); if(b) b.click(); }
   }));
+
+  // issues — technician reporting one from their own outlet stop
+  each("[data-openissue]", b => { state.reportingIssue = b.dataset.openissue; render(); const i=$("#issue-desc"); if(i) i.focus(); });
+  on("#cancel-issue", () => { state.reportingIssue = null; render(); });
+  each("[data-submitissue]", b => {
+    const outlet = b.dataset.submitissue;
+    const d = $("#issue-desc"), p = $("#issue-priority");
+    state.reportingIssue = null;
+    reportIssue(outlet, d ? d.value : "", p ? p.value : "medium");
+  });
+
+  // issues — supervisor adding a non-urgent task straight to an outlet, from Overview
+  on("#open-addissue",   () => { state.addingIssue = true; render(); const i=$("#addissue-desc"); if(i) i.focus(); });
+  on("#cancel-addissue", () => { state.addingIssue = false; render(); });
+  on("#submit-addissue", () => {
+    const o = $("#addissue-outlet"), d = $("#addissue-desc"), p = $("#addissue-priority");
+    state.addingIssue = false;
+    reportIssue(o ? o.value : "", d ? d.value : "", p ? p.value : "low");
+  });
+
+  // issues — supervisor planning/resolving, from the Overview board
+  each("[data-planissue]",   b => { state.planningIssue = b.dataset.planissue; render(); });
+  each("[data-cancelplan]",  b => { state.planningIssue = null; render(); });
+  each("[data-saveplan]", b => {
+    const id = b.dataset.saveplan;
+    const pr = $("#plan-priority-"+id), dt = $("#plan-date-"+id), asg = $("#plan-assignee-"+id), nt = $("#plan-notes-"+id);
+    state.planningIssue = null;
+    planIssue(id, {
+      priority: pr ? pr.value : undefined,
+      targetDate: dt ? dt.value : undefined,
+      assignee: asg ? asg.value : undefined,
+      notes: nt ? nt.value : undefined
+    });
+  });
+  each("[data-resolveissue]", b => resolveIssue(b.dataset.resolveissue));
+  each("[data-reopenissue]",  b => reopenIssue(b.dataset.reopenissue));
 }
 
 $("#btn-tech").addEventListener("click", () => { state.role="tech"; render(); });
+$("#btn-overview").addEventListener("click", () => { state.role="overview"; render(); });
 $("#btn-mgr").addEventListener("click",  () => { state.role="mgr";  render(); });
 $("#btn-routes").addEventListener("click", () => { state.role="routes"; render(); });
 
@@ -2144,6 +2611,7 @@ try{ const c = localStorage.getItem("drt.cfg"); if(c) state.cfg = JSON.parse(c);
 { const pruned = pruneExpiredExtras(state.cfg.extra); state.cfg.extra = pruned.extra;
   if(pruned.changed){ try{ localStorage.setItem("drt.cfg", JSON.stringify(state.cfg)); }catch(e){} } }
 state.rounds = normalizeRounds(local.read());
+state.issues = localIssues.read();
 try{ state.roster = JSON.parse(localStorage.getItem("drt.roster")||"[]"); }catch(e){}
 render();
 initDb();
