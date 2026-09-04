@@ -229,6 +229,10 @@ td.num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;w
 
 .route-card{overflow:hidden}
 .route-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line-soft)}
+/* Same total jobs/on-site/travel summary + split bar already shown per
+   technician on Overview's "Technicians right now" -- repeated here so the
+   whole night's totals are visible without leaving the Routes tab. */
+.route-summary{padding:10px 14px 0;display:flex;flex-direction:column;gap:8px}
 .route-body{display:flex;flex-wrap:wrap;gap:4px 18px;align-items:flex-start;padding:14px}
 .routemap{margin:0;flex:1 1 260px;min-width:220px;max-width:340px}
 .routemap svg{display:block;width:100%;height:auto;color:var(--ink-3)}
@@ -238,6 +242,12 @@ td.num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;w
 .route-idx{flex:none;width:20px;height:20px;border-radius:50%;background:var(--accent-soft);color:var(--accent);
   font:700 11px/20px "Barlow Condensed",sans-serif;text-align:center}
 .route-name{min-width:56px}
+/* The X/Y jobs count on a route stop doubles as a toggle -- tap it to expand
+   the actual per-job breakdown (done/open/in progress) right there, instead
+   of switching tabs to see what's still outstanding at that stop. */
+.jobs-toggle{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:13.5px;color:var(--ink-2);text-decoration:none;padding:2px 4px}
+.jobs-toggle:hover,.jobs-toggle:focus-visible{color:var(--accent);text-decoration:underline}
 .route-foot{padding:0 14px 14px}
 
 /* A ring pulsing around the marker the technician is still standing at right
@@ -476,7 +486,10 @@ const state = {
                           // need a plan and a date, not routine nightly checklist jobs
   reportingIssue:null,   // outlet code whose "report an issue" form is open, on the technician's own round
   addingIssue:false,     // whether the Overview "+ Add a task for an outlet" form is open
-  planningIssue:null     // issue id whose plan/edit form is open, on the Overview board
+  planningIssue:null,    // issue id whose plan/edit form is open, on the Overview board
+  expandedStops:{}       // roundId+"__"+outlet -> true, for stops whose job list is expanded on the Routes tab.
+                          // Purely a view toggle (which jobs are done/undone at that stop) -- not persisted,
+                          // resets on reload same as any other UI-only state here.
 };
 const myId = () => state.me ? todayKey()+"__"+slug(state.me) : null;
 const myRound = () => state.rounds[myId()] || null;
@@ -2299,14 +2312,37 @@ function routeCard(r, proj, byCode){
     const gap = i > 0
       ? `<div class="travel-gap"><span>▼ travel ${dur(mins(seq[i-1].departAt, o.arriveAt))}</span><span class="ln"></span></div>`
       : "";
+    // The X/Y jobs count is clickable -- expands to the actual list of what's
+    // done and what isn't at this stop, right on the Routes tab, instead of a
+    // supervisor having to switch to Supervisor/Overview to see which job is
+    // still open. Keyed by round + outlet so each stop's expand state is
+    // independent (and independent per technician too).
+    const stopKey = r.id+"__"+o.code;
+    const expanded = !!state.expandedStops[stopKey];
+    const jobsToggle = `<button type="button" class="link mono jobs-toggle" data-toggletasks="${esc(stopKey)}" style="margin-left:auto" aria-expanded="${expanded}">${doneN}/${o.tasks.length} jobs ${expanded?"▲":"▼"}</button>`;
+    const taskBreakdown = expanded ? `<div class="issue-list" style="flex-basis:100%;margin-top:2px">${
+      o.tasks.map(t => {
+        const tStatus = t.doneAt ? '<span class="tag st-done">Done</span>'
+                      : t.startedAt ? '<span class="tag st-prog">In Progress</span>'
+                      : '<span class="tag st-open">Open</span>';
+        const kindTag = t.kind==="required" ? '<span class="tag req">Must do</span>'
+                      : t.kind==="optional" ? '<span class="tag opt">If time allows</span>'
+                      : '<span class="tag add">Added</span>';
+        return `<div class="issue-row">
+          <span class="issue-desc">${t.pool?`<span class="tag pool">${esc(t.pool)}</span> `:""}${esc(t.name)} ${kindTag}</span>
+          <span class="issue-meta">${tStatus}</span>
+        </div>`;
+      }).join("")
+    }</div>` : "";
     return `${gap}<div class="route-stop">
       <span class="route-idx">${o.idx}</span>
       <span class="route-name"><strong>${esc(o.code)}</strong></span>
       ${o.covering?'<span class="tag covering">Covering</span>':""}
       <span class="mono muted">${arr}${dep?" – "+dep:" – on site"}</span>
-      <span class="mono muted" style="margin-left:auto">${doneN}/${o.tasks.length} jobs</span>
+      ${jobsToggle}
       ${status}${issueTag}
       ${noteLine}
+      ${taskBreakdown}
     </div>`;
   }).join("");
 
@@ -2323,11 +2359,22 @@ function routeCard(r, proj, byCode){
   }
 
   const cs = crewState(r);
+  // Total jobs done, time on site, and time travelling for the whole night
+  // so far -- the same numbers already shown per technician on Overview's
+  // "Technicians right now", now also visible right here on their route.
+  const t = totals(r), span = t.onSite + t.travel;
+  const summaryBar = span ? `<div class="bar" role="img" aria-label="${t.onSite} minutes on site, ${t.travel} minutes travelling">
+      <span class="s-on" style="width:${t.onSite/span*100}%"></span><span class="s-tr" style="width:${t.travel/span*100}%"></span></div>` : "";
+  const summary = seq.length ? `<div class="route-summary">
+      <span class="mono muted">${t.tasksDone} jobs · ${dur(t.onSite)} on site · ${dur(t.travel)} travel</span>
+      ${summaryBar}
+    </div>` : "";
   return `<div class="card route-card">
     <div class="route-head">
       <span class="crew-name">${esc(r.person)}</span>
       <span class="chip ${cs.k}"><span class="dot"></span>${esc(cs.label)}</span>
     </div>
+    ${summary}
     ${seq.length ? `<div class="route-body">${svg}<div class="route-list">${stopList}</div></div>
     <div class="route-foot">${mapsLink}</div>` : `<p class="note" style="padding:0 14px 14px">Not checked in anywhere yet tonight.</p>`}
   </div>`;
@@ -2603,6 +2650,13 @@ function wire(){
   }));
 
   // issues — technician reporting one from their own outlet stop
+  // The X/Y jobs count on a Routes-tab stop toggles that stop's per-job
+  // breakdown open/closed -- purely a view state, so no round needs saving.
+  each("[data-toggletasks]", b => {
+    const key = b.dataset.toggletasks;
+    state.expandedStops[key] = !state.expandedStops[key];
+    render();
+  });
   each("[data-openissue]", b => { state.reportingIssue = b.dataset.openissue; render(); const i=$("#issue-desc"); if(i) i.focus(); });
   on("#cancel-issue", () => { state.reportingIssue = null; render(); });
   each("[data-submitissue]", b => {
