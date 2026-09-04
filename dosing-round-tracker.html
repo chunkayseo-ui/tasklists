@@ -864,15 +864,19 @@ function finishTask(code, tid){
     t.doneAt = new Date().toISOString();
   }, "Couldn't mark that done. Try again.");
 }
-// Reopens a job marked Done by mistake, back to In Progress (its original start
-// time is kept, so the clock isn't reset). Same one-job-at-a-time rule as
-// claiming applies — can't undo one job while a different one is running.
+// Reopens a job marked Done by mistake, back to Open (unclaimed) — both the
+// start and finish times are cleared. It does NOT go back to "In Progress":
+// keeping the old start time meant the elapsed timer kept counting from
+// whenever it was first claimed (possibly hours earlier), and it also sat as
+// the round's one "current" job, blocking every other job from being claimed
+// until this one was re-finished. Resetting to Open avoids both — it can be
+// re-claimed whenever, with an accurate fresh duration, and doesn't block
+// other work in the meantime.
 function undoTask(code, tid){
-  const rt = runningTask(myRound());
-  if(rt && rt.task.id !== tid){ flash("Finish or undo “"+rt.task.name+"” first — one job at a time keeps the timings honest."); return; }
   withRound(r => {
     const s = r.stops.find(x=>x.outlet===code); if(!s || s.departAt) return false;
     const t = s.tasks.find(x=>x.id===tid); if(!t || !t.doneAt) return false;
+    t.startedAt = null;
     t.doneAt = null;
   }, "Couldn't undo that. Try again.");
 }
