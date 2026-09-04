@@ -865,8 +865,8 @@ function pickPerson(){
 }
 
 function buildRound(){
-  const sel = state.picking || scheduledToday();
-  const d = new Date().getDay(), weekend = d===0||d===6;
+  const sel = state.picking || [];
+  const d = new Date().getDay();
   const pills = OUTLETS.map(o => {
     const extra = (state.cfg.assigned[o.code]||[]).length;
     return `<button class="pill" data-pick="${o.code}" aria-pressed="${sel.includes(o.code)}">
@@ -875,9 +875,7 @@ function buildRound(){
   return `
   <div class="card" style="padding:20px">
     <div class="sec-head" style="margin-bottom:4px"><h2 class="sec">Today's round</h2><span class="eyebrow">${esc(state.me)}</span></div>
-    <p class="note" style="margin:0 0 14px">${weekend
-      ? "Weekend — all outlets pre-selected for the dosing round. Deselect any you're not covering."
-      : DAYNAME[d]+" maintenance outlets are pre-selected. Add any others you'll dose today."}</p>
+    <p class="note" style="margin:0 0 14px">Tap the outlets you're covering today — nothing is pre-selected. Outlets marked "scheduled" are your usual ones for ${DAYNAME[d]}.</p>
     <div class="pill-grid">${pills}</div>
     <div class="row-2" style="margin-top:16px">
       <button class="btn" id="pick-all" style="flex:1">Select all</button>
@@ -1644,13 +1642,13 @@ function wire(){
   });
 
   each("[data-pick]", b => {
-    const cur = state.picking || scheduledToday(), c = b.dataset.pick;
+    const cur = state.picking || [], c = b.dataset.pick;
     state.picking = cur.includes(c) ? cur.filter(x=>x!==c) : cur.concat([c]); render();
   });
   on("#pick-all",  () => { state.picking = OUTLETS.map(o=>o.code); render(); });
   on("#pick-none", () => { state.picking = []; render(); });
   on("#start", () => {
-    const sel = state.picking || scheduledToday();
+    const sel = state.picking || [];
     const ordered = OUTLETS.map(o=>o.code).filter(c => sel.includes(c));
     if(ordered.length) startRound(ordered);
   });
