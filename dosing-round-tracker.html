@@ -452,7 +452,7 @@ function othersOn(code){
 // live conflict: this task's own claimedBy can't be trusted as sole truth,
 // so it should never be treated as editable purely off this round's own
 // data. Returns the other claimer's name, or null if every round agrees.
-function conflictingClaimer(outlet, t){
+function conflictingTask(outlet, t){
   if(!t.doneAt || !t.claimedBy) return null;
   const today = todayKey();
   for(const r of Object.values(state.rounds)){
@@ -460,7 +460,7 @@ function conflictingClaimer(outlet, t){
     const s = r.stops.find(x => x.outlet === outlet);
     if(!s) continue;
     const m = s.tasks.find(x => x.name===t.name && x.kind===t.kind && (x.pool||null)===(t.pool||null));
-    if(m && m.doneAt && m.claimedBy && m.claimedBy !== t.claimedBy) return m.claimedBy;
+    if(m && m.doneAt && m.claimedBy && m.claimedBy !== t.claimedBy) return m;
   }
   return null;
 }
@@ -1285,8 +1285,8 @@ function taskRow(s, t){
   const running = t.startedAt && !t.doneAt, finished = !!t.doneAt;
   // A finished job whose claim is contradicted by another round's copy of
   // the same job can't be trusted as this round's alone to edit, no matter
-  // whose name is on it here -- see conflictingClaimer.
-  const conflict = finished ? conflictingClaimer(s.outlet, t) : null;
+  // whose name is on it here -- see conflictingTask.
+  const conflict = finished ? conflictingTask(s.outlet, t) : null;
   // Whether the technician looking at this screen is the one who claimed it.
   // Only the claimer gets a live action button on their own claim; a
   // teammate at the same outlet sees who has it, but can't act on it.
@@ -1299,14 +1299,19 @@ function taskRow(s, t){
             : '<span class="tag add">Added</span>';
   let time = "", act = "", conflictNote = "";
   const key = s.outlet+"|"+t.id;
-  const range = (t.startedAt && t.doneAt) ? `${clockOf(t.startedAt)}–${clockOf(t.doneAt)}` : "";
+  const rangeOf = x => (x.startedAt && x.doneAt) ? `${clockOf(x.startedAt)}–${clockOf(x.doneAt)}` : "";
+  const range = rangeOf(t);
   if(finished){
     if(mine){
       time = `<span class="task-time" style="color:var(--ok)">${dur(mins(t.startedAt,t.doneAt))}${range?" · "+range:""}</span>`;
+    } else if(!conflict){
+      // Someone else's finished job, no dispute: say who and when.
+      time = `<span class="task-time muted">${t.claimedBy?esc(t.claimedBy)+" · ":""}${range||dur(mins(t.startedAt,t.doneAt))}</span>`;
     } else {
-      // Someone else's finished job: say who and when, not just that it's done.
-      const credit = conflict || t.claimedBy;
-      time = `<span class="task-time muted">${credit?esc(credit)+" · ":""}${range||dur(mins(t.startedAt,t.doneAt))}</span>`;
+      // Conflicting copies: showing this round's own name/time next to it
+      // would misattribute the other round's real timing to this one, so
+      // just flag the dispute here -- both sides' details are in the note.
+      time = `<span class="task-time muted">Disputed</span>`;
     }
     if(!s.departAt){
       // Tapping Done again is the reopen action -- a native confirm() prompt
@@ -1320,7 +1325,9 @@ function taskRow(s, t){
         : `<span class="btn sm act done locked" aria-hidden="true">Done</span>`;
     }
     if(conflict){
-      conflictNote = `<span class="task-conflict">Also recorded as done by ${esc(conflict)} — ask a supervisor to confirm which is right before it's reopened.</span>`;
+      const mineRange = range || dur(mins(t.startedAt,t.doneAt));
+      const otherRange = rangeOf(conflict) || dur(mins(conflict.startedAt,conflict.doneAt));
+      conflictNote = `<span class="task-conflict">Two records disagree: ${esc(t.claimedBy)} (${mineRange}) and ${esc(conflict.claimedBy)} (${otherRange}) — ask a supervisor to confirm which is right before it's reopened.</span>`;
     }
   } else if(running){
     const who = esc(t.claimedBy || "Claimed");
