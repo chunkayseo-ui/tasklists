@@ -605,6 +605,29 @@ function tasksFor(outlet){
   return wholeOutlet.concat(perPool);
 }
 
+// A technician can pick an outlet someone else is already covering today (see
+// othersOn, which highlights this on the outlet picker) or add one mid-round
+// to cover for a teammate. Either way, if a job there has already been
+// claimed, started or finished by that teammate, the fresh copy this
+// technician gets must start from that live state -- not blank -- otherwise
+// their screen would show it as Open and let them claim or reopen work
+// that's already spoken for. tasksFor() gives the canonical job list (ids,
+// pools); this overlays whatever progress an existing round for that outlet
+// already has, matched the same way syncTaskToOtherRounds matches tasks, so
+// the two copies agree from the moment this one is created.
+function seedTasksFor(outlet){
+  const fresh = tasksFor(outlet);
+  const today = todayKey();
+  const existing = Object.values(state.rounds).find(r =>
+    r.date === today && r.stops && r.stops.some(s => s.outlet === outlet && !s.departAt));
+  if(!existing) return fresh;
+  const stop = existing.stops.find(s => s.outlet === outlet && !s.departAt);
+  return fresh.map(t => {
+    const m = stop.tasks.find(x => x.name === t.name && x.kind === t.kind && (x.pool||null) === (t.pool||null));
+    return m ? Object.assign({}, t, {claimedBy: m.claimedBy||null, startedAt: m.startedAt||null, doneAt: m.doneAt||null}) : t;
+  });
+}
+
 // Drops one-time extras whose day has passed, so the supervisor never has to
 // remember to remove a last-minute job manually. Recurring extras (oneTime
 // false/undefined) and today's one-time extras are left untouched.
@@ -708,7 +731,7 @@ async function startRound(codes){
   await saveRound({
     id: myId(), date: todayKey(), person: state.me, personSlug: slug(state.me),
     createdAt: new Date().toISOString(), headingTo: null,
-    stops: codes.map(c => ({outlet:c, arriveAt:null, departAt:null, fixIn:null, fixOut:null, tasks: tasksFor(c)}))
+    stops: codes.map(c => ({outlet:c, arriveAt:null, departAt:null, fixIn:null, fixOut:null, tasks: seedTasksFor(c)}))
   });
 }
 function withRound(fn, errMsg){
@@ -863,7 +886,7 @@ function addOutlet(code, note){
   withRound(r => {
     if(r.stops.some(x => x.outlet === code)) return false;   // already on this round
     r.stops.push({outlet:code, arriveAt:null, departAt:null, fixIn:null, fixOut:null,
-      covering:true, coveringNote:(note||"").trim().slice(0,200), tasks: tasksFor(code)});
+      covering:true, coveringNote:(note||"").trim().slice(0,200), tasks: seedTasksFor(code)});
   }, "Couldn't add that outlet. Try again.");
 }
 
