@@ -368,8 +368,26 @@ const SUGGESTIONS = ["Fix door","Soap dispenser","Replace light","Clear drain","
 /* ================= helpers ================= */
 const $ = s => document.querySelector(s);
 const pad = n => String(n).padStart(2,"0");
-const todayKey = () => { const d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); };
 const dateKey = d => d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+// A shift that runs past midnight -- an occasional late night, training a
+// new hire, chasing down an urgent fix -- is still that day's shift for
+// round-continuity purposes. Without this, the moment the clock ticks past
+// 00:00 the technician's own round id (todayKey()+"__"+person) flips to a
+// brand-new, nonexistent "today" round mid-shift: their open round looks
+// like it vanished, every claim/finish action silently no-ops against a
+// round that doesn't exist yet, and if they then pick outlets and hit Start
+// again it creates a genuinely empty new round -- all while the real one,
+// with the whole evening's actual work, just sits there under yesterday's
+// date, invisible until a supervisor manually looks up that date. Treating
+// the operational day as not changing until well past any realistic
+// knock-off time avoids all of that.
+const DAY_CUTOFF_HOUR = 5;
+function operationalNow(){
+  const d = new Date();
+  if(d.getHours() < DAY_CUTOFF_HOUR) d.setDate(d.getDate()-1);
+  return d;
+}
+const todayKey = () => dateKey(operationalNow());
 const shiftDate = (key, days) => { const [y,m,d]=key.split("-").map(Number); const dt=new Date(y,m-1,d); dt.setDate(dt.getDate()+days); return dateKey(dt); };
 const MONTH_ABBR = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const fmtDate = key => {
@@ -589,7 +607,7 @@ function getFix(){
 
 /* ================= round mechanics ================= */
 function scheduledToday(){
-  const d = new Date().getDay();
+  const d = operationalNow().getDay();
   const list = OUTLETS.filter(o => o.day === d).map(o => o.code);
   return list.length ? list : OUTLETS.map(o => o.code);
 }
@@ -1069,7 +1087,7 @@ function removeTask(code, tid){
 /* ================= render ================= */
 function render(){
   renderConn();
-  $("#hdr-date").textContent = DAYNAME[new Date().getDay()]+" "+todayKey();
+  $("#hdr-date").textContent = DAYNAME[operationalNow().getDay()]+" "+todayKey();
   $("#btn-tech").setAttribute("aria-pressed", state.role==="tech");
   $("#btn-mgr").setAttribute("aria-pressed", state.role==="mgr");
   $("#btn-routes").setAttribute("aria-pressed", state.role==="routes");
