@@ -308,7 +308,14 @@ const OUTLETS = [
   {code:"DR",day:4,addr:"8 Duke's Road, Singapore",lat:1.322166,lng:103.811588},
   {code:"LENTOR",day:5,addr:"1 Kalidasa Avenue, Teacher's Housing Estate, Singapore 789381",lat:1.381713,lng:103.830166},
   {code:"TENGAH",day:1,addr:"126B Tengah Drive, #01-321 Plantation Village, Singapore 692126",lat:1.358959,lng:103.735645},
-  {code:"JE",day:1,addr:"2 Jurong Gateway Road Indoor Pool, #01-05, Singapore 608512",lat:1.336640,lng:103.744772},
+  // JE is one outlet/stop like any other -- arrive once, leave once -- but it
+  // actually has 4 separate physical pools on site. "pools" fans each of the
+  // outlet's required tasks out across every named pool, so the 3 must-do
+  // jobs configured for every branch become 12 distinct checklist items here
+  // (one per pool), instead of one ambiguous "Water test & dosing" that
+  // doesn't say which of the 4 pools it's for.
+  {code:"JE",day:1,addr:"2 Jurong Gateway Road Indoor Pool, #01-05, Singapore 608512",lat:1.336640,lng:103.744772,
+    pools:["JEIP1","JEIP2","JEOP1","JEOP2"]},
   {code:"HB",day:3,addr:"750 Chai Chee Road, ESR BizPark @ Chai Chee, #01-07, Singapore 469000",lat:1.323652,lng:103.922103},
   {code:"HS",day:4,addr:"28 Stevens Road, #01-10 Swimming Pool, Singapore 257878",lat:1.313869,lng:103.828606},
   {code:"BK",day:1,addr:"18 Jalan Kelulut, Seletar Hills Estate, Singapore 809035",lat:1.383452,lng:103.875847},
@@ -519,7 +526,14 @@ function scheduledToday(){
   return list.length ? list : OUTLETS.map(o => o.code);
 }
 function tasksFor(outlet){
-  const req = state.cfg.required.map(n => ({id:uid(), name:n, kind:"required", startedAt:null, doneAt:null}));
+  // Most outlets are a single pool, so the branch's required tasks apply as-is.
+  // An outlet with named pools (JE today) gets each required task repeated
+  // once per pool, labelled with the pool it's for, instead of one task that
+  // doesn't say which of several physical pools it covers.
+  const pools = (OUTLETS.find(o => o.code===outlet) || {}).pools;
+  const req = pools
+    ? pools.flatMap(p => state.cfg.required.map(n => ({id:uid(), name:p+" — "+n, kind:"required", startedAt:null, doneAt:null})))
+    : state.cfg.required.map(n => ({id:uid(), name:n, kind:"required", startedAt:null, doneAt:null}));
   const asg = (state.cfg.assigned[outlet] || []).map(n => ({id:uid(), name:n, kind:"optional", startedAt:null, doneAt:null}));
   // One-time extras only feed NEW rounds on the day they were added — a last-minute
   // job shouldn't need to be remembered and removed by hand before the next visit.
