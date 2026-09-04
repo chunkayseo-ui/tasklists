@@ -883,10 +883,18 @@ function crewState(r){
   return {k:"done", label:"Round complete"};
 }
 function totals(r){
-  let on=0, tr=0, prev=null, tdone=0;
-  r.stops.forEach(s => {
-    tdone += s.tasks.filter(t => t.doneAt).length;
-    if(!s.arriveAt) return;
+  let on=0, tr=0, prev=null;
+  const tdone = r.stops.reduce((n,s) => n + s.tasks.filter(t => t.doneAt).length, 0);
+  // r.stops keeps the order outlets were PICKED at the start of the round, not
+  // the order they were actually visited -- a technician can tap Arrive on any
+  // of their selected outlets in any order (see routeCard's own `visited`
+  // sort, which this must match). Walking r.stops in its stored order paired
+  // up whichever stop happened to sit next to another in that list, not the
+  // stop actually visited right before it -- producing travel gaps between
+  // outlets that were nowhere near each other in time, and a whole-round total
+  // that didn't match the sum of the real leg-by-leg gaps shown elsewhere.
+  const chron = r.stops.filter(s => s.arriveAt).sort((a,b) => a.arriveAt < b.arriveAt ? -1 : 1);
+  chron.forEach(s => {
     if(prev) tr += mins(prev, s.arriveAt);
     if(s.departAt){ on += mins(s.arriveAt, s.departAt); prev = s.departAt; } else prev = null;
   });
