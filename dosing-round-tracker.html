@@ -1,0 +1,1799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dosing Round Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/*
+ * Deliberately one fixed light theme, not following the phone's dark mode.
+ * This is a field tool read on pool decks in direct sunlight — a dark screen
+ * loses to glare far worse than it gains from matching the OS setting, so it
+ * always renders the same high-contrast light layout for every viewer.
+ */
+:root{
+  --ground:#EEF3F3; --surface:#FFFFFF; --surface-2:#F6F9F9;
+  --line:#C7D6D6; --line-soft:#DCE6E6;
+  --ink:#0A1417; --ink-2:#33474D; --ink-3:#5B7378;
+  --accent:#00676F; --accent-soft:#DCEEEE;
+  --travel:#42509B; --travel-soft:#E3E5F5;
+  --ok:#256B4C; --ok-soft:#DDEEE5;
+  --warn:#8A590D; --warn-soft:#F6EAD4;
+  --shadow:0 1px 2px rgba(14,26,31,.08),0 6px 18px -8px rgba(14,26,31,.22);
+  --r:10px;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:15px;line-height:1.5;-webkit-text-size-adjust:100%}
+.wrap{max-width:960px;margin:0 auto;padding:0 14px 64px}
+
+.top{position:sticky;top:0;z-index:20;background:var(--ground);border-bottom:1px solid var(--line);margin-bottom:18px}
+.top-in{max-width:960px;margin:0 auto;padding:12px 14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:9px;margin-right:auto;min-width:0}
+.brand h1{font-family:"Barlow Condensed",ui-sans-serif,sans-serif;font-weight:700;font-size:25px;margin:0;text-transform:uppercase;letter-spacing:.01em}
+.brand .dt{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;color:var(--ink-3);white-space:nowrap}
+.seg{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:2px;gap:2px}
+.seg button{font:600 12px/1 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.09em;
+  padding:8px 13px;border:0;border-radius:6px;background:transparent;color:var(--ink-2);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.eyebrow{font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.13em;color:var(--ink-3)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.stack{display:flex;flex-direction:column;gap:14px}
+.muted{color:var(--ink-3)}
+.note{font-size:13px;color:var(--ink-3);line-height:1.55}
+h2.sec{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:19px;text-transform:uppercase;letter-spacing:.04em;margin:0}
+.sec-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.row-2{display:flex;gap:8px}
+
+button.btn,a.btn{font:600 14px/1 "IBM Plex Sans",sans-serif;padding:13px 18px;border-radius:8px;
+  border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+a.btn{display:inline-block;text-decoration:none}
+button.btn:focus-visible,a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.btn.primary,a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.btn.big,a.btn.big{width:100%;padding:16px;font-size:16px}
+button.btn.sm,a.btn.sm{padding:9px 14px;font-size:13px}
+/* Soft amber for "still in progress, tap when done" — deliberately not the same
+   solid color as a completed state, so the button doesn't read as already-done. */
+button.btn.inprogress{background:var(--warn-soft);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
+button.btn.warn{background:var(--warn);border-color:var(--warn);color:#fff}
+button.btn:disabled{opacity:.4;cursor:not-allowed}
+button.link{border:0;background:transparent;color:var(--ink-3);padding:4px;font:400 13px/1.4 "IBM Plex Sans",sans-serif;cursor:pointer;text-decoration:underline}
+
+select,input[type=text],input[type=number]{font-family:"IBM Plex Sans",sans-serif;font-size:15px;padding:11px 12px;
+  border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);width:100%}
+input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+.banner{border-radius:var(--r);padding:11px 14px;font-size:13px;line-height:1.5;margin-bottom:14px;
+  background:var(--warn-soft);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent)}
+
+/* Fixed to the viewport (not the scrolling page), so an alert like "finish your
+   current job first" is seen wherever the technician is scrolled to — a banner
+   placed inline at the top of a long outlet list would otherwise go unseen. */
+#toast{position:fixed;left:0;right:0;bottom:0;z-index:1000;display:flex;flex-direction:column;
+  align-items:center;gap:8px;padding:0 14px calc(14px + env(safe-area-inset-bottom,0px));pointer-events:none}
+#toast .bubble{pointer-events:auto;max-width:480px;width:100%;border-radius:var(--r);padding:12px 16px;
+  font-size:13.5px;line-height:1.45;font-weight:600;background:var(--warn-soft);color:var(--warn);
+  border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);box-shadow:0 6px 20px rgba(0,0,0,.18);
+  animation:toast-in .18s ease-out}
+@keyframes toast-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@media (prefers-reduced-motion:reduce){#toast .bubble{animation:none}}
+
+.chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;
+  font:600 11px/1.4 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.09em;white-space:nowrap}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.chip.onsite{background:var(--accent-soft);color:var(--accent)}
+.chip.travel{background:var(--travel-soft);color:var(--travel)}
+.chip.done{background:var(--ok-soft);color:var(--ok)}
+.chip.idle{background:var(--surface-2);color:var(--ink-3)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.chip.onsite .dot,.chip.travel .dot{animation:pulse 2s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.chip .dot{animation:none}}
+
+.tag{font:600 10px/1.5 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.11em;
+  padding:2px 7px;border-radius:4px;white-space:nowrap}
+.tag.req{background:var(--warn-soft);color:var(--warn)}
+.tag.opt{background:var(--travel-soft);color:var(--travel)}
+.tag.add{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
+.tag.once{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
+.tag.rec{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
+.tag.st-open{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
+.tag.st-prog{background:var(--warn-soft);color:var(--warn)}
+.tag.st-done{background:var(--ok-soft);color:var(--ok)}
+.tag.covering{background:var(--travel-soft);color:var(--travel)}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.kpis.trio{grid-template-columns:repeat(3,1fr)}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 13px;min-width:0}
+.kpi .v{font-family:"IBM Plex Mono",monospace;font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}
+.kpi .k{margin-top:3px}
+.kpis.trio .v{font-size:20px}
+@media(max-width:420px){.kpis.trio .v{font-size:17px}.kpis.trio .kpi{padding:10px 9px}.kpis.trio .k{font-size:10px;letter-spacing:.08em}}
+
+/* route */
+.route{display:flex;flex-direction:column;gap:8px}
+.stop{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:13px 14px 13px 50px}
+.stop .idx{position:absolute;left:13px;top:13px;width:25px;height:25px;border-radius:50%;display:grid;place-items:center;
+  font:600 12px/1 "IBM Plex Mono",monospace;background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
+.stop.is-done{background:var(--surface-2)}
+.stop.is-done .idx{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.stop.is-active{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft),var(--shadow)}
+.stop.is-active .idx{background:var(--accent);color:#fff;border-color:transparent}
+.stop.is-next{border-color:var(--travel);border-style:dashed}
+.stop.is-next .idx{background:var(--travel-soft);color:var(--travel);border-color:transparent}
+.stop-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.stop-name{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:21px;text-transform:uppercase;letter-spacing:.02em}
+.stop-times{margin-left:auto;font-size:12.5px;color:var(--ink-3);display:flex;gap:12px}
+.stop-body{margin-top:12px;display:flex;flex-direction:column;gap:10px}
+.travel-gap{display:flex;align-items:center;gap:8px;padding:2px 0 2px 50px;font:500 12px/1 "IBM Plex Mono",monospace;color:var(--travel)}
+.travel-gap .ln{flex:1;height:1px;background:var(--travel);opacity:.35}
+
+/* tasks */
+.tasks{display:flex;flex-direction:column;gap:1px;background:var(--line-soft);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.task{background:var(--surface);padding:11px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.task.running{background:var(--warn-soft)}
+.task.finished{background:var(--surface-2)}
+.task-main{display:flex;flex-direction:column;gap:3px;min-width:140px;flex:1}
+.task-name{font-weight:600;font-size:14.5px;line-height:1.35;overflow-wrap:anywhere}
+.task.finished .task-name{color:var(--ink-2)}
+.task-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.task-time{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:13px;white-space:nowrap}
+.task .act{flex:none}
+/* min-width above stops the job name from being squeezed arbitrarily thin —
+   once it and the two confirm buttons can't both fit on one line, this wraps
+   onto its own row instead of crushing the name column. */
+.undo-confirm{display:flex;gap:8px;flex:none;margin-left:auto}
+.mark{width:20px;height:20px;border-radius:50%;flex:none;display:grid;place-items:center;font:600 11px/1 "IBM Plex Mono",monospace;
+  border:1px solid var(--line);background:var(--surface-2);color:var(--ink-3)}
+.task.finished .mark{background:var(--ok);border-color:var(--ok);color:#fff}
+.task.running .mark{background:var(--warn);border-color:var(--warn);color:#fff}
+
+.addbox{background:var(--surface-2);border:1px dashed var(--line);border-radius:9px;padding:11px 12px;display:flex;flex-direction:column;gap:9px}
+.sugg{display:flex;gap:6px;flex-wrap:wrap}
+.sugg button{font:500 12.5px/1 "IBM Plex Sans",sans-serif;padding:7px 11px;border-radius:999px;
+  border:1px solid var(--line);background:var(--surface);color:var(--ink-2);cursor:pointer}
+.sugg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* supervisor */
+.crew{display:flex;flex-direction:column;gap:1px;background:var(--line-soft);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.crew-row{background:var(--surface);padding:12px 14px;display:flex;flex-direction:column;gap:9px}
+.crew-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.crew-name{font-weight:600;font-size:15px}
+.crew-where{margin-left:auto;font-size:13px;color:var(--ink-2)}
+.bar{display:flex;height:9px;border-radius:5px;overflow:hidden;background:var(--surface-2)}
+.bar span{display:block;height:100%}
+.bar .s-on{background:var(--accent)}
+.bar .s-tr{background:var(--travel);opacity:.55}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--ink-3);flex-wrap:wrap}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:middle}
+.outlet-group+.outlet-group{margin-top:16px;padding-top:14px;border-top:1px solid var(--line-soft)}
+.outlet-group-head{font:600 12px/1 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-3);margin-bottom:8px}
+
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:13.5px}
+th{font:600 11px/1 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);
+  text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td.num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+.bars{display:flex;flex-direction:column;gap:9px}
+.brow{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:baseline}
+.brow .lbl{font-size:13.5px;overflow-wrap:anywhere}
+.brow .val{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:13px;color:var(--ink-2)}
+.brow .track{grid-column:1/-1;height:7px;border-radius:4px;background:var(--surface-2);overflow:hidden}
+.brow .fill{display:block;height:100%;background:var(--accent);border-radius:4px}
+
+.route-card{overflow:hidden}
+.route-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line-soft)}
+.route-body{display:flex;flex-wrap:wrap;gap:4px 18px;align-items:flex-start;padding:14px}
+.routemap{margin:0;flex:1 1 260px;min-width:220px;max-width:340px}
+.routemap svg{display:block;width:100%;height:auto;color:var(--ink-3)}
+.routemap figcaption{margin-top:4px}
+.route-list{flex:1 1 220px;min-width:200px;display:flex;flex-direction:column;gap:9px}
+.route-stop{display:flex;align-items:center;gap:9px;font-size:13.5px;flex-wrap:wrap;row-gap:4px}
+.route-idx{flex:none;width:20px;height:20px;border-radius:50%;background:var(--accent-soft);color:var(--accent);
+  font:700 11px/20px "Barlow Condensed",sans-serif;text-align:center}
+.route-name{min-width:56px}
+.route-foot{padding:0 14px 14px}
+
+/* A ring pulsing around the marker the technician is still standing at right
+   now — the same "live" language as the onsite/travel crew chips elsewhere. */
+@keyframes route-pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.route-pulse{animation:route-pulse 1.8s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.route-pulse{animation:none}}
+
+.datebar{display:flex;align-items:center;gap:10px;padding:10px 12px}
+.datebar .dnav{flex:none;width:38px;height:38px;padding:0;font-size:16px;line-height:1;border-radius:8px}
+.datebar .dmid{flex:1;text-align:center;min-width:0}
+.datebar .dmid .mono{font-weight:600;font-size:14px;white-space:nowrap}
+.datebar input[type=date]{width:auto;flex:none;padding:8px 10px;font-size:13px}
+.empty{padding:28px 18px;text-align:center;color:var(--ink-3);font-size:14px;line-height:1.6}
+.sample-note{background:var(--travel-soft);color:var(--travel);border-radius:8px;padding:8px 12px;
+  font:600 11px/1.4 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.1em;display:inline-block}
+
+details.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+details.panel summary{padding:12px 14px;cursor:pointer;font-weight:600;font-size:14px;list-style:none}
+details.panel summary::-webkit-details-marker{display:none}
+details.panel summary::after{content:"▾";float:right;color:var(--ink-3)}
+details.panel[open] summary::after{content:"▴"}
+.panel-body{padding:0 14px 14px;display:flex;flex-direction:column;gap:12px}
+
+.pill-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:7px}
+.pill{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:10px 6px;text-align:center;
+  font:600 14px/1 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;color:var(--ink)}
+.pill[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.pill:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pill small{display:block;font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:400;opacity:.7;margin-top:3px;letter-spacing:0}
+
+.assign-block{padding:10px 0;border-bottom:1px solid var(--line-soft)}
+.assign-block:last-child{border-bottom:0}
+.assign-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.assign-row .oc{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:16px;min-width:64px}
+.extra-list{display:flex;flex-direction:column;gap:6px;margin-top:9px}
+.extra-item{display:flex;align-items:center;gap:8px;font-size:13.5px}
+.extra-item .extra-name{flex:1;overflow-wrap:anywhere}
+.extra-add{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:9px}
+.extra-add input[type=text]{flex:1 1 160px}
+.chk{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--ink-2);white-space:nowrap;cursor:pointer}
+.chk input{width:16px;height:16px;accent-color:var(--accent)}
+.tog{font:500 12.5px/1 "IBM Plex Sans",sans-serif;padding:7px 11px;border-radius:999px;
+  border:1px solid var(--line);background:var(--surface);color:var(--ink-2);cursor:pointer}
+.tog[aria-pressed="true"]{background:var(--travel);border-color:var(--travel);color:#fff}
+.tog:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+@media(max-width:520px){
+  .brand h1{font-size:21px}
+  .stop{padding-left:44px}
+  .stop .idx{left:10px}
+  .travel-gap{padding-left:44px}
+}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="top-in">
+    <div class="brand">
+      <h1>Dosing Round</h1>
+      <span class="dt mono" id="hdr-date"></span>
+    </div>
+    <div class="seg" role="group" aria-label="View">
+      <button id="btn-tech" aria-pressed="true">Technician</button>
+      <button id="btn-mgr" aria-pressed="false">Supervisor</button>
+      <button id="btn-routes" aria-pressed="false">Routes</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div id="conn"></div>
+  <div id="view" class="stack"></div>
+</div>
+<div id="toast" aria-live="assertive"></div>
+
+<!--
+  Same Firebase project as the Maintenance Board app (maintenance-board-f931a),
+  just a separate pair of top-level collections (dosing_rounds / dosing_config)
+  so this app's data never mixes with the maintenance-task data. The apiKey
+  below is a public client identifier, not a secret — Firestore access is
+  controlled by the project's security rules, not by hiding this value.
+-->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+
+<script>
+"use strict";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyANFCZbvRGO9aMRtG9MF_qONO3FL85CzSo",
+  authDomain: "maintenance-board-f931a.firebaseapp.com",
+  projectId: "maintenance-board-f931a",
+  storageBucket: "maintenance-board-f931a.firebasestorage.app",
+  messagingSenderId: "169864970579",
+  appId: "1:169864970579:web:bfb7490d0aebcfed17e1a6",
+  measurementId: "G-HYG264NKP4"
+};
+
+/* ================= configuration ================= */
+const OUTLETS = [
+  {code:"CC",day:2,addr:"750A Chai Chee Road, Viva Business Park, #01-02, Singapore 469001",lat:1.322978,lng:103.922125},
+  {code:"DR",day:4,addr:"8 Duke's Road, Singapore",lat:1.322166,lng:103.811588},
+  {code:"LENTOR",day:5,addr:"1 Kalidasa Avenue, Teacher's Housing Estate, Singapore 789381",lat:1.381713,lng:103.830166},
+  {code:"TENGAH",day:1,addr:"126B Tengah Drive, #01-321 Plantation Village, Singapore 692126",lat:1.358959,lng:103.735645},
+  {code:"JE",day:1,addr:"2 Jurong Gateway Road Indoor Pool, #01-05, Singapore 608512",lat:1.336640,lng:103.744772},
+  {code:"HB",day:3,addr:"750 Chai Chee Road, ESR BizPark @ Chai Chee, #01-07, Singapore 469000",lat:1.323652,lng:103.922103},
+  {code:"HS",day:4,addr:"28 Stevens Road, #01-10 Swimming Pool, Singapore 257878",lat:1.313869,lng:103.828606},
+  {code:"BK",day:1,addr:"18 Jalan Kelulut, Seletar Hills Estate, Singapore 809035",lat:1.383452,lng:103.875847},
+  {code:"WWW",day:2,addr:"1 Pasir Ris Close, E!Hub@Downtown East, Singapore 519599",lat:1.379127,lng:103.955445},
+  {code:"TPY",day:0,addr:"85 Lorong 4 Toa Payoh, #01-336, Singapore 310085",lat:1.336285,lng:103.848429}
+];
+const DAYNAME = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const DEFAULT_TASKS = {
+  required: ["Water test & dosing"],
+  optional: ["Manual vacuum pool", "Backwash filter", "Clear skimmer baskets"],
+  assigned: {},                      // outlet code -> [optional task names] (shared pool, toggled per outlet)
+  extra: {}                          // outlet code -> [{id, name, kind}] — one-off jobs unique to that outlet
+};
+const SUGGESTIONS = ["Fix door","Soap dispenser","Replace light","Clear drain","Top up chemicals","Report to office"];
+
+/* ================= helpers ================= */
+const $ = s => document.querySelector(s);
+const pad = n => String(n).padStart(2,"0");
+const todayKey = () => { const d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); };
+const dateKey = d => d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const shiftDate = (key, days) => { const [y,m,d]=key.split("-").map(Number); const dt=new Date(y,m-1,d); dt.setDate(dt.getDate()+days); return dateKey(dt); };
+const MONTH_ABBR = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const fmtDate = key => {
+  const [y,m,d]=key.split("-").map(Number); const dt=new Date(y,m-1,d);
+  const yr = y===new Date().getFullYear() ? "" : " "+y;
+  return DAYNAME[dt.getDay()]+", "+d+" "+MONTH_ABBR[m-1]+yr;
+};
+const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,60) || "x";
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const clockOf = iso => { const d=new Date(iso); return pad(d.getHours())+":"+pad(d.getMinutes()); };
+const clone = o => JSON.parse(JSON.stringify(o));
+const uid = () => Math.random().toString(36).slice(2,9);
+
+function mins(a,b){ return Math.max(0, Math.round((new Date(b) - new Date(a))/60000)); }
+function dur(m){ if(m==null) return "—"; if(m < 60) return m+"m"; return Math.floor(m/60)+"h "+pad(m%60)+"m"; }
+function liveDur(since){ return dur(mins(since, new Date().toISOString())); }
+
+/* ================= state ================= */
+const state = {
+  role:"tech",
+  me: localStorage.getItem("drt.me") || "",
+  roster: [],
+  cfg: clone(DEFAULT_TASKS),
+  rounds: {},
+  showSample:false,
+  db:null, dbTried:false,
+  picking:null,
+  pickingExtra:false,    // whether the "add outlet — covering for someone" picker is open
+  pickingExtraFor:null,  // outlet code chosen in that picker, waiting on its optional note
+  notingOutlet:null,     // outlet code whose covering-note box is open (add or edit)
+  adding:null,           // outlet code whose "add task" box is open
+  confirmUndo:null,      // "outlet|taskId" of an Undo pending a second confirming tap
+  confirmDepart:null,    // outlet code of a Leave-with-open-must-do pending a second confirming tap
+  confirmReopen:null,    // outlet code of a Reopen (undo a departure) pending a second confirming tap
+  timeByGroup:"job",     // "Time by job" section: "job" (aggregate) or "outlet" (grouped per branch)
+  pending:{},            // docPath -> {data, tries} — writes not yet confirmed saved to the team
+  panelsOpen:{},         // panel key -> open/closed, kept across redraws (the view is rebuilt often)
+  viewDate: null,        // supervisor board: which day is showing (set to today at boot)
+  historyCache:{}        // date string -> {rounds:[...], loading:bool} — past days, fetched once and kept
+};
+const myId = () => state.me ? todayKey()+"__"+slug(state.me) : null;
+const myRound = () => state.rounds[myId()] || null;
+
+/* ================= storage ================= */
+const local = {
+  read(){ try{ return JSON.parse(localStorage.getItem("drt.rounds")||"{}"); }catch(e){ return {}; } },
+  write(all){ try{ localStorage.setItem("drt.rounds", JSON.stringify(all)); }catch(e){} }
+};
+
+/*
+ * Every write lands on this device immediately (localStorage), then tries the
+ * shared store. If the shared write fails, the change is NOT lost — it stays
+ * queued in state.pending and a background timer keeps retrying until it goes
+ * through, so a flaky connection heals itself instead of needing the person
+ * to notice and redo the change.
+ */
+async function persist(docPath, data, cacheFn){
+  cacheFn();
+  if(!state.db) return;
+  try{
+    await state.db.doc(docPath).set(data);
+    if(state.pending[docPath]){ delete state.pending[docPath]; renderConn(); }
+  } catch(e){
+    state.pending[docPath] = {data, tries:(state.pending[docPath]?.tries||0)+1};
+    renderConn();
+    setTimeout(flushPending, 2500);
+  }
+}
+async function flushPending(){
+  if(!state.db) return;
+  const paths = Object.keys(state.pending);
+  for(const p of paths){
+    const item = state.pending[p]; if(!item) continue;
+    try{ await state.db.doc(p).set(item.data); delete state.pending[p]; }
+    catch(e){ item.tries++; }
+  }
+  renderConn();
+  if(Object.keys(state.pending).length) setTimeout(flushPending, 5000);
+}
+
+async function initDb(){
+  let db = null;
+  try {
+    if(window.firebase && firebase.initializeApp){
+      const app = (firebase.apps && firebase.apps.length) ? firebase.apps[0] : firebase.initializeApp(firebaseConfig);
+      db = firebase.firestore(app);
+    }
+  } catch(e){ db = null; }
+  state.db = db; state.dbTried = true;
+
+  if(!db){
+    try{ state.roster = JSON.parse(localStorage.getItem("drt.roster")||"[]"); }catch(e){ state.roster=[]; }
+    try{ const c = localStorage.getItem("drt.cfg"); if(c) state.cfg = JSON.parse(c); }catch(e){}
+    const pruned = pruneExpiredExtras(state.cfg.extra);
+    state.cfg.extra = pruned.extra;
+    if(pruned.changed) localStorage.setItem("drt.cfg", JSON.stringify(state.cfg));
+    state.rounds = normalizeRounds(local.read());
+    render(); return;
+  }
+  // While a doc has a write of ours still pending, ignore incoming snapshots for it —
+  // otherwise a stale remote read can stomp the change we're still trying to save.
+  db.doc("dosing_config/roster").onSnapshot(
+    s => { if(state.pending["dosing_config/roster"]) return;
+      const d = s.exists ? s.data() : null; state.roster = (d && Array.isArray(d.members)) ? clone(d.members) : []; render(); }, ()=>{});
+  db.doc("dosing_config/tasks").onSnapshot(
+    s => {
+      if(state.pending["dosing_config/tasks"]) return;
+      const d = s.exists ? clone(s.data()) : null;
+      state.cfg = {
+        required: (d && Array.isArray(d.required)) ? d.required : clone(DEFAULT_TASKS.required),
+        optional: (d && Array.isArray(d.optional)) ? d.optional : clone(DEFAULT_TASKS.optional),
+        assigned: (d && d.assigned && typeof d.assigned === "object") ? d.assigned : {},
+        extra: (d && d.extra && typeof d.extra === "object") ? d.extra : {}
+      };
+      const pruned = pruneExpiredExtras(state.cfg.extra);
+      state.cfg.extra = pruned.extra;
+      render();
+      if(pruned.changed && !state.extrasPruned){ state.extrasPruned = true; saveCfg(clone(state.cfg)); }
+    }, ()=>{});
+  db.collection("dosing_rounds").where("date","==",todayKey()).onSnapshot(
+    s => {
+      const next={};
+      s.docs.forEach(d => { const p="dosing_rounds/"+d.id; if(!state.pending[p]) next[d.id] = clone(Object.assign({id:d.id}, d.data())); });
+      // keep any of today's rounds we still have a pending write for, using our local version
+      Object.keys(state.pending).forEach(p => { if(p.startsWith("dosing_rounds/")){ const id=p.slice(14); if(state.rounds[id]) next[id]=state.rounds[id]; } });
+      state.rounds = normalizeRounds(next); render();
+    }, ()=>{});
+  render();
+}
+
+async function saveRound(round){
+  state.rounds[round.id] = round; render();
+  await persist("dosing_rounds/"+round.id, (()=>{ const c=clone(round); delete c.id; return c; })(),
+    () => { const all = local.read(); all[round.id] = round; local.write(all); });
+}
+async function saveRoster(members){
+  state.roster = members; render();
+  await persist("dosing_config/roster", {members}, () => localStorage.setItem("drt.roster", JSON.stringify(members)));
+}
+async function saveCfg(cfg){
+  state.cfg = cfg; render();
+  await persist("dosing_config/tasks", clone(cfg), () => localStorage.setItem("drt.cfg", JSON.stringify(cfg)));
+}
+
+// A one-off alert (blocked action, save failure) — shown as a toast fixed to the
+// bottom of the viewport so it's seen no matter where the page is scrolled to,
+// with its own timer so an unrelated re-render can't wipe it out early.
+let toastTimer = null;
+function flash(msg){
+  const el = $("#toast"); if(!el) return;
+  el.innerHTML = '<div class="bubble" role="alert">'+esc(msg)+'</div>';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.innerHTML = ""; }, 4500);
+}
+function renderConn(){
+  const el = $("#conn"); if(!el) return;
+  const pendingN = Object.keys(state.pending).length;
+  if(state.dbTried && !state.db){
+    el.innerHTML = '<div class="banner"><strong>Local mode.</strong> Shared storage isn\'t available in this view, so entries stay on this device and the supervisor board won\'t show other people.</div>';
+  } else if(pendingN){
+    const stuck = Object.values(state.pending).some(p => p.tries >= 3);
+    el.innerHTML = '<div class="banner"><strong>'+(stuck?"Still trying to sync.":"Saving…")+'</strong> '
+      + (stuck
+        ? "Your change is kept on this phone, but hasn't reached the team yet — check your signal. It'll keep retrying on its own."
+        : "This will only take a moment.")
+      + '</div>';
+  } else {
+    el.innerHTML = "";
+  }
+}
+
+/* ================= location (recorded, never blocking) ================= */
+function getFix(){
+  return new Promise(resolve => {
+    if(!navigator.geolocation) return resolve(null);
+    let settled=false; const done = v => { if(!settled){ settled=true; resolve(v); } };
+    setTimeout(()=>done(null), 8000);
+    navigator.geolocation.getCurrentPosition(
+      p => done({lat:+p.coords.latitude.toFixed(5), lng:+p.coords.longitude.toFixed(5), acc:Math.round(p.coords.accuracy)}),
+      () => done(null), {enableHighAccuracy:true, timeout:7500, maximumAge:20000});
+  });
+}
+
+/* ================= round mechanics ================= */
+function scheduledToday(){
+  const d = new Date().getDay();
+  const list = OUTLETS.filter(o => o.day === d).map(o => o.code);
+  return list.length ? list : OUTLETS.map(o => o.code);
+}
+function tasksFor(outlet){
+  const req = state.cfg.required.map(n => ({id:uid(), name:n, kind:"required", startedAt:null, doneAt:null}));
+  const asg = (state.cfg.assigned[outlet] || []).map(n => ({id:uid(), name:n, kind:"optional", startedAt:null, doneAt:null}));
+  // One-time extras only feed NEW rounds on the day they were added — a last-minute
+  // job shouldn't need to be remembered and removed by hand before the next visit.
+  const today = todayKey();
+  const ex  = (state.cfg.extra[outlet] || [])
+    .filter(e => !e.oneTime || e.addedDate === today)
+    .map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null}));
+  return req.concat(asg).concat(ex);
+}
+
+// Drops one-time extras whose day has passed, so the supervisor never has to
+// remember to remove a last-minute job manually. Recurring extras (oneTime
+// false/undefined) and today's one-time extras are left untouched.
+function pruneExpiredExtras(extra){
+  const today = todayKey();
+  const out = {}; let changed = false;
+  Object.keys(extra||{}).forEach(outlet => {
+    const list = extra[outlet] || [];
+    const kept = list.filter(e => !e.oneTime || e.addedDate === today);
+    if(kept.length !== list.length) changed = true;
+    if(kept.length) out[outlet] = kept;
+  });
+  return {extra: out, changed};
+}
+
+// Repairs a round saved by an earlier version of the app (before jobs existed —
+// stops only had chlorine/pH fields). Without this, one old round can throw on
+// render and stall the whole page for whoever it belongs to. Never destructive:
+// arrival/departure times are kept; a missing job list is filled in fresh.
+function normalizeRound(r){
+  if(!r || !Array.isArray(r.stops)) return r;
+  if(r.headingTo === undefined) r.headingTo = null;
+  r.stops = r.stops.map(s => Object.assign(
+    {outlet:s.outlet, arriveAt:null, departAt:null, fixIn:null, fixOut:null, covering:false, coveringNote:""},
+    s,
+    {tasks: Array.isArray(s.tasks) ? s.tasks : tasksFor(s.outlet)}
+  ));
+  return r;
+}
+function normalizeRounds(map){ Object.keys(map).forEach(k => normalizeRound(map[k])); return map; }
+
+/*
+ * The live subscription only tracks TODAY's rounds (so "Crew right now" stays fast
+ * and cheap). A past day is fetched once, on demand, and cached — nothing is lost,
+ * it just isn't loaded until the supervisor asks to see it.
+ */
+function roundsForDate(date){
+  if(date === todayKey() || !state.db) return Object.values(state.rounds).filter(r => r.date === date);
+  const c = state.historyCache[date];
+  return (c && c.rounds) ? c.rounds : [];
+}
+async function loadHistory(date){
+  if(date === todayKey() || !state.db) return;
+  if(state.historyCache[date]) return;   // already loaded or in flight
+  state.historyCache[date] = {rounds:[], loading:true};
+  render();
+  try{
+    const snap = await state.db.collection("dosing_rounds").where("date","==",date).get();
+    const rounds = snap.docs.map(d => normalizeRound(clone(Object.assign({id:d.id}, d.data()))));
+    state.historyCache[date] = {rounds, loading:false};
+  } catch(e){
+    state.historyCache[date] = {rounds:[], loading:false, error:true};
+  }
+  render();
+}
+function activeStop(r){ return r ? r.stops.find(s => s.arriveAt && !s.departAt) : null; }
+function nextStop(r){ return r ? r.stops.find(s => !s.arriveAt) : null; }
+function lastDeparture(r){ const d = r ? r.stops.filter(s=>s.departAt) : []; return d.length ? d[d.length-1].departAt : null; }
+function runningTask(r){
+  if(!r) return null;
+  for(const s of r.stops){ const t = s.tasks.find(x => x.startedAt && !x.doneAt); if(t) return {stop:s, task:t}; }
+  return null;
+}
+function crewState(r){
+  if(!r || !r.stops.some(s => s.arriveAt)) return {k:"idle", label:"Not started"};
+  const a = activeStop(r);
+  if(a){
+    const rt = a.tasks.find(t => t.startedAt && !t.doneAt);
+    return {k:"onsite", label: rt ? a.outlet+" · "+rt.name : "At "+a.outlet, since: rt ? rt.startedAt : a.arriveAt};
+  }
+  if(nextStop(r)) return {k:"travel", label:"Travelling", since:lastDeparture(r)};
+  return {k:"done", label:"Round complete"};
+}
+function totals(r){
+  let on=0, tr=0, prev=null, tdone=0;
+  r.stops.forEach(s => {
+    tdone += s.tasks.filter(t => t.doneAt).length;
+    if(!s.arriveAt) return;
+    if(prev) tr += mins(prev, s.arriveAt);
+    if(s.departAt){ on += mins(s.arriveAt, s.departAt); prev = s.departAt; } else prev = null;
+  });
+  return {onSite:on, travel:tr, done:r.stops.filter(s=>s.departAt).length, total:r.stops.length, tasksDone:tdone};
+}
+function requiredLeft(s){ return s.tasks.filter(t => t.kind==="required" && !t.doneAt).length; }
+
+async function startRound(codes){
+  state.picking = null;
+  await saveRound({
+    id: myId(), date: todayKey(), person: state.me, personSlug: slug(state.me),
+    createdAt: new Date().toISOString(), headingTo: null,
+    stops: codes.map(c => ({outlet:c, arriveAt:null, departAt:null, fixIn:null, fixOut:null, tasks: tasksFor(c)}))
+  });
+}
+function withRound(fn, errMsg){
+  return (async () => {
+    try{
+      const r = clone(myRound() || {}); if(!r.stops) return;
+      const changed = fn(r); if(changed === false) return;
+      await saveRound(r);
+    } catch(e){ flash(errMsg || "Something didn't save. Try again."); }
+  })();
+}
+
+/*
+ * Supervisor-side push: whenever Job Setup changes what an outlet's job list
+ * should look like — a per-branch job added/removed, a shared job toggled
+ * on/off for that outlet, or the must-do/optional master lists edited —
+ * reach into any of TODAY's rounds that still have that outlet open (not yet
+ * departed) and add/remove the matching task there too, so nothing has to
+ * wait for the next round to be noticed. A job the technician has already
+ * started or finished is never touched, so nobody's real timing data gets
+ * rewritten out from under them.
+ */
+async function syncExtraToLiveRounds(outlet, job, action){
+  const today = todayKey();
+  const jobs = Object.values(state.rounds).filter(r => r.date === today);
+  for(const orig of jobs){
+    const r = clone(orig);
+    const s = r.stops.find(x => x.outlet === outlet && !x.departAt);
+    if(!s) continue;
+    let changed = false;
+    if(action === "add"){
+      if(!s.tasks.some(t => t.name === job.name && t.kind === job.kind)){
+        s.tasks.push({id:uid(), name:job.name, kind:job.kind, startedAt:null, doneAt:null});
+        changed = true;
+      }
+    } else {
+      const before = s.tasks.length;
+      s.tasks = s.tasks.filter(t => !(t.name === job.name && t.kind === job.kind && !t.startedAt));
+      changed = s.tasks.length !== before;
+    }
+    if(changed){ try{ await saveRound(r); }catch(e){} }
+  }
+}
+
+// The must-do list and the shared optional pool aren't per-outlet, so a single
+// edit (rename, delete, or a per-outlet toggle) can add/drop a job at several
+// outlets at once. This diffs the config before vs. after an edit and pushes
+// each individual add/remove into today's open rounds via the same function
+// per-branch jobs use above, so shared-job edits get the same "takes effect
+// immediately" treatment instead of only applying to rounds started later.
+function poolTasksFor(c, outletCode){
+  const req = c.required.map(n => ({name:n, kind:"required"}));
+  const opt = (c.assigned[outletCode] || []).map(n => ({name:n, kind:"optional"}));
+  return req.concat(opt);
+}
+async function syncPoolChangeToLiveRounds(before, after){
+  const key = j => j.kind+"|"+j.name;
+  for(const o of OUTLETS){
+    const b = poolTasksFor(before, o.code), a = poolTasksFor(after, o.code);
+    const bKeys = new Set(b.map(key)), aKeys = new Set(a.map(key));
+    for(const j of a){ if(!bKeys.has(key(j))) await syncExtraToLiveRounds(o.code, j, "add"); }
+    for(const j of b){ if(!aKeys.has(key(j))) await syncExtraToLiveRounds(o.code, j, "remove"); }
+  }
+}
+
+function arrive(code){
+  const open = activeStop(myRound());
+  if(open && open.outlet !== code){
+    flash("You're still checked in at "+open.outlet+". Tap “Leave "+open.outlet+"” before arriving somewhere else.");
+    return;
+  }
+  withRound(r => {
+    const s = r.stops.find(x=>x.outlet===code); if(!s || s.arriveAt) return false;
+    if(r.stops.some(x => x.arriveAt && !x.departAt)) return false;   // one outlet at a time
+    s.arriveAt = new Date().toISOString();
+    r.headingTo = null;   // "next" is resolved the moment you actually arrive somewhere
+  }, "Couldn't record the arrival. Try again.").then(async () => {
+    const fix = await getFix(); if(!fix) return;
+    withRound(r => { const s = r.stops.find(x=>x.outlet===code); if(!s || s.fixIn) return false; s.fixIn = fix; });
+  });
+}
+function depart(code){
+  withRound(r => {
+    const s = r.stops.find(x=>x.outlet===code); if(!s || !s.arriveAt || s.departAt) return false;
+    s.tasks.forEach(t => { if(t.startedAt && !t.doneAt) t.doneAt = new Date().toISOString(); });
+    s.departAt = new Date().toISOString();
+  }, "Couldn't record the departure. Try again.").then(async () => {
+    const fix = await getFix(); if(!fix) return;
+    withRound(r => { const s = r.stops.find(x=>x.outlet===code); if(!s || s.fixOut) return false; s.fixOut = fix; });
+  });
+}
+function skipStop(code){ withRound(r => { r.stops = r.stops.filter(s => s.outlet !== code); if(r.headingTo === code) r.headingTo = null; }); }
+
+// Lets a technician add an outlet to their own round after it's already
+// started — e.g. another technician is stuck fixing something at their own
+// pool and can't get to their assigned outlet, so someone else covers it
+// instead. Reuses the same job list a fresh round would give that outlet
+// (must-do, shared optional pool, any per-branch extras) and is tagged
+// "covering" so the supervisor can tell it apart from the technician's
+// originally-planned outlets, without this turning into an OT/payroll record —
+// it's the same coverage visibility the rest of the app gives, just for a
+// same-day reassignment instead of a full day.
+function addOutlet(code, note){
+  withRound(r => {
+    if(r.stops.some(x => x.outlet === code)) return false;   // already on this round
+    r.stops.push({outlet:code, arriveAt:null, departAt:null, fixIn:null, fixOut:null,
+      covering:true, coveringNote:(note||"").trim().slice(0,200), tasks: tasksFor(code)});
+  }, "Couldn't add that outlet. Try again.");
+}
+
+// Lets a technician add or edit a short free-text note on a covering stop —
+// who they're covering for, why, anything worth a supervisor knowing later.
+// Never required, and available any time the stop is still on the round,
+// whether it's been visited yet or not.
+function setCoveringNote(code, note){
+  withRound(r => {
+    const s = r.stops.find(x => x.outlet===code); if(!s || !s.covering) return false;
+    s.coveringNote = (note||"").trim().slice(0,200);
+  }, "Couldn't save that note. Try again.");
+}
+
+// Lets a technician flag which pool they're headed to next, once they've left
+// a stop and before they've arrived anywhere new. Purely informational — it
+// reorders this device's own list and lights up the Routes map, but never
+// blocks arriving somewhere else instead if plans change; arriving anywhere
+// resolves it either way (see arrive()). Tapping the already-picked outlet
+// again clears it.
+function setHeading(code){
+  withRound(r => {
+    if(activeStop(r)) return false;
+    const s = r.stops.find(x => x.outlet===code);
+    if(!s || s.arriveAt) return false;
+    r.headingTo = (r.headingTo === code) ? null : code;
+  }, "Couldn't save that. Try again.");
+}
+
+// Undo a mis-tapped arrival, while nothing has been claimed yet.
+function unarrive(code){
+  withRound(r => {
+    const s = r.stops.find(x=>x.outlet===code); if(!s || !s.arriveAt || s.departAt) return false;
+    if(s.tasks.some(t => t.startedAt)) return false;
+    s.arriveAt = null; s.fixIn = null;
+  }, "Couldn't undo that. Try again.");
+}
+
+// Reopens a stop that was already departed — for "Leave" tapped by mistake before
+// a must-do job was even claimed, with no confirmation to catch it. Only the
+// departure itself is undone: arrival time and any already-timed jobs are left
+// exactly as they were, so nothing about the real work gets rewritten. Same
+// one-outlet-at-a-time rule as arriving: blocked if a different stop is
+// currently checked into.
+function reopenStop(code){
+  const open = activeStop(myRound());
+  if(open && open.outlet !== code){
+    flash("You're still checked in at "+open.outlet+". Leave there before reopening "+code+".");
+    return;
+  }
+  withRound(r => {
+    const s = r.stops.find(x=>x.outlet===code); if(!s || !s.departAt) return false;
+    s.departAt = null; s.fixOut = null;
+  }, "Couldn't reopen that. Try again.");
+}
+
+function claimTask(code, tid){
+  const rt = runningTask(myRound());
+  if(rt && rt.task.id !== tid){ flash("Finish “"+rt.task.name+"” first — one job at a time keeps the timings honest."); return; }
+  withRound(r => {
+    const s = r.stops.find(x=>x.outlet===code); if(!s) return false;
+    const t = s.tasks.find(x=>x.id===tid); if(!t || t.startedAt) return false;
+    if(!s.arriveAt){
+      if(r.stops.some(x => x.arriveAt && !x.departAt)) return false;
+      s.arriveAt = new Date().toISOString();
+    }
+    t.startedAt = new Date().toISOString();
+  }, "Couldn't claim that job. Try again.");
+}
+function finishTask(code, tid){
+  withRound(r => {
+    const s = r.stops.find(x=>x.outlet===code); if(!s) return false;
+    const t = s.tasks.find(x=>x.id===tid); if(!t || !t.startedAt || t.doneAt) return false;
+    t.doneAt = new Date().toISOString();
+  }, "Couldn't mark that done. Try again.");
+}
+// Reopens a job marked Done by mistake, back to In Progress (its original start
+// time is kept, so the clock isn't reset). Same one-job-at-a-time rule as
+// claiming applies — can't undo one job while a different one is running.
+function undoTask(code, tid){
+  const rt = runningTask(myRound());
+  if(rt && rt.task.id !== tid){ flash("Finish or undo “"+rt.task.name+"” first — one job at a time keeps the timings honest."); return; }
+  withRound(r => {
+    const s = r.stops.find(x=>x.outlet===code); if(!s || s.departAt) return false;
+    const t = s.tasks.find(x=>x.id===tid); if(!t || !t.doneAt) return false;
+    t.doneAt = null;
+  }, "Couldn't undo that. Try again.");
+}
+function addTask(code, name){
+  const n = (name||"").trim(); if(!n) return;
+  state.adding = null;
+  withRound(r => {
+    const s = r.stops.find(x=>x.outlet===code); if(!s) return false;
+    s.tasks.push({id:uid(), name:n, kind:"adhoc", startedAt:null, doneAt:null});
+  }, "Couldn't add that job. Try again.");
+}
+function removeTask(code, tid){
+  withRound(r => {
+    const s = r.stops.find(x=>x.outlet===code); if(!s) return false;
+    s.tasks = s.tasks.filter(t => t.id !== tid || t.startedAt);
+  });
+}
+
+/* ================= render ================= */
+function render(){
+  renderConn();
+  $("#hdr-date").textContent = DAYNAME[new Date().getDay()]+" "+todayKey();
+  $("#btn-tech").setAttribute("aria-pressed", state.role==="tech");
+  $("#btn-mgr").setAttribute("aria-pressed", state.role==="mgr");
+  $("#btn-routes").setAttribute("aria-pressed", state.role==="routes");
+  $("#view").innerHTML = state.role==="tech" ? techView() : state.role==="routes" ? routesView() : mgrView();
+  wire();
+}
+
+/* ---------- technician ---------- */
+function techView(){
+  if(!state.me) return pickPerson();
+  const r = myRound();
+  return r ? runRound(r) : buildRound();
+}
+
+function pickPerson(){
+  const opts = state.roster.map(n => '<option value="'+esc(n)+'">'+esc(n)+'</option>').join("");
+  return `
+  <div class="card" style="padding:20px">
+    <div class="eyebrow">Step 1</div>
+    <h2 class="sec" style="margin:6px 0 14px">Who's doing the round?</h2>
+    <div class="stack">
+      <select id="who"><option value="">Select your name…</option>${opts}</select>
+      <button class="btn primary big" id="who-go">Continue</button>
+      <p class="note">Your name is remembered on this phone, so you only pick it once.</p>
+    </div>
+  </div>
+  ${rosterPanel()}`;
+}
+
+function buildRound(){
+  const sel = state.picking || scheduledToday();
+  const d = new Date().getDay(), weekend = d===0||d===6;
+  const pills = OUTLETS.map(o => {
+    const extra = (state.cfg.assigned[o.code]||[]).length;
+    return `<button class="pill" data-pick="${o.code}" aria-pressed="${sel.includes(o.code)}">
+      ${esc(o.code)}<small>${o.day===d ? "scheduled" : (extra ? "+"+extra+" job"+(extra>1?"s":"") : "&nbsp;")}</small></button>`;
+  }).join("");
+  return `
+  <div class="card" style="padding:20px">
+    <div class="sec-head" style="margin-bottom:4px"><h2 class="sec">Today's round</h2><span class="eyebrow">${esc(state.me)}</span></div>
+    <p class="note" style="margin:0 0 14px">${weekend
+      ? "Weekend — all outlets pre-selected for the dosing round. Deselect any you're not covering."
+      : DAYNAME[d]+" maintenance outlets are pre-selected. Add any others you'll dose today."}</p>
+    <div class="pill-grid">${pills}</div>
+    <div class="row-2" style="margin-top:16px">
+      <button class="btn" id="pick-all" style="flex:1">Select all</button>
+      <button class="btn" id="pick-none" style="flex:1">Clear</button>
+    </div>
+    <button class="btn primary big" id="start" style="margin-top:10px" ${sel.length?"":"disabled"}>
+      Start round · ${sel.length} outlet${sel.length===1?"":"s"}</button>
+    <p class="note" style="margin:12px 0 0">Each outlet comes with its job list. Nothing is timed until you claim a job.</p>
+  </div>
+  <button class="btn" id="switch-user" style="align-self:flex-start">Not ${esc(state.me)}?</button>`;
+}
+
+// The "heading to next?" pill picker, shown once a technician has left a stop
+// and hasn't arrived anywhere new yet, for every outlet still remaining —
+// even just one. With a single outlet left it's less about choosing between
+// options and more about confirming "yes, travelling there now," which is
+// exactly what lights up the dashed anticipated-route line on the
+// supervisor's Routes map instead of leaving it a plain "still to visit" ring.
+function headingPicker(r, pending){
+  if(!pending.length) return "";
+  const pills = pending.map(s =>
+    `<button class="pill" data-heading="${esc(s.outlet)}" aria-pressed="${r.headingTo===s.outlet}">${esc(s.outlet)}</button>`
+  ).join("");
+  const prompt = pending.length === 1
+    ? `Heading to ${esc(pending[0].outlet)}? <span class="muted">Optional — shows on the Routes map.</span>`
+    : `Heading to next? <span class="muted">Optional — shows on the Routes map.</span>`;
+  return `<div class="card" style="padding:14px">
+    <p class="note" style="margin:0 0 8px">${prompt}</p>
+    <div class="pill-grid">${pills}</div>
+  </div>`;
+}
+
+// A same-day, last-minute outlet a technician wasn't originally assigned —
+// covering for someone stuck elsewhere (fixing a pump, say) — added directly
+// from their own round rather than needing the supervisor to set it up first.
+function addOutletBlock(r){
+  const available = OUTLETS.filter(o => !r.stops.some(s => s.outlet === o.code));
+  if(!available.length) return "";
+  if(!state.pickingExtra){
+    return `<button class="btn" id="open-addoutlet" style="align-self:flex-start">+ Add outlet — covering for someone</button>`;
+  }
+  if(state.pickingExtraFor){
+    const code = state.pickingExtraFor;
+    return `<div class="card" style="padding:14px">
+      <p class="note" style="margin:0 0 8px">Covering <strong>${esc(code)}</strong> — add a note? <span class="muted">Optional, e.g. who you're covering for.</span></p>
+      <input type="text" id="coveringnote" placeholder="e.g. Covering for Fik — pump repair at DR" autocomplete="off" maxlength="200">
+      <div class="row-2" style="margin-top:10px">
+        <button class="btn primary sm" id="confirm-addoutlet" style="flex:1">Add ${esc(code)}</button>
+        <button class="btn sm" id="back-addoutlet" style="flex:1">Back</button>
+      </div>
+    </div>`;
+  }
+  const pills = available.map(o => `<button class="pill" data-addoutlet="${o.code}">${esc(o.code)}</button>`).join("");
+  return `<div class="card" style="padding:14px">
+    <p class="note" style="margin:0 0 8px">Which pool are you covering tonight?</p>
+    <div class="pill-grid">${pills}</div>
+    <button class="btn sm" id="cancel-addoutlet" style="margin-top:10px">Cancel</button>
+  </div>`;
+}
+
+// Shown on a covering stop's own card — the note can be added or edited at
+// any point while it's still on the round, not just at the moment it's added
+// (a technician may only think to note who/why after the fact).
+function coveringNoteBlock(s){
+  if(state.notingOutlet === s.outlet){
+    return `<div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+      <input type="text" id="notenote" value="${esc(s.coveringNote||"")}" placeholder="e.g. Covering for Fik — pump repair at DR" autocomplete="off" maxlength="200">
+      <div class="row-2">
+        <button class="btn primary sm" data-savenote="${s.outlet}" style="flex:1">Save note</button>
+        <button class="btn sm" data-cancelnote="${s.outlet}" style="flex:1">Cancel</button>
+      </div>
+    </div>`;
+  }
+  if(s.coveringNote){
+    return `<p class="note" style="margin:6px 0 0">“${esc(s.coveringNote)}” <button class="link" data-asknote="${s.outlet}">edit</button></p>`;
+  }
+  return `<button class="link" data-asknote="${s.outlet}" style="align-self:flex-start;margin-top:4px">+ Add a note</button>`;
+}
+
+function runRound(r){
+  const t = totals(r), cs = crewState(r);
+  // Cards are shown in the order the round actually happened, not the fixed
+  // reference order the outlets were originally picked in (r.stops keeps that
+  // fixed order — a technician can arrive at their picked outlets in any
+  // order). Visited/active stops are sorted by real arrival time; anything
+  // not yet started is appended after — the declared "heading to" outlet
+  // first, if one's been picked, then the rest in their original order.
+  const visited = r.stops.filter(s => s.arriveAt).sort((a,b) => a.arriveAt < b.arriveAt ? -1 : 1);
+  let pending = r.stops.filter(s => !s.arriveAt);
+  if(r.headingTo){
+    const hi = pending.findIndex(s => s.outlet === r.headingTo);
+    if(hi > 0) pending = [pending[hi], ...pending.slice(0,hi), ...pending.slice(hi+1)];
+  }
+  const ordered = visited.concat(pending);
+  let out = [], prev = null, shownGap = false;
+  ordered.forEach(s => {
+    if(prev && s.arriveAt){
+      out.push(`<div class="travel-gap"><span>▼ travel ${dur(mins(prev,s.arriveAt))}</span><span class="ln"></span></div>`);
+    } else if(prev && !s.arriveAt && cs.k==="travel" && !shownGap){
+      out.push(`<div class="travel-gap"><span>▼ travelling ${liveDur(prev)}</span><span class="ln"></span></div>`);
+      out.push(headingPicker(r, pending));
+      shownGap = true;
+    }
+    const seqIdx = visited.indexOf(s);
+    out.push(stopCard(s, seqIdx, r, s.outlet === r.headingTo));
+    if(s.departAt) prev = s.departAt;
+  });
+  return `
+  <div class="kpis trio">
+    <div class="kpi"><div class="v">${t.done}<span style="font-size:15px;color:var(--ink-3)">/${t.total}</span></div><div class="k eyebrow">Outlets</div></div>
+    <div class="kpi"><div class="v" style="color:var(--accent)">${t.tasksDone}</div><div class="k eyebrow">Jobs done</div></div>
+    <div class="kpi"><div class="v" style="color:var(--travel)">${dur(t.travel)}</div><div class="k eyebrow">Travelling</div></div>
+  </div>
+  <div class="route">${out.join("")}</div>
+  ${addOutletBlock(r)}
+  <div class="row-2">
+    <button class="btn" id="switch-user" style="flex:1">Not ${esc(state.me)}?</button>
+    <button class="btn" id="reset-round" style="flex:1">Reset today's round</button>
+  </div>`;
+}
+
+function taskRow(s, t){
+  const running = t.startedAt && !t.doneAt, finished = !!t.doneAt;
+  const status = finished ? '<span class="tag st-done">Done</span>'
+               : running  ? '<span class="tag st-prog">In Progress</span>'
+                          : '<span class="tag st-open">Open</span>';
+  const tag = t.kind==="required" ? '<span class="tag req">Must do</span>'
+            : t.kind==="optional" ? '<span class="tag opt">If time allows</span>'
+            : '<span class="tag add">Added</span>';
+  let time = "", act = "";
+  if(finished){
+    time = `<span class="task-time" style="color:var(--ok)">${dur(mins(t.startedAt,t.doneAt))}</span>`;
+    const key = s.outlet+"|"+t.id;
+    if(!s.departAt){
+      act = state.confirmUndo === key
+        ? `<span class="undo-confirm">
+             <button class="btn sm act warn" data-undo="${key}">Yes, undo</button>
+             <button class="btn sm act" data-cancelundo="${key}">Cancel</button>
+           </span>`
+        : `<button class="btn sm act" data-askundo="${key}">Undo</button>`;
+    }
+  } else if(running){
+    time = `<span class="task-time" style="color:var(--warn)">${liveDur(t.startedAt)}</span>`;
+    // Deliberately not colored like "Done" (which reads as already-finished) —
+    // this button IS the finish action, so it's labeled and colored to match
+    // "still in progress, tap when you're actually done" instead.
+    act = `<button class="btn sm act inprogress" data-done="${s.outlet}|${t.id}">In Progress</button>`;
+  } else if(!s.departAt){
+    act = `<button class="btn sm act" data-claim="${s.outlet}|${t.id}">Claim</button>`;
+  } else { time = `<span class="task-time muted">not done</span>`; }
+
+  const del = (!t.startedAt && t.kind==="adhoc" && !s.departAt)
+    ? `<button class="link" data-rmtask="${s.outlet}|${t.id}" aria-label="Remove ${esc(t.name)}">remove</button>` : "";
+
+  return `<div class="task ${running?"running":""} ${finished?"finished":""}">
+    <span class="mark">${finished?"✓":(running?"▶":"")}</span>
+    <span class="task-main">
+      <span class="task-name">${esc(t.name)}</span>
+      <span class="task-meta">${status}${tag}${del}</span>
+    </span>
+    ${time}${act}
+  </div>`;
+}
+
+function stopCard(s, i, r, isHeading){
+  const done = !!s.departAt, active = !!s.arriveAt && !done;
+  const open = activeStop(r);
+  const blocked = open && open.outlet !== s.outlet;
+  const cls = done ? "is-done" : (active ? "is-active" : (isHeading ? "is-next" : ""));
+  let times = "";
+  if(s.arriveAt) times += `<span class="mono">in ${clockOf(s.arriveAt)}</span>`;
+  if(done) times += `<span class="mono">out ${clockOf(s.departAt)}</span><span class="mono" style="color:var(--accent)">${dur(mins(s.arriveAt,s.departAt))}</span>`;
+  else if(active) times += `<span class="mono" style="color:var(--accent)">${liveDur(s.arriveAt)}</span>`;
+
+  let body = "";
+  if(done){
+    // Same row-with-bar treatment the supervisor's "Time by job" uses, so a
+    // finished stop reads the same way here as it does on the supervisor board.
+    const doneTasks = s.tasks.filter(t=>t.doneAt);
+    const maxM = doneTasks.length ? Math.max(1, ...doneTasks.map(t=>mins(t.startedAt,t.doneAt))) : 1;
+    const rows = doneTasks.map(t => { const m = mins(t.startedAt,t.doneAt); return `<div class="brow">
+      <span class="lbl">${esc(t.name)}</span>
+      <span class="val">${dur(m)}</span>
+      <span class="track"><span class="fill" style="width:${Math.max(3,m/maxM*100)}%"></span></span>
+    </div>`; }).join("");
+    // A stop left by mistake — nothing claimed, or "Leave" tapped before a
+    // must-do job was — can be reopened rather than being stuck as-is for the
+    // rest of the day. A second tap confirms, since it changes the round's shape.
+    const reopenConfirm = state.confirmReopen === s.outlet;
+    const reopenBlock = reopenConfirm
+      ? `<div class="row-2">
+           <button class="btn warn sm" style="flex:1" data-reopen="${s.outlet}">Yes, reopen ${esc(s.outlet)}</button>
+           <button class="btn sm" style="flex:1" data-cancelreopen="${s.outlet}">Cancel</button>
+         </div>`
+      : `<button class="link" data-askreopen="${s.outlet}" style="align-self:flex-start">Left by mistake? Reopen</button>`;
+    body = `<div class="stop-body">${rows ? `<div class="bars">${rows}</div>` : ""}${reopenBlock}</div>`;
+  } else if(active){
+    const left = requiredLeft(s);
+    const adding = state.adding === s.outlet;
+    const departConfirm = state.confirmDepart === s.outlet;
+    // Leaving with must-do jobs still open is allowed (sometimes a job genuinely
+    // can't be done), but it's a one-tap, full-width button right below the
+    // warning text — easy to hit by accident. A second confirming tap only kicks
+    // in when something's actually still open; the common case (everything done)
+    // stays a single tap.
+    const leaveBlock = !left
+      ? `<button class="btn primary big" data-depart="${s.outlet}">Leave ${esc(s.outlet)}</button>`
+      : !departConfirm
+      ? `<p class="note" style="margin:0;color:var(--warn)">${left} must-do job${left>1?"s":""} still open.</p>
+         <button class="btn big" data-askdepart="${s.outlet}">Leave ${esc(s.outlet)}</button>`
+      : `<p class="note" style="margin:0;color:var(--warn)">${left} must-do job${left>1?"s":""} still open — leave anyway?</p>
+         <div class="row-2">
+           <button class="btn warn big" style="flex:1" data-depart="${s.outlet}">Yes, leave anyway</button>
+           <button class="btn big" style="flex:1" data-canceldepart="${s.outlet}">Cancel</button>
+         </div>`;
+    body = `<div class="stop-body">
+      <div class="tasks">${s.tasks.map(t => taskRow(s,t)).join("")}</div>
+      ${adding ? `
+      <div class="addbox">
+        <input type="text" id="newtask" placeholder="What else did you do here?" autocomplete="off">
+        <div class="sugg">${SUGGESTIONS.map(x=>`<button data-sugg="${esc(x)}">${esc(x)}</button>`).join("")}</div>
+        <div class="row-2">
+          <button class="btn primary sm" data-addtask="${s.outlet}" style="flex:1">Add job</button>
+          <button class="btn sm" id="cancel-add" style="flex:1">Cancel</button>
+        </div>
+      </div>`
+      : `<button class="btn sm" data-openadd="${s.outlet}" style="align-self:flex-start">+ Add another job</button>`}
+      ${leaveBlock}
+      ${s.tasks.some(t=>t.startedAt) ? "" : `<button class="link" data-unarrive="${s.outlet}" style="align-self:center">Wrong outlet — undo arrival</button>`}
+    </div>`;
+  } else {
+    const n = s.tasks.length;
+    body = `<div class="stop-body">
+      <p class="note" style="margin:0">${n} job${n===1?"":"s"} waiting${s.tasks.some(t=>t.kind==="optional")?" — includes jobs to do if time allows":""}</p>
+      ${blocked
+        ? `<p class="note" style="margin:0;color:var(--warn)">Still checked in at ${esc(open.outlet)} — leave there first.</p>`
+        : `<button class="btn big" data-arrive="${s.outlet}">Arrive</button>`}
+      <button class="link" data-skip="${s.outlet}" style="align-self:center">Remove from round</button>
+    </div>`;
+  }
+  // A not-yet-visited stop only gets a real sequence number once it's actually
+  // been reached (i is its position among visited stops, -1 otherwise); the
+  // declared "heading to" stop shows an arrow instead of a number it hasn't
+  // earned yet.
+  const idxLabel = done ? "✓" : (i >= 0 ? i+1 : (isHeading ? "→" : ""));
+  return `<div class="stop ${cls}">
+    <div class="idx mono">${idxLabel}</div>
+    <div class="stop-head">
+      <span class="stop-name">${esc(s.outlet)}</span>
+      ${active?'<span class="chip onsite"><span class="dot"></span>On site</span>':""}
+      ${isHeading?'<span class="chip travel"><span class="dot"></span>Next</span>':""}
+      ${s.covering?'<span class="tag covering">Covering</span>':""}
+      <span class="stop-times">${times}</span>
+    </div>
+    ${s.covering ? coveringNoteBlock(s) : ""}
+    ${body}</div>`;
+}
+
+/* ---------- supervisor ---------- */
+function iso(h,m){ const d=new Date(); d.setHours(h,m,0,0); return d.toISOString(); }
+function sampleRound(){
+  const mk = (n,k,a,b) => ({id:uid(), name:n, kind:k, startedAt:a, doneAt:b});
+  return {id:"sample", person:"Sample round", date:todayKey(), stops:[
+    {outlet:"JE", arriveAt:iso(7,58), departAt:iso(8,26), tasks:[
+      mk("Water test & dosing","required",iso(7,59),iso(8,14)), mk("Manual vacuum pool","optional",iso(8,14),iso(8,25))]},
+    {outlet:"TENGAH", arriveAt:iso(8,49), departAt:iso(9,11), tasks:[
+      mk("Water test & dosing","required",iso(8,50),iso(9,4)), mk("Soap dispenser","adhoc",iso(9,4),iso(9,10))]},
+    {outlet:"BK", arriveAt:iso(9,28), departAt:iso(10,17), tasks:[
+      mk("Water test & dosing","required",iso(9,29),iso(9,45)), mk("Manual vacuum pool","optional",iso(9,45),iso(10,16))]},
+    {outlet:"CC", arriveAt:iso(10,42), departAt:null, tasks:[
+      mk("Water test & dosing","required",iso(10,43),null)]},
+    {outlet:"WWW", arriveAt:null, departAt:null, tasks:[mk("Water test & dosing","required",null,null)]}
+  ]};
+}
+
+function mgrView(){
+  const viewDate = state.viewDate || todayKey();
+  const isToday = viewDate === todayKey();
+  if(!isToday) loadHistory(viewDate);   // no-op once cached
+
+  const dateNav = `<div class="card datebar">
+    <button class="btn dnav" id="date-prev" aria-label="Previous day">◀</button>
+    <div class="dmid">
+      <div class="eyebrow">${isToday?"Today":""}</div>
+      <div class="mono">${fmtDate(viewDate)}</div>
+    </div>
+    <button class="btn dnav" id="date-next" aria-label="Next day" ${isToday?"disabled":""}>▶</button>
+    <input type="date" id="date-pick" value="${viewDate}" max="${todayKey()}" aria-label="Jump to date">
+  </div>`;
+
+  if(!isToday && state.db){
+    const c = state.historyCache[viewDate];
+    if(!c || c.loading){
+      return `${dateNav}<div class="card empty"><div class="eyebrow" style="margin-bottom:8px">Loading ${esc(fmtDate(viewDate))}…</div></div>`;
+    }
+    if(c.error){
+      return `${dateNav}<div class="card empty">Couldn't load that day. Check your connection and try again.<div style="margin-top:14px"><button class="btn sm" id="date-retry">Retry</button></div></div>`;
+    }
+  }
+
+  const live = roundsForDate(viewDate);
+  const rounds = (isToday && state.showSample) ? live.concat([sampleRound()]) : live;
+
+  if(!rounds.length){
+    return `${dateNav}<div class="card empty">
+      <div class="eyebrow" style="margin-bottom:8px">${isToday ? "No rounds started today" : "No rounds recorded on "+esc(fmtDate(viewDate))}</div>
+      ${isToday
+        ? `Once a technician claims their first job, they appear here live — where they are,<br>which job they're on, and how long each one took.
+           <div style="margin-top:16px"><button class="btn" id="toggle-sample">Show me an example</button></div>`
+        : `Nobody logged a round that day, or it hasn't loaded yet.`}
+    </div>${isToday ? taskPanel()+rosterPanel() : ""}`;
+  }
+
+  const agg = rounds.reduce((a,r)=>{const t=totals(r);a.on+=t.onSite;a.tr+=t.travel;a.done+=t.done;a.tot+=t.total;a.tk+=t.tasksDone;return a;},{on:0,tr:0,done:0,tot:0,tk:0});
+  const share = (agg.on+agg.tr) ? Math.round(agg.tr/(agg.on+agg.tr)*100) : 0;
+
+  const crew = rounds.map(r => {
+    const cs = crewState(r), t = totals(r), span = t.onSite + t.travel;
+    const bar = span ? `<div class="bar" role="img" aria-label="${t.onSite} minutes on site, ${t.travel} minutes travelling">
+        <span class="s-on" style="width:${t.onSite/span*100}%"></span><span class="s-tr" style="width:${t.travel/span*100}%"></span></div>` : "";
+    // Live "since" ticking only makes sense for today — a past day's unfinished stop
+    // shouldn't grow a duration against the current clock.
+    const chip = isToday
+      ? `<span class="chip ${cs.k}"><span class="dot"></span>${esc(cs.label)}${cs.since?" · "+liveDur(cs.since):""}</span>`
+      : `<span class="chip ${cs.k==="onsite"||cs.k==="travel"?"idle":cs.k}"><span class="dot"></span>${cs.k==="onsite"||cs.k==="travel"?"Not checked out":esc(cs.label)}</span>`;
+    return `<div class="crew-row"><div class="crew-top">
+        <span class="crew-name">${esc(r.person)}</span>
+        ${chip}
+        <span class="crew-where mono">${t.tasksDone} jobs · ${dur(t.onSite)} on site · ${dur(t.travel)} travel</span>
+      </div>${bar}</div>`;
+  }).join("");
+
+  // every task touched today
+  const items = [];
+  rounds.forEach(r => r.stops.forEach(s => s.tasks.forEach(t => {
+    if(t.startedAt) items.push({p:r.person, o:s.outlet, t:t});
+  })));
+  items.sort((a,b) => a.t.startedAt < b.t.startedAt ? -1 : 1);
+
+  const rows = items.map(it => `<tr>
+      <td class="num">${clockOf(it.t.startedAt)}</td>
+      <td><strong>${esc(it.o)}</strong></td>
+      <td>${esc(it.t.name)}</td>
+      <td>${it.t.kind==="required"?'<span class="tag req">Must do</span>':it.t.kind==="optional"?'<span class="tag opt">If time allows</span>':'<span class="tag add">Added</span>'}</td>
+      <td>${esc(it.p)}</td>
+      <td class="num">${it.t.doneAt ? dur(mins(it.t.startedAt,it.t.doneAt)) : '<span style="color:var(--accent)">running</span>'}</td>
+    </tr>`).join("");
+
+  // time by job type — aggregated across all outlets, or grouped per outlet
+  const doneItems = items.filter(i=>i.t.doneAt);
+  function jobBars(list){
+    const byName = {};
+    list.forEach(i => { const k=i.t.name; byName[k]=byName[k]||{m:0,n:0}; byName[k].m+=mins(i.t.startedAt,i.t.doneAt); byName[k].n++; });
+    const names = Object.keys(byName).sort((a,b)=>byName[b].m-byName[a].m);
+    const maxM = names.length ? byName[names[0]].m : 1;
+    return names.map(n => `<div class="brow">
+      <span class="lbl">${esc(n)} <span class="muted">×${byName[n].n}</span></span>
+      <span class="val">${dur(byName[n].m)} · avg ${dur(Math.round(byName[n].m/byName[n].n))}</span>
+      <span class="track"><span class="fill" style="width:${Math.max(3,byName[n].m/maxM*100)}%"></span></span>
+    </div>`).join("");
+  }
+  const names = [...new Set(doneItems.map(i=>i.t.name))];
+  const bars = jobBars(doneItems);
+  // Same figures, split per outlet — each outlet's bars are scaled to its own
+  // longest job, so a quiet branch's bars aren't dwarfed by a busy one's.
+  const byOutlet = {};
+  doneItems.forEach(i => { (byOutlet[i.o] = byOutlet[i.o] || []).push(i); });
+  const groupedBars = OUTLETS.map(o=>o.code).filter(c => byOutlet[c] && byOutlet[c].length)
+    .map(code => `<div class="outlet-group">
+      <div class="outlet-group-head">${esc(code)}</div>
+      <div class="bars">${jobBars(byOutlet[code])}</div>
+    </div>`).join("");
+
+  return `
+  ${dateNav}
+  <div class="kpis">
+    <div class="kpi"><div class="v">${agg.tk}</div><div class="k eyebrow">Jobs done</div></div>
+    <div class="kpi"><div class="v">${agg.done}<span style="font-size:15px;color:var(--ink-3)">/${agg.tot}</span></div><div class="k eyebrow">Outlets done</div></div>
+    <div class="kpi"><div class="v" style="color:var(--accent)">${dur(agg.on)}</div><div class="k eyebrow">On site</div></div>
+    <div class="kpi"><div class="v" style="color:var(--travel)">${share}%</div><div class="k eyebrow">Time on the road</div></div>
+  </div>
+
+  <div class="stack" style="gap:9px">
+    <div class="sec-head"><h2 class="sec">${isToday?"Crew right now":"Technicians that day"}</h2>
+      ${isToday ? `<span class="legend"><span><i style="background:var(--accent)"></i>on site</span><span><i style="background:var(--travel);opacity:.55"></i>travelling</span></span>` : ""}</div>
+    ${state.showSample?'<div class="sample-note">Example data shown — not your team</div>':""}
+    <div class="crew">${crew}</div>
+    ${isToday ? `<button class="btn sm" id="toggle-sample" style="align-self:flex-start">${state.showSample?"Hide example":"Show an example round"}</button>` : ""}
+  </div>
+
+  ${names.length ? `<div class="stack" style="gap:9px">
+    <div class="sec-head"><h2 class="sec">Time by job</h2>
+      <div class="seg" role="group" aria-label="Group by">
+        <button data-tbgroup="job" aria-pressed="${state.timeByGroup!=="outlet"}">By job</button>
+        <button data-tbgroup="outlet" aria-pressed="${state.timeByGroup==="outlet"}">By outlet</button>
+      </div>
+    </div>
+    <div class="card" style="padding:14px">${state.timeByGroup==="outlet" ? groupedBars : `<div class="bars">${bars}</div>`}</div>
+    <p class="note">After a few rounds this tells you what each job really costs — the number to plan against.</p>
+  </div>` : ""}
+
+  <div class="stack" style="gap:9px">
+    <h2 class="sec">${isToday?"Jobs today":"Jobs on "+esc(fmtDate(viewDate))}</h2>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Start</th><th>Outlet</th><th>Job</th><th>Type</th><th>Technician</th><th>Took</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+  </div>
+  ${isToday ? taskPanel()+rosterPanel() : `<p class="note">Job setup and team members are edited from <strong>Today</strong> — switch back to change them.</p>`}`;
+}
+
+/* ---------- routes: which outlets each technician actually visited, in order ----------
+ * The artifact sandbox can't embed live map tiles, so "the route" is shown two ways:
+ * a schematic diagram drawn from each outlet's real coordinates (straight lines, not
+ * roads — good for "who went where, in what order"), plus a "Open in Google Maps" link
+ * that hands the real driving directions off to Maps itself.
+ */
+// Singapore spans well under a quarter of a degree here, so plain linear lat/lng
+// scaling (no map projection math) places the outlets accurately enough for a
+// schematic — a real projection would be invisible at this scale.
+function geoProjector(viewW, viewH, margin){
+  margin = margin || 34;
+  const innerW = viewW - margin*2, innerH = viewH - margin*2;
+  const lats = OUTLETS.map(o=>o.lat), lngs = OUTLETS.map(o=>o.lng);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+  const spanLat = (maxLat-minLat) || 1, spanLng = (maxLng-minLng) || 1;
+  return (lat,lng) => ({
+    x: margin + (lng-minLng)/spanLng*innerW,
+    y: margin + innerH - (lat-minLat)/spanLat*innerH   // latitude increases northward -> smaller y
+  });
+}
+// CC and HB, for instance, sit ~150m apart on the same road — real neighbours that
+// a whole-island schematic has no room to tell apart. Rather than let their dots and
+// labels print on top of each other, spread any points closer than minDist apart
+// along the line between them (or, if truly coincident, in different directions).
+function declutterPoints(pts, minDist){
+  const out = pts.map(p => ({x:p.x, y:p.y}));
+  for(let i=1;i<out.length;i++){
+    for(let j=0;j<i;j++){
+      const dx = out[i].x-out[j].x, dy = out[i].y-out[j].y;
+      const d = Math.hypot(dx,dy);
+      if(d < minDist){
+        const ang = d > 0.5 ? Math.atan2(dy,dx) : (Math.PI*2/5)*i;
+        out[i].x = out[j].x + Math.cos(ang)*minDist;
+        out[i].y = out[j].y + Math.sin(ang)*minDist;
+      }
+    }
+  }
+  return out;
+}
+function routeCard(r, proj, byCode){
+  // r.stops is stored in the master outlet-list order (which outlets were picked
+  // for the day, not the order they were actually visited) — a technician can tap
+  // Arrive on any of their selected outlets in any order. So the route sequence
+  // has to be sorted by actual arrival time, not by position in r.stops.
+  const visited = r.stops.filter(s => s.arriveAt && byCode[s.outlet])
+    .sort((a,b) => a.arriveAt < b.arriveAt ? -1 : 1);
+  const seq = visited.map((s,i) => Object.assign({idx:i+1, arriveAt:s.arriveAt, departAt:s.departAt, tasks:s.tasks, covering:s.covering, coveringNote:s.coveringNote}, byCode[s.outlet]));
+  const visitedCodes = new Set(seq.map(o=>o.code));
+  const pts = declutterPoints(seq.map(o => proj(o.lat, o.lng)), 24);
+  // Only the most recent stop can still be "on site" — arriving anywhere else
+  // requires leaving wherever came before, so every earlier stop in the sequence
+  // is necessarily already departed.
+  const lastIdx = seq.length - 1;
+  const onSiteNow = lastIdx >= 0 && !seq[lastIdx].departAt;
+
+  // Outlets still on tonight's list but not yet visited — known in advance from
+  // r.stops (every outlet the technician picked at round-start is in there,
+  // whether visited yet or not), so this doesn't have to be guessed. Drawn
+  // distinctly from outlets that were never part of this round, so a supervisor
+  // can see whether the technician is genuinely done or still has stops coming.
+  const plannedRemaining = r.stops.filter(s => !s.arriveAt && byCode[s.outlet]).map(s => byCode[s.outlet]);
+  const plannedCodes = new Set(plannedRemaining.map(o=>o.code));
+  const roundComplete = seq.length > 0 && !onSiteNow && plannedRemaining.length === 0;
+  const completedCount = onSiteNow ? seq.length - 1 : seq.length;
+  // A technician can flag which pool they're headed to next once they've left
+  // a stop — if they have, and it's still genuinely unvisited, the map can
+  // show that leg before it happens instead of only ever showing history.
+  const headingCode = (r.headingTo && plannedCodes.has(r.headingTo)) ? r.headingTo : null;
+
+  const W = 340, H = 230;
+  const refOutlets = OUTLETS.filter(o => !visitedCodes.has(o.code) && !plannedCodes.has(o.code));
+  const refPts = declutterPoints(refOutlets.map(o => proj(o.lat, o.lng)), 20);
+  const refDots = refOutlets.map((o,i) => {
+    const p = refPts[i];
+    const nearest = Math.min(...refPts.filter((_,k)=>k!==i).map(q => Math.hypot(q.x-p.x, q.y-p.y)).concat([999]));
+    const t = nearest < 26
+      ? `<text x="${(p.x+6).toFixed(1)}" y="${(p.y+3).toFixed(1)}" text-anchor="start" font-size="10" fill="currentColor" opacity=".4">${esc(o.code)}</text>`
+      : `<text x="${p.x.toFixed(1)}" y="${(p.y-7).toFixed(1)}" text-anchor="middle" font-size="10" fill="currentColor" opacity=".4">${esc(o.code)}</text>`;
+    return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="currentColor" opacity=".25"/>${t}`;
+  }).join("");
+  // Planned-but-not-yet-visited stops get a dashed accent ring instead of the
+  // faint reference dot — visible enough to read as "still coming tonight"
+  // without competing with the actual visited-route markers. The one the
+  // technician has actually said they're heading to gets a solid, filled
+  // marker instead, so it reads as "next" rather than just "eventually."
+  const pendingPts = declutterPoints(plannedRemaining.map(o => proj(o.lat, o.lng)), 20);
+  const pendingDots = plannedRemaining.map((o,i) => {
+    const p = pendingPts[i];
+    const isHeading = o.code === headingCode;
+    const nearest = Math.min(...pendingPts.filter((_,k)=>k!==i).map(q => Math.hypot(q.x-p.x, q.y-p.y)).concat([999]));
+    const suffix = isHeading ? " · heading here" : "";
+    const t = nearest < 26
+      ? `<text x="${(p.x+7).toFixed(1)}" y="${(p.y+3).toFixed(1)}" text-anchor="start" font-size="10" font-weight="600" fill="var(--accent)" opacity="${isHeading?"1":".75"}">${esc(o.code)}${suffix}</text>`
+      : `<text x="${p.x.toFixed(1)}" y="${(p.y-8).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="600" fill="var(--accent)" opacity="${isHeading?"1":".75"}">${esc(o.code)}${suffix}</text>`;
+    const dot = isHeading
+      ? `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="6" fill="var(--accent)" stroke="var(--surface)" stroke-width="1.5"/>`
+      : `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="2.5 2" opacity=".8"/>`;
+    return `${dot}${t}`;
+  }).join("");
+  let path = "";
+  for(let i=0;i<pts.length-1;i++){
+    path += `<line x1="${pts[i].x.toFixed(1)}" y1="${pts[i].y.toFixed(1)}" x2="${pts[i+1].x.toFixed(1)}" y2="${pts[i+1].y.toFixed(1)}" stroke="var(--accent)" stroke-width="2" marker-end="url(#routearrow)"/>`;
+  }
+  // The anticipated next leg — drawn dashed, since (unlike everything else on
+  // this map) it hasn't happened yet, only been declared.
+  let headingLine = "";
+  if(headingCode && lastIdx >= 0){
+    const from = pts[lastIdx];
+    const to = pendingPts[plannedRemaining.findIndex(o=>o.code===headingCode)];
+    if(to) headingLine = `<line x1="${from.x.toFixed(1)}" y1="${from.y.toFixed(1)}" x2="${to.x.toFixed(1)}" y2="${to.y.toFixed(1)}" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 3" opacity=".6" marker-end="url(#routearrow)"/>`;
+  }
+  // A label placed straight above the circle, as usual, collides when decluttering
+  // has stacked two stops (e.g. two outlets on the same street) close together —
+  // for any marker with a near neighbor, put its code label out to the side instead.
+  // Completed stops (departed) and the one the technician is still standing at
+  // right now get different marker colors — green for done, amber for "here now"
+  // — the same done/in-progress language used everywhere else in the app, so a
+  // supervisor can read status straight off the map without opening the stop list.
+  const markers = seq.map((o,i) => {
+    const p = pts[i];
+    const isHere = i === lastIdx && onSiteNow;
+    const isFinal = i === lastIdx && roundComplete;
+    const fill = isHere ? "var(--warn)" : "var(--ok)";
+    const nearest = Math.min(...pts.filter((_,k)=>k!==i).map(q => Math.hypot(q.x-p.x, q.y-p.y)).concat([999]));
+    const sideLabel = nearest < 28;
+    const labelAttrs = sideLabel
+      ? `x="${(p.x+13).toFixed(1)}" y="${(p.y+3.5).toFixed(1)}" text-anchor="start"`
+      : `x="${p.x.toFixed(1)}" y="${(p.y-13).toFixed(1)}" text-anchor="middle"`;
+    // "here now" pulses because it's live and changing; "last stop" is a static
+    // ring — the round is over, nothing there is still moving.
+    const ring = isHere
+      ? `<circle class="route-pulse" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="13" fill="none" stroke="var(--warn)" stroke-width="2"/>`
+      : isFinal
+      ? `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="13" fill="none" stroke="var(--ok)" stroke-width="2" opacity=".55"/>`
+      : "";
+    const suffix = isHere ? " · here now" : isFinal ? " · last stop" : "";
+    return `${ring}<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="9" fill="${fill}" stroke="var(--surface)" stroke-width="1.5"/>
+      <text x="${p.x.toFixed(1)}" y="${(p.y+3.5).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">${o.idx}</text>
+      <text ${labelAttrs} font-size="11" font-weight="600" fill="currentColor">${esc(o.code)}${suffix}</text>`;
+  }).join("");
+  const ariaLabel = seq.length
+    ? `Route for ${r.person}: `+seq.map(o=>o.code).join(" then ")+(
+        roundComplete ? " — round complete." :
+        headingCode ? " — heading to "+headingCode+" next." :
+        plannedRemaining.length ? " — still has "+plannedRemaining.map(o=>o.code).join(", ")+" to visit tonight." : "."
+      )
+    : `${r.person} has not checked in anywhere yet tonight.`;
+
+  // Legend only lists what's actually drawn, so it never claims a category
+  // that has nothing on the map to back it up.
+  const legendItems = [];
+  if(completedCount > 0) legendItems.push(`<span><i style="background:var(--ok)"></i>completed</span>`);
+  if(onSiteNow) legendItems.push(`<span><i style="background:var(--warn)"></i>here now</span>`);
+  else if(roundComplete) legendItems.push(`<span><i style="border:1.5px solid var(--ok)"></i>last stop</span>`);
+  if(headingCode) legendItems.push(`<span><i style="background:var(--accent)"></i>heading here</span>`);
+  if(plannedRemaining.some(o=>o.code!==headingCode)) legendItems.push(`<span><i style="border:1.5px dashed var(--accent)"></i>still to visit</span>`);
+  const legend = legendItems.length ? `<span class="legend" style="margin-top:4px">${legendItems.join("")}</span>` : "";
+
+  const svg = `<figure class="routemap">
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(ariaLabel)}">
+      <defs>
+        <marker id="routearrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+        </marker>
+      </defs>
+      ${refDots}
+      ${pendingDots}
+      ${path}
+      ${headingLine}
+      ${markers}
+    </svg>
+    <figcaption class="note">Straight-line order of outlets visited — not the road route.
+      ${legend}
+    </figcaption>
+  </figure>`;
+
+  // Per-stop job status, so a supervisor can see straight from the route whether
+  // every must-do job actually got claimed at each pool — not just where the
+  // technician physically went — without switching to the Supervisor tab.
+  const stopList = seq.map((o,i) => {
+    const arr = clockOf(o.arriveAt);
+    const dep = o.departAt ? clockOf(o.departAt) : null;
+    const stillHere = i === lastIdx && onSiteNow;
+    const left = requiredLeft(o);
+    const doneN = o.tasks.filter(t=>t.doneAt).length;
+    const status = stillHere
+      ? `<span class="tag st-prog">On site</span>`
+      : left
+      ? `<span class="tag req">${left} must-do left open</span>`
+      : `<span class="tag st-done">All done</span>`;
+    // A covering stop's note wraps to its own full-width line (flex-wrap on
+    // .route-stop already handles this) rather than squeezing into the row.
+    const noteLine = (o.covering && o.coveringNote)
+      ? `<span class="mono muted" style="flex-basis:100%;font-style:italic">“${esc(o.coveringNote)}”</span>` : "";
+    return `<div class="route-stop">
+      <span class="route-idx">${o.idx}</span>
+      <span class="route-name"><strong>${esc(o.code)}</strong></span>
+      ${o.covering?'<span class="tag covering">Covering</span>':""}
+      <span class="mono muted">${arr}${dep?" – "+dep:" – on site"}</span>
+      <span class="mono muted" style="margin-left:auto">${doneN}/${o.tasks.length} jobs</span>
+      ${status}
+      ${noteLine}
+    </div>`;
+  }).join("");
+
+  let mapsLink = "";
+  if(seq.length >= 2){
+    const enc = s => encodeURIComponent(s);
+    const origin = enc(seq[0].addr), destination = enc(seq[seq.length-1].addr);
+    const waypoints = seq.slice(1,-1).map(o=>enc(o.addr)).join("|");
+    const url = "https://www.google.com/maps/dir/?api=1&travelmode=driving&origin="+origin+"&destination="+destination+(waypoints?"&waypoints="+waypoints:"");
+    mapsLink = `<a class="btn sm" href="${url}" target="_blank" rel="noopener">Open in Google Maps</a>`;
+  } else if(seq.length === 1){
+    const url = "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(seq[0].addr);
+    mapsLink = `<a class="btn sm" href="${url}" target="_blank" rel="noopener">Open in Google Maps</a>`;
+  }
+
+  const cs = crewState(r);
+  return `<div class="card route-card">
+    <div class="route-head">
+      <span class="crew-name">${esc(r.person)}</span>
+      <span class="chip ${cs.k}"><span class="dot"></span>${esc(cs.label)}</span>
+    </div>
+    ${seq.length ? `<div class="route-body">${svg}<div class="route-list">${stopList}</div></div>
+    <div class="route-foot">${mapsLink}</div>` : `<p class="note" style="padding:0 14px 14px">Not checked in anywhere yet tonight.</p>`}
+  </div>`;
+}
+function routesView(){
+  const viewDate = state.viewDate || todayKey();
+  const isToday = viewDate === todayKey();
+  if(!isToday) loadHistory(viewDate);
+
+  const dateNav = `<div class="card datebar">
+    <button class="btn dnav" id="date-prev" aria-label="Previous day">◀</button>
+    <div class="dmid">
+      <div class="eyebrow">${isToday?"Today":""}</div>
+      <div class="mono">${fmtDate(viewDate)}</div>
+    </div>
+    <button class="btn dnav" id="date-next" aria-label="Next day" ${isToday?"disabled":""}>▶</button>
+    <input type="date" id="date-pick" value="${viewDate}" max="${todayKey()}" aria-label="Jump to date">
+  </div>`;
+
+  if(!isToday && state.db){
+    const c = state.historyCache[viewDate];
+    if(!c || c.loading){
+      return `${dateNav}<div class="card empty"><div class="eyebrow" style="margin-bottom:8px">Loading ${esc(fmtDate(viewDate))}…</div></div>`;
+    }
+    if(c.error){
+      return `${dateNav}<div class="card empty">Couldn't load that day. Check your connection and try again.<div style="margin-top:14px"><button class="btn sm" id="date-retry">Retry</button></div></div>`;
+    }
+  }
+
+  const live = roundsForDate(viewDate);
+  const rounds = (isToday && state.showSample) ? live.concat([sampleRound()]) : live;
+  const withStops = rounds.filter(r => r.stops.some(s => s.arriveAt));
+
+  if(!withStops.length){
+    return `${dateNav}<div class="card empty">
+      <div class="eyebrow" style="margin-bottom:8px">${isToday ? "No routes yet today" : "No routes recorded on "+esc(fmtDate(viewDate))}</div>
+      Once a technician checks in at their first outlet, their route for the night builds here — where they went, in what order, with a link to open real driving directions in Google Maps.
+    </div>`;
+  }
+
+  const proj = geoProjector(340, 230);
+  const byCode = {}; OUTLETS.forEach(o => byCode[o.code] = o);
+  const cards = withStops.map(r => routeCard(r, proj, byCode)).join("");
+
+  return `${dateNav}
+  <div class="stack" style="gap:14px">
+    <div class="sec-head"><h2 class="sec">${isToday?"Tonight's routes":"Routes on "+esc(fmtDate(viewDate))}</h2></div>
+    <div class="stack" style="gap:14px">${cards}</div>
+  </div>`;
+}
+
+/* ---------- config panels ---------- */
+function taskPanel(){
+  const req = state.cfg.required.map((n,i)=>`<div class="row-2"><input type="text" value="${esc(n)}" data-creq="${i}"><button class="btn sm" data-dreq="${i}">Remove</button></div>`).join("");
+  const opt = state.cfg.optional.map((n,i)=>`<div class="row-2"><input type="text" value="${esc(n)}" data-copt="${i}"><button class="btn sm" data-dopt="${i}">Remove</button></div>`).join("");
+  const assign = OUTLETS.map(o => {
+    const on = state.cfg.assigned[o.code] || [];
+    const togs = state.cfg.optional.map(n => `<button class="tog" data-assign="${o.code}|${esc(n)}" aria-pressed="${on.includes(n)}">${esc(n)}</button>`).join("");
+    const extras = (state.cfg.extra[o.code] || []).map(e => `<div class="extra-item">
+        <span class="extra-name">${esc(e.name)}</span>
+        ${e.kind==="required" ? '<span class="tag req">Must do</span>' : '<span class="tag opt">If time allows</span>'}
+        ${e.oneTime ? '<span class="tag once">One-time</span>' : '<span class="tag rec">Recurring</span>'}
+        <button class="link" data-rmextra="${o.code}|${e.id}">remove</button>
+      </div>`).join("");
+    return `<div class="assign-block">
+      <div class="assign-row"><span class="oc">${esc(o.code)}</span>${togs || '<span class="note">No shared job to toggle</span>'}</div>
+      ${extras ? `<div class="extra-list">${extras}</div>` : ""}
+      <div class="extra-add">
+        <input type="text" id="extra-new-${o.code}" placeholder="Add a job just for ${esc(o.code)}">
+        <label class="chk"><input type="checkbox" id="extra-req-${o.code}"> Must do</label>
+        <label class="chk"><input type="checkbox" id="extra-once-${o.code}" checked> One-time (won't carry to the next visit)</label>
+        <button class="btn sm" data-addextra="${o.code}">Add</button>
+      </div>
+    </div>`;
+  }).join("");
+  return `
+  <details class="panel" data-panel="jobsetup" ${state.panelsOpen.jobsetup?"open":""}>
+    <summary>Job setup</summary>
+    <div class="panel-body">
+      <div>
+        <div class="eyebrow" style="margin-bottom:7px">Must do — added to every outlet</div>
+        <p class="note" style="margin:0 0 8px">Blocks leaving the outlet with a warning until it's done. Keep this list short.</p>
+        <div class="stack" style="gap:8px">${req}
+          <div class="row-2"><input type="text" id="req-new" placeholder="Add a must-do job"><button class="btn primary sm" id="req-add">Add</button></div>
+        </div>
+      </div>
+      <div>
+        <div class="eyebrow" style="margin-bottom:7px">If time allows — never blocks leaving</div>
+        <p class="note" style="margin:0 0 8px">Common jobs like Manual vacuum pool. Shown at the outlets you assign below; the technician can always leave without doing them — useful when the day is full of fixes instead.</p>
+        <div class="stack" style="gap:8px">${opt}
+          <div class="row-2"><input type="text" id="opt-new" placeholder="Add a job to do if time allows"><button class="btn primary sm" id="opt-add">Add</button></div>
+        </div>
+      </div>
+      <div>
+        <div class="eyebrow" style="margin-bottom:7px">Jobs per branch</div>
+        <p class="note" style="margin:0 0 8px">Turn on shared jobs from the list above, or add something specific to just this outlet — tick “Must do” only if it should block leaving until it's done.</p>
+        ${assign}
+        <p class="note" style="margin:10px 0 0">Any change here — adding or removing a per-branch job, toggling a shared job on/off, or editing the must-do/optional lists above — reaches an outlet's round today too, if it's still open, so nobody has to wait for tomorrow. <strong>One-time</strong> jobs drop off on their own after today, so a last-minute fix never needs to be removed by hand — untick the box for something that should keep showing up on every future visit until you remove it. A job the technician has already claimed is never pulled out from under them by any of these changes.</p>
+      </div>
+    </div>
+  </details>`;
+}
+function rosterPanel(){
+  const list = state.roster.map((n,i)=>`<div class="row-2"><input type="text" value="${esc(n)}" data-rname="${i}"><button class="btn sm" data-rdel="${i}">Remove</button></div>`).join("");
+  return `<details class="panel" data-panel="roster" ${state.panelsOpen.roster?"open":""}><summary>Team members (${state.roster.length})</summary>
+    <div class="panel-body">${list||'<p class="note" style="margin:0">No one added yet.</p>'}
+      <div class="row-2"><input type="text" id="r-new" placeholder="Add a technician's name"><button class="btn primary sm" id="r-add">Add</button></div>
+    </div></details>`;
+}
+
+/* ================= events ================= */
+function wire(){
+  const on = (sel, fn, ev) => { const e = $(sel); if(e) e.addEventListener(ev||"click", fn); };
+  const each = (sel, fn, ev) => document.querySelectorAll(sel).forEach(el => el.addEventListener(ev||"click", () => fn(el)));
+
+  // Remember open/closed per panel across redraws — the view is rebuilt on every
+  // save and every incoming update, which would otherwise slam an open panel shut.
+  document.querySelectorAll("details.panel[data-panel]").forEach(d =>
+    d.addEventListener("toggle", () => { state.panelsOpen[d.dataset.panel] = d.open; }));
+  const two = v => v.split("|");
+
+  on("#who-go", () => { const v=$("#who").value; if(!v) return; state.me=v; localStorage.setItem("drt.me",v); render(); });
+  on("#switch-user", () => { state.me=""; localStorage.removeItem("drt.me"); render(); });
+  on("#reset-round", () => {
+    const id = myId(); if(!id) return;
+    delete state.rounds[id];
+    if(state.db) state.db.doc("dosing_rounds/"+id).delete().catch(()=>{});
+    else { const all = local.read(); delete all[id]; local.write(all); }
+    state.picking = null; render();
+  });
+
+  each("[data-pick]", b => {
+    const cur = state.picking || scheduledToday(), c = b.dataset.pick;
+    state.picking = cur.includes(c) ? cur.filter(x=>x!==c) : cur.concat([c]); render();
+  });
+  on("#pick-all",  () => { state.picking = OUTLETS.map(o=>o.code); render(); });
+  on("#pick-none", () => { state.picking = []; render(); });
+  on("#start", () => {
+    const sel = state.picking || scheduledToday();
+    const ordered = OUTLETS.map(o=>o.code).filter(c => sel.includes(c));
+    if(ordered.length) startRound(ordered);
+  });
+
+  each("[data-arrive]", b => arrive(b.dataset.arrive));
+  each("[data-heading]", b => setHeading(b.dataset.heading));
+  on("#open-addoutlet",   () => { state.pickingExtra = true; state.pickingExtraFor = null; render(); });
+  on("#cancel-addoutlet", () => { state.pickingExtra = false; state.pickingExtraFor = null; render(); });
+  each("[data-addoutlet]", b => {
+    state.pickingExtraFor = b.dataset.addoutlet; render();
+    const i = $("#coveringnote"); if(i) i.focus();
+  });
+  on("#back-addoutlet", () => { state.pickingExtraFor = null; render(); });
+  on("#confirm-addoutlet", () => {
+    const code = state.pickingExtraFor; if(!code) return;
+    const i = $("#coveringnote");
+    state.pickingExtra = false; state.pickingExtraFor = null;
+    addOutlet(code, i ? i.value : "");
+  });
+  const cn = $("#coveringnote");
+  if(cn) cn.addEventListener("keydown", e => {
+    if(e.key === "Enter"){ const b = $("#confirm-addoutlet"); if(b) b.click(); }
+  });
+  each("[data-asknote]",    b => { state.notingOutlet = b.dataset.asknote; render(); const i=$("#notenote"); if(i) i.focus(); });
+  each("[data-cancelnote]", b => { state.notingOutlet = null; render(); });
+  each("[data-savenote]",   b => {
+    const i = $("#notenote");
+    state.notingOutlet = null;
+    setCoveringNote(b.dataset.savenote, i ? i.value : "");
+  });
+  const nn = $("#notenote");
+  if(nn) nn.addEventListener("keydown", e => {
+    if(e.key === "Enter"){ const b = document.querySelector("[data-savenote]"); if(b) b.click(); }
+  });
+  // Leaving with a must-do job still open needs a second tap to confirm, same
+  // reasoning as the task Undo confirm — a full-width button right under a
+  // warning line is an easy accidental tap otherwise.
+  each("[data-askdepart]",    b => { state.confirmDepart = b.dataset.askdepart; render(); });
+  each("[data-canceldepart]", b => { state.confirmDepart = null; render(); });
+  each("[data-depart]", b => { state.confirmDepart = null; depart(b.dataset.depart); });
+  each("[data-skip]",   b => skipStop(b.dataset.skip));
+  each("[data-unarrive]", b => unarrive(b.dataset.unarrive));
+  // Reopening a departed stop (Leave tapped by mistake) also needs a confirm —
+  // it changes the shape of the round, not just one task.
+  each("[data-askreopen]",    b => { state.confirmReopen = b.dataset.askreopen; render(); });
+  each("[data-cancelreopen]", b => { state.confirmReopen = null; render(); });
+  each("[data-reopen]", b => { state.confirmReopen = null; reopenStop(b.dataset.reopen); });
+  each("[data-claim]",  b => { const [o,t] = two(b.dataset.claim); claimTask(o,t); });
+  each("[data-done]",   b => { const [o,t] = two(b.dataset.done);  finishTask(o,t); });
+  // Undo needs a second tap to confirm, so an accidental press near the button
+  // (task rows sit close together) can't silently reopen a finished job.
+  each("[data-askundo]",   b => { state.confirmUndo = b.dataset.askundo; render(); });
+  each("[data-cancelundo]",b => { state.confirmUndo = null; render(); });
+  each("[data-undo]",   b => { const [o,t] = two(b.dataset.undo);  state.confirmUndo = null; undoTask(o,t); });
+  each("[data-rmtask]", b => { const [o,t] = two(b.dataset.rmtask); removeTask(o,t); });
+  each("[data-openadd]",b => { state.adding = b.dataset.openadd; render(); const i=$("#newtask"); if(i) i.focus(); });
+  on("#cancel-add", () => { state.adding = null; render(); });
+  each("[data-sugg]",   b => { const i=$("#newtask"); if(i){ i.value = b.dataset.sugg; i.focus(); } });
+  each("[data-addtask]",b => { const i=$("#newtask"); addTask(b.dataset.addtask, i ? i.value : ""); });
+  const nt = $("#newtask");
+  if(nt) nt.addEventListener("keydown", e => {
+    if(e.key === "Enter"){ const b = document.querySelector("[data-addtask]"); if(b) addTask(b.dataset.addtask, nt.value); }
+  });
+
+  on("#toggle-sample", () => { state.showSample = !state.showSample; render(); });
+  each("[data-tbgroup]", b => { state.timeByGroup = b.dataset.tbgroup; render(); });
+
+  on("#date-prev", () => { state.viewDate = shiftDate(state.viewDate||todayKey(), -1); render(); });
+  on("#date-next", () => { state.viewDate = shiftDate(state.viewDate||todayKey(), 1); render(); });
+  on("#date-pick", () => { const v=$("#date-pick").value; if(v) { state.viewDate = v; render(); } }, "change");
+  on("#date-retry", () => { delete state.historyCache[state.viewDate]; render(); });
+
+  // roster
+  on("#r-add", () => { const v = $("#r-new").value.trim(); if(v && !state.roster.includes(v)) saveRoster(state.roster.concat([v])); });
+  each("[data-rdel]", b => saveRoster(state.roster.filter((_,j)=>j!==+b.dataset.rdel)));
+  each("[data-rname]", inp => { const v=inp.value.trim(); if(!v) return; const n=state.roster.slice(); n[+inp.dataset.rname]=v; saveRoster(n); }, "change");
+
+  // job setup
+  const cfg = () => clone(state.cfg);
+  on("#req-add", () => { const v=$("#req-new").value.trim(); if(!v) return; const c=cfg(); if(!c.required.includes(v)){ const before=clone(c); c.required.push(v); saveCfg(c); syncPoolChangeToLiveRounds(before, c); } });
+  on("#opt-add", () => { const v=$("#opt-new").value.trim(); if(!v) return; const c=cfg(); if(!c.optional.includes(v)){ c.optional.push(v); saveCfg(c); } });
+  each("[data-dreq]", b => { const c=cfg(); const before=clone(c); c.required.splice(+b.dataset.dreq,1); saveCfg(c); syncPoolChangeToLiveRounds(before, c); });
+  each("[data-dopt]", b => { const c=cfg(); const before=clone(c); const gone=c.optional.splice(+b.dataset.dopt,1)[0];
+    Object.keys(c.assigned).forEach(k => c.assigned[k] = (c.assigned[k]||[]).filter(x=>x!==gone)); saveCfg(c); syncPoolChangeToLiveRounds(before, c); });
+  each("[data-creq]", inp => { const v=inp.value.trim(); if(!v) return; const c=cfg(); const before=clone(c); c.required[+inp.dataset.creq]=v; saveCfg(c); syncPoolChangeToLiveRounds(before, c); }, "change");
+  each("[data-copt]", inp => { const v=inp.value.trim(); if(!v) return; const c=cfg(); const before=clone(c); const old=c.optional[+inp.dataset.copt]; c.optional[+inp.dataset.copt]=v;
+    Object.keys(c.assigned).forEach(k => c.assigned[k] = (c.assigned[k]||[]).map(x=>x===old?v:x)); saveCfg(c); syncPoolChangeToLiveRounds(before, c); }, "change");
+  each("[data-assign]", b => {
+    const [o,n] = two(b.dataset.assign); const c = cfg(); const before = clone(c);
+    const cur = c.assigned[o] || [];
+    c.assigned[o] = cur.includes(n) ? cur.filter(x=>x!==n) : cur.concat([n]);
+    saveCfg(c);
+    syncPoolChangeToLiveRounds(before, c);
+  });
+
+  // One-off jobs added for a single outlet only. Also pushed straight into any
+  // of today's rounds still open at that outlet, so an urgent job is seen right
+  // away instead of waiting for the next round.
+  each("[data-addextra]", b => {
+    const outlet = b.dataset.addextra;
+    const inp = $("#extra-new-"+outlet), chk = $("#extra-req-"+outlet), onceChk = $("#extra-once-"+outlet);
+    const v = inp ? inp.value.trim() : ""; if(!v) return;
+    const kind = (chk&&chk.checked) ? "required" : "optional";
+    const oneTime = !onceChk || onceChk.checked;
+    const c = cfg();
+    c.extra[outlet] = (c.extra[outlet]||[]).concat([{id:uid(), name:v, kind, oneTime, addedDate: todayKey()}]);
+    saveCfg(c);
+    syncExtraToLiveRounds(outlet, {name:v, kind}, "add");
+  });
+  each("[data-rmextra]", b => {
+    const [outlet, id] = two(b.dataset.rmextra); const c = cfg();
+    const removed = (c.extra[outlet]||[]).find(e => e.id === id);
+    c.extra[outlet] = (c.extra[outlet]||[]).filter(e => e.id !== id);
+    saveCfg(c);
+    if(removed) syncExtraToLiveRounds(outlet, {name:removed.name, kind:removed.kind}, "remove");
+  });
+  document.querySelectorAll('[id^="extra-new-"]').forEach(inp => inp.addEventListener("keydown", e => {
+    if(e.key === "Enter"){ const outlet = inp.id.slice("extra-new-".length); const b = document.querySelector('[data-addextra="'+outlet+'"]'); if(b) b.click(); }
+  }));
+}
+
+$("#btn-tech").addEventListener("click", () => { state.role="tech"; render(); });
+$("#btn-mgr").addEventListener("click",  () => { state.role="mgr";  render(); });
+$("#btn-routes").addEventListener("click", () => { state.role="routes"; render(); });
+
+/* ================= boot ================= */
+state.viewDate = todayKey();
+try{ const c = localStorage.getItem("drt.cfg"); if(c) state.cfg = JSON.parse(c); }catch(e){}
+{ const pruned = pruneExpiredExtras(state.cfg.extra); state.cfg.extra = pruned.extra;
+  if(pruned.changed){ try{ localStorage.setItem("drt.cfg", JSON.stringify(state.cfg)); }catch(e){} } }
+state.rounds = normalizeRounds(local.read());
+try{ state.roster = JSON.parse(localStorage.getItem("drt.roster")||"[]"); }catch(e){}
+render();
+initDb();
+window.addEventListener("online", () => flushPending());
+
+setInterval(() => {
+  const running = Object.values(state.rounds).some(r => r.date===todayKey() && ["onsite","travel"].includes(crewState(r).k));
+  const typing = document.activeElement && /INPUT|SELECT/.test(document.activeElement.tagName);
+  const adding = state.adding !== null;
+  const configuring = document.querySelector("details.panel[open]");   // don't reset scroll mid-edit
+  if(running && !typing && !adding && !configuring) render();
+}, 15000);
+</script>
+</body>
+</html>
