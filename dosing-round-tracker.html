@@ -1435,21 +1435,44 @@ function mgrView(){
       </div>${bar}</div>`;
   }).join("");
 
-  // every task touched today
+  // Every job on the board today, across every stop of every round -- not just
+  // ones someone has picked up. A pooled outlet (JE) puts the same job list
+  // into every technician covering it, and claiming one mirrors it into the
+  // others' copies (see syncTaskToOtherRounds), so the same logical job can
+  // show up in more than one round's tasks array. Dedupe by outlet+kind+name
+  // +pool so it's counted once here -- this also keeps "Time by job" below
+  // from double-counting a shared outlet's durations.
   const items = [];
+  const seenTask = new Set();
   rounds.forEach(r => r.stops.forEach(s => s.tasks.forEach(t => {
-    if(t.startedAt) items.push({p:r.person, o:s.outlet, t:t});
+    const k = s.outlet+"|"+t.kind+"|"+t.name+"|"+(t.pool||"");
+    if(seenTask.has(k)) return;
+    seenTask.add(k);
+    items.push({o:s.outlet, t:t});
   })));
-  items.sort((a,b) => a.t.startedAt < b.t.startedAt ? -1 : 1);
+  const outletOrder = new Map(OUTLETS.map((o,i)=>[o.code,i]));
+  items.sort((a,b) => {
+    const oi = (outletOrder.get(a.o) ?? 999) - (outletOrder.get(b.o) ?? 999);
+    if(oi) return oi;
+    const pa = a.t.pool||"", pb = b.t.pool||"";
+    return pa === pb ? 0 : (pa < pb ? -1 : 1);   // group each pool together within its outlet
+  });
 
-  const rows = items.map(it => `<tr>
-      <td class="num">${clockOf(it.t.startedAt)}</td>
-      <td><strong>${esc(it.o)}</strong></td>
+  const rows = items.map(it => {
+    const finished = !!it.t.doneAt, running = it.t.startedAt && !finished;
+    const status = finished ? '<span class="tag st-done">Done</span>'
+                 : running  ? '<span class="tag st-prog">In Progress</span>'
+                            : '<span class="tag st-open">Open</span>';
+    return `<tr>
+      <td class="num">${it.t.startedAt ? clockOf(it.t.startedAt) : '<span class="muted">—</span>'}</td>
+      <td><strong>${esc(it.o)}</strong>${it.t.pool ? `<br><span class="tag pool">${esc(it.t.pool)}</span>` : ""}</td>
       <td>${esc(it.t.name)}</td>
       <td>${it.t.kind==="required"?'<span class="tag req">Must do</span>':it.t.kind==="optional"?'<span class="tag opt">If time allows</span>':'<span class="tag add">Added</span>'}</td>
-      <td>${esc(it.p)}</td>
-      <td class="num">${it.t.doneAt ? dur(mins(it.t.startedAt,it.t.doneAt)) : '<span style="color:var(--accent)">running</span>'}</td>
-    </tr>`).join("");
+      <td>${status}</td>
+      <td>${it.t.claimedBy ? esc(it.t.claimedBy) : '<span class="muted">—</span>'}</td>
+      <td class="num">${finished ? dur(mins(it.t.startedAt,it.t.doneAt)) : (running ? '<span style="color:var(--accent)">running</span>' : '<span class="muted">—</span>')}</td>
+    </tr>`;
+  }).join("");
 
   // time by job type — aggregated across all outlets, or grouped per outlet
   const doneItems = items.filter(i=>i.t.doneAt);
@@ -1507,7 +1530,7 @@ function mgrView(){
   <div class="stack" style="gap:9px">
     <h2 class="sec">${isToday?"Jobs today":"Jobs on "+esc(fmtDate(viewDate))}</h2>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>Start</th><th>Outlet</th><th>Job</th><th>Type</th><th>Technician</th><th>Took</th></tr></thead>
+      <thead><tr><th>Start</th><th>Outlet</th><th>Job</th><th>Type</th><th>Status</th><th>Technician</th><th>Took</th></tr></thead>
       <tbody>${rows}</tbody></table></div>
   </div>
   ${isToday ? taskPanel()+rosterPanel() : `<p class="note">Job setup and team members are edited from <strong>Today</strong> — switch back to change them.</p>`}`;
