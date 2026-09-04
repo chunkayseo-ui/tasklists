@@ -631,7 +631,7 @@ async function initDb(){
   // otherwise a stale remote read can stomp the change we're still trying to save.
   db.doc("dosing_config/roster").onSnapshot(
     s => { if(state.pending["dosing_config/roster"]) return;
-      const d = s.exists ? s.data() : null; state.roster = (d && Array.isArray(d.members)) ? clone(d.members) : []; render(); }, ()=>{});
+      const d = s.exists ? s.data() : null; state.roster = (d && Array.isArray(d.members)) ? clone(d.members) : []; externalUpdate(); }, ()=>{});
   db.doc("dosing_config/tasks").onSnapshot(
     s => {
       if(state.pending["dosing_config/tasks"]) return;
@@ -644,7 +644,7 @@ async function initDb(){
       };
       const pruned = pruneExpiredExtras(state.cfg.extra);
       state.cfg.extra = pruned.extra;
-      render();
+      externalUpdate();
       if(pruned.changed && !state.extrasPruned){ state.extrasPruned = true; saveCfg(clone(state.cfg)); }
     }, ()=>{});
   db.collection("dosing_rounds").where("date","==",todayKey()).onSnapshot(
@@ -653,7 +653,7 @@ async function initDb(){
       s.docs.forEach(d => { const p="dosing_rounds/"+d.id; if(!state.pending[p]) next[d.id] = clone(Object.assign({id:d.id}, d.data())); });
       // keep any of today's rounds we still have a pending write for, using our local version
       Object.keys(state.pending).forEach(p => { if(p.startsWith("dosing_rounds/")){ const id=p.slice(14); if(state.rounds[id]) next[id]=state.rounds[id]; } });
-      state.rounds = normalizeRounds(next); render();
+      state.rounds = normalizeRounds(next); externalUpdate();
     }, ()=>{});
   // Issues aren't scoped to today -- a problem raised last week and still
   // waiting on a contractor needs to stay visible until it's actually
@@ -666,7 +666,7 @@ async function initDb(){
       const next={};
       s.docs.forEach(d => { const p="dosing_issues/"+d.id; if(!state.pending[p]) next[d.id] = clone(Object.assign({id:d.id}, d.data())); });
       Object.keys(state.pending).forEach(p => { if(p.startsWith("dosing_issues/")){ const id=p.slice(14); if(state.issues[id]) next[id]=state.issues[id]; } });
-      state.issues = next; render();
+      state.issues = next; externalUpdate();
     }, ()=>{});
   render();
 }
@@ -1320,6 +1320,30 @@ function render(){
     : state.role==="routes" ? routesView()
     : state.role==="tasksetting" ? taskSettingView() : mgrView();
   wire();
+}
+
+// Real-time updates arrive constantly while the app is open -- another
+// technician claiming a job, arriving/departing an outlet, a supervisor
+// editing config on a different device -- and each one used to force a full
+// render() no matter what. That's fine everywhere the screen only ever shows
+// saved state, but Task Setting's per-outlet "add a job" forms (job name,
+// Must do, One-time, which nights) aren't written into `state` until Add is
+// actually clicked, so any of these background refreshes arriving mid-edit
+// silently wiped them back to their defaults -- "Must do" unchecked, "One-time"
+// re-checked -- which is exactly the bug Chun Kay hit: with several
+// technicians actively working, a round update lands every few seconds, so a
+// checkbox rarely survived long enough to reach the Add click. Task Setting
+// used to be a collapsible panel, which the old guard already protected
+// (see the "configuring" check below); now that it's its own tab, the same
+// protection has to key off the tab itself instead. Nothing is lost by
+// skipping these -- the moment the supervisor's own next click calls render()
+// directly, they see the latest data anyway.
+function externalUpdate(){
+  const typing = document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
+  const adding = state.adding !== null;
+  const configuring = document.querySelector("details.panel[open]") || state.role === "tasksetting";
+  if(typing || adding || configuring) return;
+  render();
 }
 
 /* ---------- technician ---------- */
@@ -2822,11 +2846,11 @@ initDb();
 window.addEventListener("online", () => flushPending());
 
 setInterval(() => {
+  // Only worth a tick at all if some live duration ("travelling 12m...") is
+  // actually ticking upward somewhere on screen; externalUpdate() itself
+  // holds off if the person is mid-edit anywhere that matters.
   const running = Object.values(state.rounds).some(r => r.date===todayKey() && ["onsite","travel"].includes(crewState(r).k));
-  const typing = document.activeElement && /INPUT|SELECT/.test(document.activeElement.tagName);
-  const adding = state.adding !== null;
-  const configuring = document.querySelector("details.panel[open]");   // don't reset scroll mid-edit
-  if(running && !typing && !adding && !configuring) render();
+  if(running) externalUpdate();
 }, 15000);
 </script>
 </body>
