@@ -866,16 +866,15 @@ function pickPerson(){
 
 function buildRound(){
   const sel = state.picking || [];
-  const d = new Date().getDay();
   const pills = OUTLETS.map(o => {
     const extra = (state.cfg.assigned[o.code]||[]).length;
     return `<button class="pill" data-pick="${o.code}" aria-pressed="${sel.includes(o.code)}">
-      ${esc(o.code)}<small>${o.day===d ? "scheduled" : (extra ? "+"+extra+" job"+(extra>1?"s":"") : "&nbsp;")}</small></button>`;
+      ${esc(o.code)}<small>${extra ? "+"+extra+" job"+(extra>1?"s":"") : "&nbsp;"}</small></button>`;
   }).join("");
   return `
   <div class="card" style="padding:20px">
     <div class="sec-head" style="margin-bottom:4px"><h2 class="sec">Today's round</h2><span class="eyebrow">${esc(state.me)}</span></div>
-    <p class="note" style="margin:0 0 14px">Tap the outlets you're covering today — nothing is pre-selected. Outlets marked "scheduled" are your usual ones for ${DAYNAME[d]}.</p>
+    <p class="note" style="margin:0 0 14px">Tap the outlets you're covering today, then Start round.</p>
     <div class="pill-grid">${pills}</div>
     <div class="row-2" style="margin-top:16px">
       <button class="btn" id="pick-all" style="flex:1">Select all</button>
