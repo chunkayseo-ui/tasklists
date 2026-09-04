@@ -24,6 +24,15 @@
   --warn:#8A590D; --warn-soft:#F6EAD4;
   --shadow:0 1px 2px rgba(14,26,31,.08),0 6px 18px -8px rgba(14,26,31,.22);
   --r:10px;
+  /* A stop with several named pools (JE today) tags each pool's heading with
+     one of these, cycled in order, purely so a technician's eye can tell two
+     pools' jobs apart at a glance -- no meaning is attached to which color a
+     given pool gets. Kept separate from --travel/--ok/--warn above, which
+     already mean something else (en route / done / still open). */
+  --pool-1:#2E5FA3; --pool-1-soft:#E2EAF6;
+  --pool-2:#7A4B9E; --pool-2-soft:#EEE5F5;
+  --pool-3:#A15A17; --pool-3-soft:#F5E7D6;
+  --pool-4:#3C7A57; --pool-4-soft:#E1EFE6;
 }
 
 *{box-sizing:border-box}
@@ -137,8 +146,12 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 
 /* tasks */
 .tasks{display:flex;flex-direction:column;gap:1px;background:var(--line-soft);border:1px solid var(--line);border-radius:9px;overflow:hidden}
-.pool-head{background:var(--surface-2);padding:7px 12px 6px;font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--accent)}
+.pool-head{padding:7px 12px 6px;font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.1em;background:var(--surface-2);color:var(--accent)}
 .pool-head:not(:first-child){border-top:1px solid var(--line-soft)}
+.pool-head.pool-c1{background:var(--pool-1-soft);color:var(--pool-1)}
+.pool-head.pool-c2{background:var(--pool-2-soft);color:var(--pool-2)}
+.pool-head.pool-c3{background:var(--pool-3-soft);color:var(--pool-3)}
+.pool-head.pool-c4{background:var(--pool-4-soft);color:var(--pool-4)}
 .task{background:var(--surface);padding:11px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .task.running{background:var(--warn-soft)}
 .task.finished{background:var(--surface-2)}
@@ -1021,9 +1034,17 @@ function runRound(r){
 // than re-reading "JEIP1 — " on every single line in a list of 12.
 function taskListHtml(s){
   if(!s.tasks.some(t => t.pool)) return s.tasks.map(t => taskRow(s,t)).join("");
+  // Each pool gets one of 4 colors, cycled in the order its jobs first show up,
+  // so a technician can tell "am I still under JEIP1 or did I move to JEIP2"
+  // at a glance instead of re-reading the heading text every time.
+  const poolIx = new Map();
   let lastPool = null, out = "";
   s.tasks.forEach(t => {
-    if(t.pool && t.pool !== lastPool){ out += `<div class="pool-head">${esc(t.pool)}</div>`; lastPool = t.pool; }
+    if(t.pool && t.pool !== lastPool){
+      if(!poolIx.has(t.pool)) poolIx.set(t.pool, poolIx.size % 4 + 1);
+      out += `<div class="pool-head pool-c${poolIx.get(t.pool)}">${esc(t.pool)}</div>`;
+      lastPool = t.pool;
+    }
     out += taskRow(s,t);
   });
   return out;
