@@ -247,6 +247,12 @@ details.panel[open] summary::after{content:"▴"}
 .pill[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
 .pill:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .pill small{display:block;font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:400;opacity:.7;margin-top:3px;letter-spacing:0}
+/* Informational only -- another technician already having this outlet in
+   their round today never blocks picking it too, it's just a heads-up. */
+.pill-taken{border-color:var(--travel);background:var(--travel-soft)}
+.pill-who{display:block;font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:600;text-transform:none;
+  letter-spacing:0;margin-top:3px;color:var(--travel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill[aria-pressed="true"] .pill-who{color:#fff;opacity:.9}
 
 .assign-block{padding:10px 0;border-bottom:1px solid var(--line-soft)}
 .assign-block:last-child{border-bottom:0}
@@ -395,6 +401,19 @@ const state = {
 };
 const myId = () => state.me ? todayKey()+"__"+slug(state.me) : null;
 const myRound = () => state.rounds[myId()] || null;
+// Who else (besides me) already has this outlet in their round today, whether
+// they've arrived yet or not. Purely informational — nothing stops two
+// technicians covering the same outlet, this just lets a technician picking
+// their round see who else already grabbed a branch.
+function othersOn(code){
+  const mine = myId();
+  const names = new Set();
+  Object.values(state.rounds).forEach(r => {
+    if(r.id === mine || r.date !== todayKey() || !r.stops) return;
+    if(r.stops.some(s => s.outlet === code)) names.add(r.person);
+  });
+  return [...names];
+}
 
 /* ================= storage ================= */
 const local = {
@@ -932,13 +951,16 @@ function buildRound(){
   const sel = state.picking || [];
   const pills = OUTLETS.map(o => {
     const extra = (state.cfg.assigned[o.code]||[]).length;
-    return `<button class="pill" data-pick="${o.code}" aria-pressed="${sel.includes(o.code)}">
-      ${esc(o.code)}<small>${extra ? "+"+extra+" job"+(extra>1?"s":"") : "&nbsp;"}</small></button>`;
+    const others = othersOn(o.code);
+    const who = others.length ? `<span class="pill-who">${esc(others.join(", "))}</span>` : "";
+    return `<button class="pill ${others.length?"pill-taken":""}" data-pick="${o.code}" aria-pressed="${sel.includes(o.code)}">
+      ${esc(o.code)}<small>${extra ? "+"+extra+" job"+(extra>1?"s":"") : "&nbsp;"}</small>${who}</button>`;
   }).join("");
+  const anyTaken = OUTLETS.some(o => othersOn(o.code).length);
   return `
   <div class="card" style="padding:20px">
     <div class="sec-head" style="margin-bottom:4px"><h2 class="sec">Today's round</h2><span class="eyebrow">${esc(state.me)}</span></div>
-    <p class="note" style="margin:0 0 14px">Tap the outlets you're covering today, then Start round.</p>
+    <p class="note" style="margin:0 0 14px">Tap the outlets you're covering today, then Start round.${anyTaken ? " Outlets already picked up by someone else today are marked — you can still take them too." : ""}</p>
     <div class="pill-grid">${pills}</div>
     <div class="row-2" style="margin-top:16px">
       <button class="btn" id="pick-all" style="flex:1">Select all</button>
