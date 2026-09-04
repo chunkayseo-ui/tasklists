@@ -2290,7 +2290,16 @@ function routeCard(r, proj, byCode){
     // .route-stop already handles this) rather than squeezing into the row.
     const noteLine = (o.covering && o.coveringNote)
       ? `<span class="mono muted" style="flex-basis:100%;font-style:italic">“${esc(o.coveringNote)}”</span>` : "";
-    return `<div class="route-stop">
+    // The leg between this stop and the one before it -- how long the drive
+    // (plus whatever else) actually took, straight from departure-to-arrival
+    // timestamps, same math already used on the technician's own view. Every
+    // earlier stop in the sequence is guaranteed departed by this point (see
+    // the comment on onSiteNow/lastIdx above), so seq[i-1].departAt always
+    // exists here.
+    const gap = i > 0
+      ? `<div class="travel-gap"><span>▼ travel ${dur(mins(seq[i-1].departAt, o.arriveAt))}</span><span class="ln"></span></div>`
+      : "";
+    return `${gap}<div class="route-stop">
       <span class="route-idx">${o.idx}</span>
       <span class="route-name"><strong>${esc(o.code)}</strong></span>
       ${o.covering?'<span class="tag covering">Covering</span>':""}
