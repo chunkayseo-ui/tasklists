@@ -43,37 +43,37 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--ground);color:var(--ink);
   font-family:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
-  font-size:15px;line-height:1.5;-webkit-text-size-adjust:100%}
+  font-size:16.5px;line-height:1.5;-webkit-text-size-adjust:100%}
 .wrap{max-width:960px;margin:0 auto;padding:0 14px 64px}
 
 .top{position:sticky;top:0;z-index:20;background:var(--ground);border-bottom:1px solid var(--line);margin-bottom:18px}
 .top-in{max-width:960px;margin:0 auto;padding:12px 14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .brand{display:flex;align-items:baseline;gap:9px;margin-right:auto;min-width:0}
-.brand h1{font-family:"Barlow Condensed",ui-sans-serif,sans-serif;font-weight:700;font-size:25px;margin:0;text-transform:uppercase;letter-spacing:.01em}
-.brand .dt{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;color:var(--ink-3);white-space:nowrap}
+.brand h1{font-family:"Barlow Condensed",ui-sans-serif,sans-serif;font-weight:700;font-size:27px;margin:0;text-transform:uppercase;letter-spacing:.01em}
+.brand .dt{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:13px;color:var(--ink-3);white-space:nowrap}
 .seg{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:2px;gap:2px}
-.seg button{font:600 12px/1 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.09em;
+.seg button{font:600 13px/1 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.09em;
   padding:8px 13px;border:0;border-radius:6px;background:transparent;color:var(--ink-2);cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
 .seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
-.eyebrow{font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.13em;color:var(--ink-3)}
+.eyebrow{font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.13em;color:var(--ink-3)}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
 .mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
 .stack{display:flex;flex-direction:column;gap:14px}
 .muted{color:var(--ink-3)}
-.note{font-size:13px;color:var(--ink-3);line-height:1.55}
-h2.sec{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:19px;text-transform:uppercase;letter-spacing:.04em;margin:0}
+.note{font-size:14.5px;color:var(--ink-3);line-height:1.55}
+h2.sec{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:21px;text-transform:uppercase;letter-spacing:.04em;margin:0}
 .sec-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .row-2{display:flex;gap:8px}
 
-button.btn,a.btn,span.btn{font:600 14px/1 "IBM Plex Sans",sans-serif;padding:13px 18px;border-radius:8px;
+button.btn,a.btn,span.btn{font:600 15.5px/1 "IBM Plex Sans",sans-serif;padding:13px 18px;border-radius:8px;
   border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;display:inline-block}
 a.btn{text-decoration:none}
 button.btn:focus-visible,a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 button.btn.primary,a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-button.btn.big,a.btn.big{width:100%;padding:16px;font-size:16px}
-button.btn.sm,a.btn.sm,span.btn.sm{padding:9px 14px;font-size:13px}
+button.btn.big,a.btn.big{width:100%;padding:16px;font-size:17.5px}
+button.btn.sm,a.btn.sm,span.btn.sm{padding:9px 14px;font-size:14.5px}
 /* Soft amber for "still in progress, tap when done" — deliberately not the same
    solid color as a completed state, so the button doesn't read as already-done. */
 button.btn.inprogress{background:var(--warn-soft);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
@@ -84,13 +84,13 @@ button.btn.warn{background:var(--warn);border-color:var(--warn);color:#fff}
 button.btn.urgent{background:var(--urgent);border-color:var(--urgent);color:#fff}
 button.btn.urgent:hover{background:color-mix(in srgb,var(--urgent) 88%,black)}
 button.btn:disabled{opacity:.4;cursor:not-allowed}
-button.link{border:0;background:transparent;color:var(--ink-3);padding:4px;font:400 13px/1.4 "IBM Plex Sans",sans-serif;cursor:pointer;text-decoration:underline}
+button.link{border:0;background:transparent;color:var(--ink-3);padding:4px;font:400 14.5px/1.4 "IBM Plex Sans",sans-serif;cursor:pointer;text-decoration:underline}
 
-select,input[type=text],input[type=number]{font-family:"IBM Plex Sans",sans-serif;font-size:15px;padding:11px 12px;
+select,input[type=text],input[type=number]{font-family:"IBM Plex Sans",sans-serif;font-size:16.5px;padding:11px 12px;
   border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);width:100%}
 input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 
-.banner{border-radius:var(--r);padding:11px 14px;font-size:13px;line-height:1.5;margin-bottom:14px;
+.banner{border-radius:var(--r);padding:11px 14px;font-size:14.5px;line-height:1.5;margin-bottom:14px;
   background:var(--warn-soft);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent)}
 
 /* Fixed to the viewport (not the scrolling page), so an alert like "finish your
@@ -99,14 +99,14 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 #toast{position:fixed;left:0;right:0;bottom:0;z-index:1000;display:flex;flex-direction:column;
   align-items:center;gap:8px;padding:0 14px calc(14px + env(safe-area-inset-bottom,0px));pointer-events:none}
 #toast .bubble{pointer-events:auto;max-width:480px;width:100%;border-radius:var(--r);padding:12px 16px;
-  font-size:13.5px;line-height:1.45;font-weight:600;background:var(--warn-soft);color:var(--warn);
+  font-size:15px;line-height:1.45;font-weight:600;background:var(--warn-soft);color:var(--warn);
   border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);box-shadow:0 6px 20px rgba(0,0,0,.18);
   animation:toast-in .18s ease-out}
 @keyframes toast-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 @media (prefers-reduced-motion:reduce){#toast .bubble{animation:none}}
 
 .chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;
-  font:600 11px/1.4 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.09em;white-space:nowrap}
+  font:600 12px/1.4 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.09em;white-space:nowrap}
 .chip .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
 .chip.onsite{background:var(--accent-soft);color:var(--accent)}
 .chip.travel{background:var(--travel-soft);color:var(--travel)}
@@ -116,7 +116,7 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 .chip.onsite .dot,.chip.travel .dot{animation:pulse 2s ease-in-out infinite}
 @media (prefers-reduced-motion:reduce){.chip .dot{animation:none}}
 
-.tag{font:600 10px/1.5 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.11em;
+.tag{font:600 11px/1.5 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.11em;
   padding:2px 7px;border-radius:4px;white-space:nowrap}
 .tag.req{background:var(--warn-soft);color:var(--warn)}
 .tag.opt{background:var(--travel-soft);color:var(--travel)}
@@ -131,10 +131,10 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
 .kpis.trio{grid-template-columns:repeat(3,1fr)}
 .kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 13px;min-width:0}
-.kpi .v{font-family:"IBM Plex Mono",monospace;font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}
+.kpi .v{font-family:"IBM Plex Mono",monospace;font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}
 .kpi .k{margin-top:3px}
-.kpis.trio .v{font-size:20px}
-@media(max-width:420px){.kpis.trio .v{font-size:17px}.kpis.trio .kpi{padding:10px 9px}.kpis.trio .k{font-size:10px;letter-spacing:.08em}}
+.kpis.trio .v{font-size:22px}
+@media(max-width:420px){.kpis.trio .v{font-size:18.5px}.kpis.trio .kpi{padding:10px 9px}.kpis.trio .k{font-size:11px;letter-spacing:.08em}}
 
 /* route */
 .route{display:flex;flex-direction:column;gap:8px}
@@ -148,15 +148,15 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 .stop.is-next{border-color:var(--travel);border-style:dashed}
 .stop.is-next .idx{background:var(--travel-soft);color:var(--travel);border-color:transparent}
 .stop-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.stop-name{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:21px;text-transform:uppercase;letter-spacing:.02em}
-.stop-times{margin-left:auto;font-size:12.5px;color:var(--ink-3);display:flex;gap:12px}
+.stop-name{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:23px;text-transform:uppercase;letter-spacing:.02em}
+.stop-times{margin-left:auto;font-size:13.5px;color:var(--ink-3);display:flex;gap:12px}
 .stop-body{margin-top:12px;display:flex;flex-direction:column;gap:10px}
-.travel-gap{display:flex;align-items:center;gap:8px;padding:2px 0 2px 50px;font:500 12px/1 "IBM Plex Mono",monospace;color:var(--travel)}
+.travel-gap{display:flex;align-items:center;gap:8px;padding:2px 0 2px 50px;font:500 13px/1 "IBM Plex Mono",monospace;color:var(--travel)}
 .travel-gap .ln{flex:1;height:1px;background:var(--travel);opacity:.35}
 
 /* tasks */
 .tasks{display:flex;flex-direction:column;gap:1px;background:var(--line-soft);border:1px solid var(--line);border-radius:9px;overflow:hidden}
-.pool-head{padding:7px 12px 6px;font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.1em;background:var(--surface-2);color:var(--accent)}
+.pool-head{padding:7px 12px 6px;font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:13.5px;text-transform:uppercase;letter-spacing:.1em;background:var(--surface-2);color:var(--accent)}
 .pool-head:not(:first-child){border-top:1px solid var(--line-soft)}
 .pool-head.pool-c1{background:var(--pool-1-soft);color:var(--pool-1)}
 .pool-head.pool-c2{background:var(--pool-2-soft);color:var(--pool-2)}
@@ -166,10 +166,10 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 .task.running{background:var(--warn-soft)}
 .task.finished{background:var(--surface-2)}
 .task-main{display:flex;flex-direction:column;gap:3px;min-width:140px;flex:1}
-.task-name{font-weight:600;font-size:14.5px;line-height:1.35;overflow-wrap:anywhere}
+.task-name{font-weight:600;font-size:16px;line-height:1.35;overflow-wrap:anywhere}
 .task.finished .task-name{color:var(--ink-2)}
 .task-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
-.task-time{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:13px;white-space:nowrap}
+.task-time{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:14.5px;white-space:nowrap}
 .task .act{flex:none}
 /* The X (cancel claim) + claimer's-name (finish) button pair shown on a job
    the current technician has running. */
@@ -185,7 +185,7 @@ span.btn.act.inprogress{background:var(--warn-soft);color:var(--warn);border-col
    instead of the "mine, reopenable" green, so a job someone else already
    did never looks like something worth (or possible) to tap. */
 span.btn.act.done.locked{background:var(--surface-2);color:var(--ink-3);border-color:var(--line)}
-.task-conflict{display:block;width:100%;font-size:11px;line-height:1.4;color:var(--warn);margin-top:2px}
+.task-conflict{display:block;width:100%;font-size:12px;line-height:1.4;color:var(--warn);margin-top:2px}
 .mark{width:20px;height:20px;border-radius:50%;flex:none;display:grid;place-items:center;font:600 11px/1 "IBM Plex Mono",monospace;
   border:1px solid var(--line);background:var(--surface-2);color:var(--ink-3)}
 .task.finished .mark{background:var(--ok);border-color:var(--ok);color:#fff}
@@ -193,7 +193,7 @@ span.btn.act.done.locked{background:var(--surface-2);color:var(--ink-3);border-c
 
 .addbox{background:var(--surface-2);border:1px dashed var(--line);border-radius:9px;padding:11px 12px;display:flex;flex-direction:column;gap:9px}
 .sugg{display:flex;gap:6px;flex-wrap:wrap}
-.sugg button{font:500 12.5px/1 "IBM Plex Sans",sans-serif;padding:7px 11px;border-radius:999px;
+.sugg button{font:500 13.5px/1 "IBM Plex Sans",sans-serif;padding:7px 11px;border-radius:999px;
   border:1px solid var(--line);background:var(--surface);color:var(--ink-2);cursor:pointer}
 .sugg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
@@ -201,20 +201,20 @@ span.btn.act.done.locked{background:var(--surface-2);color:var(--ink-3);border-c
 .crew{display:flex;flex-direction:column;gap:1px;background:var(--line-soft);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
 .crew-row{background:var(--surface);padding:12px 14px;display:flex;flex-direction:column;gap:9px}
 .crew-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.crew-name{font-weight:600;font-size:15px}
-.crew-where{margin-left:auto;font-size:13px;color:var(--ink-2)}
+.crew-name{font-weight:600;font-size:16.5px}
+.crew-where{margin-left:auto;font-size:14.5px;color:var(--ink-2)}
 .bar{display:flex;height:9px;border-radius:5px;overflow:hidden;background:var(--surface-2)}
 .bar span{display:block;height:100%}
 .bar .s-on{background:var(--accent)}
 .bar .s-tr{background:var(--travel);opacity:.55}
-.legend{display:flex;gap:14px;font-size:12px;color:var(--ink-3);flex-wrap:wrap}
+.legend{display:flex;gap:14px;font-size:13px;color:var(--ink-3);flex-wrap:wrap}
 .legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:middle}
 .outlet-group+.outlet-group{margin-top:16px;padding-top:14px;border-top:1px solid var(--line-soft)}
-.outlet-group-head{font:600 12px/1 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-3);margin-bottom:8px}
+.outlet-group-head{font:600 13px/1 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-3);margin-bottom:8px}
 
 .tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
-table{border-collapse:collapse;width:100%;min-width:640px;font-size:13.5px}
-th{font:600 11px/1 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:15px}
+th{font:600 12px/1 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);
   text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
 td{padding:10px 12px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
 tr:last-child td{border-bottom:0}
@@ -222,8 +222,8 @@ td.num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;w
 
 .bars{display:flex;flex-direction:column;gap:9px}
 .brow{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:baseline}
-.brow .lbl{font-size:13.5px;overflow-wrap:anywhere}
-.brow .val{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:13px;color:var(--ink-2)}
+.brow .lbl{font-size:15px;overflow-wrap:anywhere}
+.brow .val{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:14.5px;color:var(--ink-2)}
 .brow .track{grid-column:1/-1;height:7px;border-radius:4px;background:var(--surface-2);overflow:hidden}
 .brow .fill{display:block;height:100%;background:var(--accent);border-radius:4px}
 
@@ -238,7 +238,7 @@ td.num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;w
 .routemap svg{display:block;width:100%;height:auto;color:var(--ink-3)}
 .routemap figcaption{margin-top:4px}
 .route-list{flex:1 1 220px;min-width:200px;display:flex;flex-direction:column;gap:9px}
-.route-stop{display:flex;align-items:center;gap:9px;font-size:13.5px;flex-wrap:wrap;row-gap:4px}
+.route-stop{display:flex;align-items:center;gap:9px;font-size:15px;flex-wrap:wrap;row-gap:4px}
 .route-idx{flex:none;width:20px;height:20px;border-radius:50%;background:var(--accent-soft);color:var(--accent);
   font:700 11px/20px "Barlow Condensed",sans-serif;text-align:center}
 .route-name{min-width:56px}
@@ -246,7 +246,7 @@ td.num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;w
    the actual per-job breakdown (done/open/in progress) right there, instead
    of switching tabs to see what's still outstanding at that stop. */
 .jobs-toggle{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;
-  font-size:13.5px;color:var(--ink-2);text-decoration:none;padding:2px 4px}
+  font-size:15px;color:var(--ink-2);text-decoration:none;padding:2px 4px}
 .jobs-toggle:hover,.jobs-toggle:focus-visible{color:var(--accent);text-decoration:underline}
 .route-foot{padding:0 14px 14px}
 
@@ -257,16 +257,16 @@ td.num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;w
 @media (prefers-reduced-motion:reduce){.route-pulse{animation:none}}
 
 .datebar{display:flex;align-items:center;gap:10px;padding:10px 12px}
-.datebar .dnav{flex:none;width:38px;height:38px;padding:0;font-size:16px;line-height:1;border-radius:8px}
+.datebar .dnav{flex:none;width:38px;height:38px;padding:0;font-size:17.5px;line-height:1;border-radius:8px}
 .datebar .dmid{flex:1;text-align:center;min-width:0}
-.datebar .dmid .mono{font-weight:600;font-size:14px;white-space:nowrap}
-.datebar input[type=date]{width:auto;flex:none;padding:8px 10px;font-size:13px}
-.empty{padding:28px 18px;text-align:center;color:var(--ink-3);font-size:14px;line-height:1.6}
+.datebar .dmid .mono{font-weight:600;font-size:15.5px;white-space:nowrap}
+.datebar input[type=date]{width:auto;flex:none;padding:8px 10px;font-size:14.5px}
+.empty{padding:28px 18px;text-align:center;color:var(--ink-3);font-size:15.5px;line-height:1.6}
 .sample-note{background:var(--travel-soft);color:var(--travel);border-radius:8px;padding:8px 12px;
-  font:600 11px/1.4 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.1em;display:inline-block}
+  font:600 12px/1.4 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.1em;display:inline-block}
 
 details.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
-details.panel summary{padding:12px 14px;cursor:pointer;font-weight:600;font-size:14px;list-style:none}
+details.panel summary{padding:12px 14px;cursor:pointer;font-weight:600;font-size:15.5px;list-style:none}
 details.panel summary::-webkit-details-marker{display:none}
 details.panel summary::after{content:"▾";float:right;color:var(--ink-3)}
 details.panel[open] summary::after{content:"▴"}
@@ -274,46 +274,46 @@ details.panel[open] summary::after{content:"▴"}
 
 .pill-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:7px}
 .pill{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:10px 6px;text-align:center;
-  font:600 14px/1 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;color:var(--ink)}
+  font:600 15.5px/1 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;color:var(--ink)}
 .pill[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
 .pill:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.pill small{display:block;font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:400;opacity:.7;margin-top:3px;letter-spacing:0}
+.pill small{display:block;font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:400;opacity:.7;margin-top:3px;letter-spacing:0}
 /* Informational only -- another technician already having this outlet in
    their round today never blocks picking it too, it's just a heads-up. */
 .pill-taken{border-color:var(--travel);background:var(--travel-soft)}
-.pill-who{display:block;font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:600;text-transform:none;
+.pill-who{display:block;font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;text-transform:none;
   letter-spacing:0;margin-top:3px;color:var(--travel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pill[aria-pressed="true"] .pill-who{color:#fff;opacity:.9}
 
 .assign-block{padding:10px 0;border-bottom:1px solid var(--line-soft)}
 .assign-block:last-child{border-bottom:0}
 .assign-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-.assign-row .oc{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:16px;min-width:64px}
+.assign-row .oc{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:17.5px;min-width:64px}
 .extra-list{display:flex;flex-direction:column;gap:6px;margin-top:9px}
-.extra-item{display:flex;align-items:center;gap:8px;font-size:13.5px}
+.extra-item{display:flex;align-items:center;gap:8px;font-size:15px}
 .extra-item .extra-name{flex:1;overflow-wrap:anywhere}
 .extra-add{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:9px}
 .extra-add input[type=text]{flex:1 1 160px}
-.extra-add select.pool-pick{flex:0 0 auto;padding:9px 10px;font-size:13.5px}
+.extra-add select.pool-pick{flex:0 0 auto;padding:9px 10px;font-size:15px}
 .extra-days{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;width:100%;margin-top:2px}
 .tag.pool{background:var(--accent-soft);color:var(--accent)}
-.chk{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--ink-2);white-space:nowrap;cursor:pointer}
+.chk{display:flex;align-items:center;gap:5px;font-size:13.5px;color:var(--ink-2);white-space:nowrap;cursor:pointer}
 .chk input{width:16px;height:16px;accent-color:var(--accent)}
-.tog{font:500 12.5px/1 "IBM Plex Sans",sans-serif;padding:7px 11px;border-radius:999px;
+.tog{font:500 13.5px/1 "IBM Plex Sans",sans-serif;padding:7px 11px;border-radius:999px;
   border:1px solid var(--line);background:var(--surface);color:var(--ink-2);cursor:pointer}
 .tog[aria-pressed="true"]{background:var(--travel);border-color:var(--travel);color:#fff}
 .tog:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* nav badge -- small count shown on the Overview tab when issues need attention */
 .nav-badge{display:inline-block;background:var(--urgent);color:#fff;border-radius:999px;
-  font:700 10px/1.6 "IBM Plex Mono",monospace;padding:0 6px;margin-left:5px;vertical-align:middle}
+  font:700 11px/1.6 "IBM Plex Mono",monospace;padding:0 6px;margin-left:5px;vertical-align:middle}
 
 /* issue reporting (technician side) + issue rows shared with the overview board */
 .tag.urgent{background:var(--urgent-soft);color:var(--urgent)}
 .tag.medium{background:var(--travel-soft);color:var(--travel)}
 .tag.low{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
 .issue-list{display:flex;flex-direction:column;gap:6px}
-.issue-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;
+.issue-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14.5px;
   background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
 .issue-desc{flex:1 1 160px}
 .issue-meta{margin-left:auto;white-space:nowrap}
@@ -324,14 +324,14 @@ details.panel[open] summary::after{content:"▴"}
    free to wrap on their own without dragging the name around with them. */
 .job-list{display:flex;flex-direction:column;gap:6px}
 .job-row{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
-  padding:8px 10px;font-size:13px}
+  padding:8px 10px;font-size:14.5px}
 .job-row-name{font-weight:600;line-height:1.4;overflow-wrap:anywhere}
 .job-row-tags{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:5px}
-.job-row-tags .who{font:600 11px/1.5 "IBM Plex Mono",monospace;color:var(--ink-3);
+.job-row-tags .who{font:600 12px/1.5 "IBM Plex Mono",monospace;color:var(--ink-3);
   letter-spacing:.02em}
 .issue-form{background:var(--surface-2);border:1px dashed var(--line);border-radius:9px;padding:11px 12px;
   display:flex;flex-direction:column;gap:9px}
-.issue-form textarea{font-family:"IBM Plex Sans",sans-serif;font-size:14px;padding:10px 11px;
+.issue-form textarea{font-family:"IBM Plex Sans",sans-serif;font-size:15.5px;padding:10px 11px;
   border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);
   width:100%;resize:vertical;box-sizing:border-box}
 
@@ -344,17 +344,17 @@ details.panel[open] summary::after{content:"▴"}
    only one or two cards are ever open at once. Collapsed cards stay compact
    so the whole night's outlets are still scannable at a glance. */
 .outlet-status.is-expanded{grid-column:1/-1}
-.outlet-status .oc{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:18px;
+.outlet-status .oc{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:20px;
   text-transform:uppercase;letter-spacing:.02em}
 
 /* overview: issue cards (supervisor planning) */
 .issue-card{padding:13px 14px;display:flex;flex-direction:column;gap:8px}
 .issue-card-head{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
-.issue-card-desc{margin:0;font-weight:600;font-size:14.5px;line-height:1.4}
+.issue-card-desc{margin:0;font-weight:600;font-size:16px;line-height:1.4}
 .issue-meta-row{display:flex;gap:7px;flex-wrap:wrap}
 
 @media(max-width:520px){
-  .brand h1{font-size:21px}
+  .brand h1{font-size:23px}
   .stop{padding-left:44px}
   .stop .idx{left:10px}
   .travel-gap{padding-left:44px}
@@ -1618,7 +1618,7 @@ function runRound(r){
   });
   return `
   <div class="kpis trio">
-    <div class="kpi"><div class="v">${t.done}<span style="font-size:15px;color:var(--ink-3)">/${t.total}</span></div><div class="k eyebrow">Outlets</div></div>
+    <div class="kpi"><div class="v">${t.done}<span style="font-size:16.5px;color:var(--ink-3)">/${t.total}</span></div><div class="k eyebrow">Outlets</div></div>
     <div class="kpi"><div class="v" style="color:var(--accent)">${t.tasksDone}</div><div class="k eyebrow">Jobs done</div></div>
     <div class="kpi"><div class="v" style="color:var(--travel)">${dur(t.travel)}</div><div class="k eyebrow">Travelling</div></div>
   </div>
@@ -2201,7 +2201,7 @@ function overviewView(){
 
   return `
   <div class="kpis">
-    <div class="kpi"><div class="v">${stats.outletsDone}<span style="font-size:15px;color:var(--ink-3)">/${stats.outletsTotal||OUTLETS.length}</span></div><div class="k eyebrow">Outlets done</div></div>
+    <div class="kpi"><div class="v">${stats.outletsDone}<span style="font-size:16.5px;color:var(--ink-3)">/${stats.outletsTotal||OUTLETS.length}</span></div><div class="k eyebrow">Outlets done</div></div>
     <div class="kpi"><div class="v" style="color:var(--accent)">${stats.jobsDone}</div><div class="k eyebrow">Jobs done</div></div>
     <div class="kpi"><div class="v" style="color:var(--travel)">${stats.activeTechs}</div><div class="k eyebrow">Active now</div></div>
     <div class="kpi"><div class="v" style="color:${urgentN?"var(--urgent)":"var(--ink)"}">${openN}</div><div class="k eyebrow">Open issues${urgentN?" · "+urgentN+" urgent":""}</div></div>
@@ -2377,7 +2377,7 @@ function mgrView(){
   ${dateNav}
   <div class="kpis">
     <div class="kpi"><div class="v">${agg.tk}</div><div class="k eyebrow">Jobs done</div></div>
-    <div class="kpi"><div class="v">${agg.done}<span style="font-size:15px;color:var(--ink-3)">/${agg.tot}</span></div><div class="k eyebrow">Outlets done</div></div>
+    <div class="kpi"><div class="v">${agg.done}<span style="font-size:16.5px;color:var(--ink-3)">/${agg.tot}</span></div><div class="k eyebrow">Outlets done</div></div>
     <div class="kpi"><div class="v" style="color:var(--accent)">${dur(agg.on)}</div><div class="k eyebrow">On site</div></div>
     <div class="kpi"><div class="v" style="color:var(--travel)">${share}%</div><div class="k eyebrow">Time on the road</div></div>
   </div>
