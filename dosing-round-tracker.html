@@ -2418,7 +2418,8 @@ function sampleRound(){
 // One technician's row in a "crew" list -- shared by the Supervisor board and
 // the Overview tab so the two never drift apart on what "on site" or a
 // job/on-site/travel summary actually shows.
-function crewRow(r, isToday){
+function crewRow(r, isToday, opts){
+  opts = opts || {};
   const cs = crewState(r), t = totals(r), span = t.onSite + t.travel;
   const bar = span ? `<div class="bar" role="img" aria-label="${t.onSite} minutes on site, ${t.travel} minutes travelling">
       <span class="s-on" style="width:${t.onSite/span*100}%"></span><span class="s-tr" style="width:${t.travel/span*100}%"></span></div>` : "";
@@ -2427,10 +2428,17 @@ function crewRow(r, isToday){
   const chip = isToday
     ? `<span class="chip ${cs.k}"><span class="dot"></span>${esc(cs.label)}${cs.since?" · "+liveDur(cs.since):""}</span>`
     : `<span class="chip ${cs.k==="onsite"||cs.k==="travel"?"idle":cs.k}"><span class="dot"></span>${cs.k==="onsite"||cs.k==="travel"?"Not checked out":esc(cs.label)}</span>`;
+  // Supervisor-only, e.g. for wiping test/practice rounds -- Overview stays
+  // read-only so nobody deletes a live round by mistake while just watching
+  // tonight's progress.
+  const delBtn = (opts.deletable && r.id !== "sample")
+    ? `<button type="button" class="btn sm" data-delround="${esc(r.id)}" title="Delete this round" aria-label="Delete ${esc(r.person)}'s round" style="margin-left:auto;color:var(--urgent);border-color:var(--urgent);padding:4px 10px">Delete</button>`
+    : "";
   return `<div class="crew-row"><div class="crew-top">
       <span class="crew-name">${esc(r.person)}</span>
       ${chip}
       <span class="crew-where mono">${t.tasksDone} jobs · ${dur(t.onSite)} on site · ${dur(t.travel)} travel</span>
+      ${delBtn}
     </div>${bar}</div>`;
 }
 
@@ -2475,7 +2483,7 @@ function mgrView(){
   const agg = rounds.reduce((a,r)=>{const t=totals(r);a.on+=t.onSite;a.tr+=t.travel;a.done+=t.done;a.tot+=t.total;a.tk+=t.tasksDone;return a;},{on:0,tr:0,done:0,tot:0,tk:0});
   const share = (agg.on+agg.tr) ? Math.round(agg.tr/(agg.on+agg.tr)*100) : 0;
 
-  const crew = rounds.map(r => crewRow(r, isToday)).join("");
+  const crew = rounds.map(r => crewRow(r, isToday, {deletable:true})).join("");
 
   // Every job on the board today, across every stop of every round -- not just
   // ones someone has picked up. A pooled outlet (JE) puts the same job list
@@ -3059,6 +3067,34 @@ function rosterPanel(){
     </div></details>`;
 }
 
+// Supervisor-initiated delete of a whole round -- e.g. wiping out a
+// technician's testing/practice data. Unlike #reset-round (today's own
+// round only), this can target ANY person on ANY date, since the
+// Supervisor tab's date-nav can be looking at yesterday or further back.
+// A round can live in one of two places depending on which date is being
+// viewed: today's live rounds are in state.rounds, keyed by round id; a
+// past date's rounds are a separate cache in state.historyCache[date].rounds
+// (see loadHistory), fetched once and reused rather than re-queried every
+// render. We don't know in advance which one holds the round being deleted,
+// so this checks state.rounds first, then searches every cached date --
+// and on deletion, clears the round out of *both* possible places so the
+// screen updates immediately without needing a reload.
+function deleteRoundById(id){
+  let r = state.rounds[id];
+  if(!r){
+    for(const c of Object.values(state.historyCache)){
+      if(c && c.rounds){ const found = c.rounds.find(x=>x.id===id); if(found){ r = found; break; } }
+    }
+  }
+  if(!r) return;
+  if(!confirm(`Delete ${r.person}'s round for ${fmtDate(r.date)}? This can't be undone.`)) return;
+  delete state.rounds[id];
+  Object.values(state.historyCache).forEach(c => { if(c && c.rounds) c.rounds = c.rounds.filter(x=>x.id!==id); });
+  if(state.db) state.db.doc("dosing_rounds/"+id).delete().catch(()=>{});
+  else { const all = local.read(); delete all[id]; local.write(all); }
+  render();
+}
+
 /* ================= events ================= */
 function wire(){
   const on = (sel, fn, ev) => { const e = $(sel); if(e) e.addEventListener(ev||"click", fn); };
@@ -3079,6 +3115,7 @@ function wire(){
     else { const all = local.read(); delete all[id]; local.write(all); }
     state.picking = null; render();
   });
+  each("[data-delround]", b => deleteRoundById(b.dataset.delround));
 
   each("[data-pick]", b => {
     const cur = state.picking || [], c = b.dataset.pick;
