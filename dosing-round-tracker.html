@@ -764,12 +764,13 @@ function tasksFor(outlet){
   const onDay = e => !e.days || !e.days.length || e.days.includes(dow);
   const extraList = (state.cfg.extra[outlet] || []).filter(e => (!e.oneTime || e.addedDate === today) && onDay(e));
   const asgNames = assignedFor(outlet, dow);
+  const issueTasks = issueTasksFor(outlet);
 
   if(!pools){
     const req = state.cfg.required.map(n => ({id:uid(), name:n, kind:"required", startedAt:null, doneAt:null, claimedBy:null}));
     const asg = asgNames.map(n => ({id:uid(), name:n, kind:"optional", startedAt:null, doneAt:null, claimedBy:null}));
     const ex  = extraList.map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null}));
-    return req.concat(asg).concat(ex);
+    return req.concat(asg).concat(ex).concat(issueTasks);
   }
 
   // A pooled outlet can also get an ad-hoc job that isn't tied to any one pool
@@ -789,7 +790,7 @@ function tasksFor(outlet){
       .map(e => ({id:uid(), name:e.name, pool:p, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null}));
     return req.concat(asg).concat(ex);
   });
-  return wholeOutlet.concat(perPool);
+  return wholeOutlet.concat(issueTasks).concat(perPool);
 }
 
 // A technician can pick an outlet someone else is already covering today (see
@@ -1186,7 +1187,7 @@ function cancelClaim(code, tid){
 // Tapping the technician's own name (shown on a running job) marks it done.
 // Only the claimer can finish their own claimed job.
 function finishTask(code, tid){
-  let finished = null, stopOutlet = null;
+  let finished = null, stopOutlet = null, issueId = null;
   withRound(r => {
     const s = r.stops.find(x=>x.outlet===code); if(!s) return false;
     const t = s.tasks.find(x=>x.id===tid); if(!t || !t.startedAt || t.doneAt) return false;
@@ -1194,8 +1195,13 @@ function finishTask(code, tid){
     t.doneAt = new Date().toISOString();
     finished = {name:t.name, kind:t.kind, pool:t.pool||null, doneAt:t.doneAt};
     stopOutlet = s.outlet;
+    issueId = t.issueId || null;
   }, "Couldn't mark that done. Try again.").then(() => {
     if(finished) syncTaskToOtherRounds(stopOutlet, finished, {doneAt:finished.doneAt});
+    // A job that started life as a reported issue closes the loop on the
+    // Overview board the moment it's actually finished — no separate
+    // "mark resolved" step for the supervisor to remember.
+    if(issueId) resolveIssue(issueId);
   });
 }
 // Reopens a job marked Done by mistake, back to Open (unclaimed) — start,
@@ -1209,7 +1215,7 @@ function finishTask(code, tid){
 // native confirm() on the Done button), so only the claimer sees a clickable
 // Done button to begin with.
 function undoTask(code, tid){
-  let reset = null, stopOutlet = null;
+  let reset = null, stopOutlet = null, issueId = null;
   withRound(r => {
     const s = r.stops.find(x=>x.outlet===code); if(!s || s.departAt) return false;
     const t = s.tasks.find(x=>x.id===tid); if(!t || !t.doneAt) return false;
@@ -1219,8 +1225,14 @@ function undoTask(code, tid){
     t.claimedBy = null;
     reset = {name:t.name, kind:t.kind, pool:t.pool||null};
     stopOutlet = s.outlet;
+    issueId = t.issueId || null;
   }, "Couldn't undo that. Try again.").then(() => {
     if(reset) syncTaskToOtherRounds(stopOutlet, reset, {startedAt:null, doneAt:null, claimedBy:null});
+    // Mirror finishTask's auto-resolve: reopening a job that was actually a
+    // converted issue puts the issue back on the board too, so the two never
+    // fall out of sync (a "Resolved" issue whose job is Open again would be
+    // misleading either way).
+    if(issueId) reopenIssue(issueId);
   });
 }
 function addTask(code, name){
@@ -1259,6 +1271,17 @@ function openIssuesFor(outlet){
     .sort((a,b) => a.raisedAt < b.raisedAt ? 1 : -1);
 }
 
+// An issue that's been turned into a job (see convertIssueToTask) shows up in
+// that outlet's own job list — Open, claimable by whoever's covering the
+// outlet, same as an ad-hoc job — instead of sitting only on the Overview
+// board waiting for a supervisor to plan and schedule it. Matched back to its
+// issue by `issueId` (not name), so it can never collide with an unrelated
+// job that happens to share the same wording.
+function issueTasksFor(outlet){
+  return openIssuesFor(outlet).filter(i => i.convertedToTask)
+    .map(i => ({id:uid(), name:i.description, kind:"issue", issueId:i.id, startedAt:null, doneAt:null, claimedBy:null}));
+}
+
 // A technician flags a problem they can't fix themselves, right from the
 // outlet stop they're standing at -- or a supervisor gets ahead of one,
 // assigning a non-urgent task to an outlet before anyone's even reported it
@@ -1273,8 +1296,42 @@ function reportIssue(outlet, description, priority, raisedBy){
     status: "open",
     raisedBy: raisedBy || state.me || "Supervisor",
     raisedAt: new Date().toISOString(),
-    assignee: null, targetDate: null, notes: "", resolvedAt: null
+    assignee: null, targetDate: null, notes: "", resolvedAt: null,
+    convertedToTask: false
   });
+}
+
+// Turns an issue into an actual job in that outlet's list — anyone covering
+// the outlet tonight (or the next time it's covered) can claim it, work it,
+// and mark it done, exactly like an ad-hoc job. Either a supervisor (from
+// Overview) or a technician standing at the outlet can do this; either way
+// it stays open-claim rather than pinned to one assignee, so whoever's
+// actually there can just pick it up. New rounds pick it up automatically
+// via tasksFor(); any round already open for that outlet tonight gets it
+// pushed in immediately by syncIssueTaskToLiveRounds so nobody has to leave
+// and re-arrive to see it.
+function convertIssueToTask(id){
+  const cur = state.issues[id]; if(!cur || cur.status==="resolved" || cur.convertedToTask) return;
+  const next = clone(cur);
+  next.convertedToTask = true;
+  saveIssue(next);
+  syncIssueTaskToLiveRounds(next.outlet, next);
+}
+
+// Counterpart to syncExtraToLiveRounds, for the one issue just converted —
+// pushes it into every round already open for that outlet today that hasn't
+// departed yet. Matched by issueId so it's never added twice.
+async function syncIssueTaskToLiveRounds(outlet, issue){
+  const today = todayKey();
+  const jobs = Object.values(state.rounds).filter(r => r.date === today);
+  for(const orig of jobs){
+    const r = clone(orig);
+    const s = r.stops.find(x => x.outlet === outlet && !x.departAt);
+    if(!s) continue;
+    if(s.tasks.some(t => t.issueId === issue.id)) continue;
+    s.tasks.push({id:uid(), name:issue.description, kind:"issue", issueId:issue.id, startedAt:null, doneAt:null, claimedBy:null});
+    try{ await saveRound(r); }catch(e){}
+  }
 }
 
 // Supervisor commits to a plan: who's handling it and by when, with room for
@@ -1559,6 +1616,7 @@ function taskRow(s, t){
                           : '<span class="tag st-open">Open</span>';
   const tag = t.kind==="required" ? '<span class="tag req">Must do</span>'
             : t.kind==="optional" ? '<span class="tag opt">If time allows</span>'
+            : t.kind==="issue"    ? '<span class="tag urgent">Reported issue</span>'
             : '<span class="tag add">Added</span>';
   let time = "", act = "", conflictNote = "";
   const key = s.outlet+"|"+t.id;
@@ -1638,10 +1696,19 @@ function issueSummaryRow(issue){
   const planned = issue.status==="planned"
     ? `<span class="tag st-prog">${issue.targetDate?"Target "+esc(issue.targetDate):"Planned"}</span>`
     : `<span class="tag st-open">Needs planning</span>`;
+  // A quick, on-the-spot fix doesn't need the full supervisor plan-and-assign
+  // flow — a technician standing right here can turn it into a job in their
+  // own list and just do it. Once converted, this line stops offering the
+  // button (it's a job now, shown below) so it's never two clicks away in
+  // two different places.
+  const action = issue.convertedToTask
+    ? `<span class="mono muted issue-meta">on the job list below</span>`
+    : `<button class="link" data-converttask="${issue.id}">+ Turn into a job I can do</button>`;
   return `<div class="issue-row">
     <span class="issue-desc">${esc(issue.description)}</span>
     ${priorityTag(issue.priority)}${planned}
     <span class="mono muted issue-meta">by ${esc(issue.raisedBy)}</span>
+    ${action}
   </div>`;
 }
 
@@ -1855,7 +1922,7 @@ function unfinishedJobs(rounds){
   // Must-do first (the ones that matter most), then optional, then ad-hoc;
   // within each, in outlet order, so the list reads the same way the
   // checklist itself does.
-  const kindOrder = {required:0, optional:1, adhoc:2};
+  const kindOrder = {required:0, issue:1, optional:2, adhoc:3};
   const outletOrder = new Map(OUTLETS.map((o,i)=>[o.code,i]));
   out.sort((a,b) => {
     const k = (kindOrder[a.kind] ?? 3) - (kindOrder[b.kind] ?? 3);
@@ -1868,6 +1935,7 @@ function unfinishedJobsBlock(rounds){
   if(!list.length) return `<p class="note" style="margin:0">Nothing left open — every job at every stop left tonight is done.</p>`;
   const tagOf = k => k==="required" ? '<span class="tag req">Must do</span>'
               : k==="optional" ? '<span class="tag opt">If time allows</span>'
+              : k==="issue"    ? '<span class="tag urgent">Reported issue</span>'
               : '<span class="tag add">Added</span>';
   const rows = list.map(x => `<div class="issue-row">
     <span class="issue-desc"><strong>${esc(x.outlet)}</strong>${x.pool?` <span class="tag pool">${esc(x.pool)}</span>`:""} — ${esc(x.name)} ${tagOf(x.kind)}</span>
@@ -1919,8 +1987,12 @@ function issueCard(issue){
       ${issue.status==="planned" ? `<span class="tag st-prog">${issue.targetDate?"Target "+esc(issue.targetDate):"Planned"}</span>` : ""}
       ${issue.assignee ? `<span class="tag pool">${esc(issue.assignee)}</span>` : ""}
     </div>` : "";
+    const taskLine = issue.convertedToTask
+      ? `<p class="note" style="margin:0">✓ Added as a job — whoever's covering ${esc(issue.outlet)} can claim and complete it; it'll resolve here automatically once they do.</p>`
+      : (issue.status!=="resolved" ? `<button class="btn sm" data-converttask="${issue.id}" style="width:100%">Turn into a job a technician can claim</button>` : "");
     body = `${planRow}
     ${issue.notes ? `<p class="note" style="margin:0">${esc(issue.notes)}</p>` : ""}
+    ${taskLine}
     <div class="row-2">
       ${issue.status!=="resolved" ? `<button class="btn sm" data-planissue="${issue.id}" style="flex:1">${issue.status==="planned"?"Edit plan":"Plan this"}</button>` : ""}
       ${issue.status!=="resolved"
@@ -2131,7 +2203,7 @@ function mgrView(){
       <td class="num">${it.t.startedAt ? clockOf(it.t.startedAt) : '<span class="muted">—</span>'}</td>
       <td><strong>${esc(it.o)}</strong>${it.t.pool ? `<br><span class="tag pool">${esc(it.t.pool)}</span>` : ""}</td>
       <td>${esc(it.t.name)}</td>
-      <td>${it.t.kind==="required"?'<span class="tag req">Must do</span>':it.t.kind==="optional"?'<span class="tag opt">If time allows</span>':'<span class="tag add">Added</span>'}</td>
+      <td>${it.t.kind==="required"?'<span class="tag req">Must do</span>':it.t.kind==="optional"?'<span class="tag opt">If time allows</span>':it.t.kind==="issue"?'<span class="tag urgent">Reported issue</span>':'<span class="tag add">Added</span>'}</td>
       <td>${status}</td>
       <td>${it.t.claimedBy ? esc(it.t.claimedBy) : '<span class="muted">—</span>'}</td>
       <td class="num">${finished ? dur(mins(it.t.startedAt,it.t.doneAt)) : (running ? '<span style="color:var(--accent)">running</span>' : '<span class="muted">—</span>')}</td>
@@ -2436,6 +2508,7 @@ function routeCard(r, proj, byCode){
                       : '<span class="tag st-open">Open</span>';
         const kindTag = t.kind==="required" ? '<span class="tag req">Must do</span>'
                       : t.kind==="optional" ? '<span class="tag opt">If time allows</span>'
+                      : t.kind==="issue"    ? '<span class="tag urgent">Reported issue</span>'
                       : '<span class="tag add">Added</span>';
         return `<div class="issue-row">
           <span class="issue-desc">${t.pool?`<span class="tag pool">${esc(t.pool)}</span> `:""}${esc(t.name)} ${kindTag}</span>
@@ -2836,6 +2909,10 @@ function wire(){
   });
   each("[data-resolveissue]", b => resolveIssue(b.dataset.resolveissue));
   each("[data-reopenissue]",  b => reopenIssue(b.dataset.reopenissue));
+
+  // issues — turning one into a claimable job, from either the technician's
+  // own stop card or the supervisor's Overview board (see convertIssueToTask).
+  each("[data-converttask]", b => convertIssueToTask(b.dataset.converttask));
 }
 
 $("#btn-tech").addEventListener("click", () => { state.role="tech"; render(); });
