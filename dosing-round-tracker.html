@@ -2213,10 +2213,14 @@ function unfinishedJobs(rounds){
   const seen = new Set(), out = [];
   rounds.forEach(r => r.stops.forEach(s => {
     if(!s.departAt) return;
+    // A custom stop's outlet field is a synthetic CUSTOM- id, never something
+    // to show a supervisor -- stopLabel(s) is the friendly name for it (see
+    // the custom-stop feature).
+    const label = stopLabel(s);
     s.tasks.filter(t => !t.doneAt).forEach(t => {
       const k = s.outlet+"|"+t.kind+"|"+t.name+"|"+(t.pool||"");
       if(seen.has(k)) return; seen.add(k);
-      out.push({outlet:s.outlet, pool:t.pool||null, name:t.name, kind:t.kind, person:r.person, departAt:s.departAt});
+      out.push({outlet:s.outlet, label, pool:t.pool||null, name:t.name, kind:t.kind, person:r.person, departAt:s.departAt});
     });
   }));
   // Must-do first (the ones that matter most), then optional, then ad-hoc;
@@ -2238,7 +2242,7 @@ function unfinishedJobsBlock(rounds){
               : k==="issue"    ? '<span class="tag urgent">Reported issue</span>'
               : '<span class="tag add">Added</span>';
   const rows = list.map(x => `<div class="issue-row">
-    <span class="issue-desc"><strong>${esc(x.outlet)}</strong>${x.pool?` <span class="tag pool">${esc(x.pool)}</span>`:""} — ${esc(x.name)} ${tagOf(x.kind)}</span>
+    <span class="issue-desc"><strong>${esc(x.label)}</strong>${x.pool?` <span class="tag pool">${esc(x.pool)}</span>`:""} — ${esc(x.name)} ${tagOf(x.kind)}</span>
     <span class="mono muted issue-meta">left by ${esc(x.person)} · ${clockOf(x.departAt)}</span>
   </div>`).join("");
   return `<div class="issue-list">${rows}</div>`;
@@ -2484,7 +2488,10 @@ function mgrView(){
     const k = s.outlet+"|"+t.kind+"|"+t.name+"|"+(t.pool||"");
     if(seenTask.has(k)) return;
     seenTask.add(k);
-    items.push({o:s.outlet, t:t});
+    // A custom stop's `o` is a synthetic CUSTOM- id -- never fit for display --
+    // so carry its friendly label alongside it (stopLabel(s) is a no-op for a
+    // real outlet, just returning its code back).
+    items.push({o:s.outlet, label:stopLabel(s), t:t});
   })));
   const outletOrder = new Map(OUTLETS.map((o,i)=>[o.code,i]));
   items.sort((a,b) => {
@@ -2501,7 +2508,7 @@ function mgrView(){
                             : '<span class="tag st-open">Open</span>';
     return `<tr>
       <td class="num">${it.t.startedAt ? clockOf(it.t.startedAt) : '<span class="muted">—</span>'}</td>
-      <td><strong>${esc(it.o)}</strong>${it.t.pool ? `<br><span class="tag pool">${esc(it.t.pool)}</span>` : ""}</td>
+      <td><strong>${esc(it.label)}</strong>${it.t.pool ? `<br><span class="tag pool">${esc(it.t.pool)}</span>` : ""}</td>
       <td>${esc(it.t.name)}</td>
       <td>${it.t.kind==="required"?'<span class="tag req">Must do</span>':it.t.kind==="optional"?'<span class="tag opt">If time allows</span>':it.t.kind==="issue"?'<span class="tag urgent">Reported issue</span>':'<span class="tag add">Added</span>'}</td>
       <td>${status}</td>
@@ -2527,11 +2534,18 @@ function mgrView(){
   const bars = jobBars(doneItems);
   // Same figures, split per outlet — each outlet's bars are scaled to its own
   // longest job, so a quiet branch's bars aren't dwarfed by a busy one's.
-  const byOutlet = {};
-  doneItems.forEach(i => { (byOutlet[i.o] = byOutlet[i.o] || []).push(i); });
-  const groupedBars = OUTLETS.map(o=>o.code).filter(c => byOutlet[c] && byOutlet[c].length)
+  const byOutlet = {}, outletLabel = {};
+  doneItems.forEach(i => { (byOutlet[i.o] = byOutlet[i.o] || []).push(i); outletLabel[i.o] = i.label; });
+  // Real outlets first, in their usual order; any custom stop with a finished
+  // job on it (a synthetic id, never in OUTLETS) still gets its own group
+  // after them, under its friendly name -- otherwise its jobs would just
+  // silently be missing from this breakdown.
+  const outletCodeSet = new Set(OUTLETS.map(o=>o.code));
+  const orderedCodes = OUTLETS.map(o=>o.code).filter(c => byOutlet[c] && byOutlet[c].length);
+  const extraCodes = Object.keys(byOutlet).filter(c => !outletCodeSet.has(c) && byOutlet[c].length);
+  const groupedBars = orderedCodes.concat(extraCodes)
     .map(code => `<div class="outlet-group">
-      <div class="outlet-group-head">${esc(code)}</div>
+      <div class="outlet-group-head">${esc(outletLabel[code] || code)}</div>
       <div class="bars">${jobBars(byOutlet[code])}</div>
     </div>`).join("");
 
@@ -2626,7 +2640,13 @@ function routeCard(r, proj, byCode){
     .sort((a,b) => a.arriveAt < b.arriveAt ? -1 : 1);
   const seq = visited.map((s,i) => Object.assign({idx:i+1, arriveAt:s.arriveAt, departAt:s.departAt, tasks:s.tasks, covering:s.covering, coveringNote:s.coveringNote}, byCode[s.outlet]));
   const visitedCodes = new Set(seq.map(o=>o.code));
-  const pts = declutterPoints(seq.map(o => proj(o.lat, o.lng)), 24);
+  // The textual stop list below is built from the FULL seq, always -- a stop
+  // with no coordinates yet (a custom stop still waiting on/failed geocoding)
+  // simply can't be drawn on the map, same as it's always been for anything
+  // lacking lat/lng, but it must never disappear from the list itself. Map
+  // drawing below works off this plottable subset instead of seq directly.
+  const plottableSeq = seq.filter(o => o.lat!=null && o.lng!=null);
+  const pts = declutterPoints(plottableSeq.map(o => proj(o.lat, o.lng)), 24);
   // Only the most recent stop can still be "on site" — arriving anywhere else
   // requires leaving wherever came before, so every earlier stop in the sequence
   // is necessarily already departed.
@@ -2663,8 +2683,9 @@ function routeCard(r, proj, byCode){
   // without competing with the actual visited-route markers. The one the
   // technician has actually said they're heading to gets a solid, filled
   // marker instead, so it reads as "next" rather than just "eventually."
-  const pendingPts = declutterPoints(plannedRemaining.map(o => proj(o.lat, o.lng)), 20);
-  const pendingDots = plannedRemaining.map((o,i) => {
+  const plottableRemaining = plannedRemaining.filter(o => o.lat!=null && o.lng!=null);
+  const pendingPts = declutterPoints(plottableRemaining.map(o => proj(o.lat, o.lng)), 20);
+  const pendingDots = plottableRemaining.map((o,i) => {
     const p = pendingPts[i];
     const isHeading = o.code === headingCode;
     const nearest = Math.min(...pendingPts.filter((_,k)=>k!==i).map(q => Math.hypot(q.x-p.x, q.y-p.y)).concat([999]));
@@ -2685,9 +2706,16 @@ function routeCard(r, proj, byCode){
   // this map) it hasn't happened yet, only been declared.
   let headingLine = "";
   if(headingCode && lastIdx >= 0){
-    const from = pts[lastIdx];
-    const to = pendingPts[plannedRemaining.findIndex(o=>o.code===headingCode)];
-    if(to) headingLine = `<line x1="${from.x.toFixed(1)}" y1="${from.y.toFixed(1)}" x2="${to.x.toFixed(1)}" y2="${to.y.toFixed(1)}" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 3" opacity=".6" marker-end="url(#routearrow)"/>`;
+    // Computed directly from the last-visited stop's own coordinates (rather
+    // than indexing into pts) since pts now only covers plottable stops --
+    // if the technician's current last stop has no coordinates of its own,
+    // there's simply nothing to draw this line from.
+    const lastStop = seq[lastIdx];
+    if(lastStop.lat!=null && lastStop.lng!=null){
+      const from = proj(lastStop.lat, lastStop.lng);
+      const to = pendingPts[plottableRemaining.findIndex(o=>o.code===headingCode)];
+      if(to) headingLine = `<line x1="${from.x.toFixed(1)}" y1="${from.y.toFixed(1)}" x2="${to.x.toFixed(1)}" y2="${to.y.toFixed(1)}" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 3" opacity=".6" marker-end="url(#routearrow)"/>`;
+    }
   }
   // A label placed straight above the circle, as usual, collides when decluttering
   // has stacked two stops (e.g. two outlets on the same street) close together —
@@ -2696,10 +2724,14 @@ function routeCard(r, proj, byCode){
   // right now get different marker colors — green for done, amber for "here now"
   // — the same done/in-progress language used everywhere else in the app, so a
   // supervisor can read status straight off the map without opening the stop list.
-  const markers = seq.map((o,i) => {
+  const markers = plottableSeq.map((o,i) => {
     const p = pts[i];
-    const isHere = i === lastIdx && onSiteNow;
-    const isFinal = i === lastIdx && roundComplete;
+    // plottableSeq is filtered from seq but keeps the same object references,
+    // so "is this the technician's current/last stop" is checked by identity
+    // rather than by array position (pts/plottableSeq no longer line up 1:1
+    // with seq's own indices once an unplotted stop is in the mix).
+    const isHere = o === seq[lastIdx] && onSiteNow;
+    const isFinal = o === seq[lastIdx] && roundComplete;
     const fill = isHere ? "var(--warn)" : "var(--ok)";
     const nearest = Math.min(...pts.filter((_,k)=>k!==i).map(q => Math.hypot(q.x-p.x, q.y-p.y)).concat([999]));
     const sideLabel = nearest < 28;
@@ -2782,16 +2814,28 @@ function routeCard(r, proj, byCode){
         : "";
       return `<div class="travel-gap"><span>▼ travel ${dur(gapMin)}</span>${short}<span class="ln"></span></div>`;
     })();
-    // An unplanned custom stop has no job checklist and no issues -- just the
-    // place, when they were there, and the remark they gave for going.
+    // An unplanned custom stop has no preset checklist and no issues -- just
+    // the place, when they were there, and the remark they gave for going --
+    // but it can carry ad-hoc jobs a technician logged on-site (see
+    // addTask/stopCard), same as a real outlet, so those still need to show
+    // up here rather than silently not reaching the Routes tab.
     if(o.custom){
+      const customDoneN = o.tasks.length ? o.tasks.filter(t=>t.doneAt).length : 0;
+      const customStopKey = r.id+"__"+o.code;
+      const customExpanded = !!state.expandedStops[customStopKey];
+      const customJobsToggle = o.tasks.length
+        ? `<button type="button" class="link mono jobs-toggle" data-toggletasks="${esc(customStopKey)}" style="margin-left:auto" aria-expanded="${customExpanded}">${customDoneN}/${o.tasks.length} jobs ${customExpanded?"▲":"▼"}</button>`
+        : "";
+      const customTaskBreakdown = (o.tasks.length && customExpanded) ? `<div style="flex-basis:100%;margin-top:2px">${stopJobList(o)}</div>` : "";
       return `${gap}<div class="route-stop">
         <span class="route-idx">${o.idx}</span>
         <span class="route-name"><strong>${esc(o.label)}</strong></span>
         <span class="tag add">Stop</span>
         <span class="mono muted">${arr}${dep?" – "+dep:" – on site"}</span>
+        ${customJobsToggle}
         ${stillHere?'<span class="tag st-prog">On site</span>':""}
         ${o.remark ? `<span class="mono muted" style="flex-basis:100%;font-style:italic">“${esc(o.remark)}”</span>` : ""}
+        ${customTaskBreakdown}
       </div>`;
     }
     const left = requiredLeft(o);
@@ -2902,22 +2946,21 @@ function routesView(){
   }
 
   // Real branches key byCode by their own fixed code, label==code, addr from
-  // the master OUTLETS list. A custom (unplanned) stop that's been geocoded
-  // gets registered the same way, under ITS OWN synthetic outlet id -- so
-  // every byCode[s.outlet] lookup inside routeCard works unchanged for both
-  // kinds of stop, it just resolves to a different shape of entry. One still
-  // waiting on (or that failed) geocoding has no lat/lng, so it's left out of
-  // byCode entirely -- exactly like a real outlet routeCard already can't
-  // plot without coordinates, it stays off the map here too (though it's
-  // always visible on the technician's own device either way).
+  // the master OUTLETS list. A custom (unplanned) stop is ALWAYS registered
+  // too, whether or not it's been geocoded yet -- a stop missing from byCode
+  // is invisible to routeCard entirely (not just off the map, off the whole
+  // per-stop list), and a technician's logged visit and any job they added
+  // there shouldn't disappear from a supervisor's view just because OneMap
+  // couldn't place the address. Only the MAP drawing inside routeCard skips
+  // a stop with no lat/lng -- the textual stop list still shows it.
   const byCode = {};
   OUTLETS.forEach(o => byCode[o.code] = Object.assign({label:o.code}, o));
   const customPts = [];
   withStops.forEach(r => r.stops.forEach(s => {
-    if(s.custom && s.lat!=null && s.lng!=null){
+    if(s.custom){
       byCode[s.outlet] = {code:s.outlet, label:s.customName||"Stop", lat:s.lat, lng:s.lng,
         addr:s.customAddress||"", custom:true, remark:s.customRemark||""};
-      customPts.push({lat:s.lat, lng:s.lng});
+      if(s.lat!=null && s.lng!=null) customPts.push({lat:s.lat, lng:s.lng});
     }
   }));
   const proj = geoProjector(340, 230, 34, customPts);
