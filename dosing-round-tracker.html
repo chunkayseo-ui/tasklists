@@ -1924,9 +1924,13 @@ function stopCard(s, i, r, isHeading){
 
   let body = "";
   if(s.custom){
-    // A custom stop has no job checklist -- there's nothing to dose or vacuum
-    // at a hardware shop -- so its three states are much simpler than a real
-    // branch's: just the place, why, and an Arrive/Leave button.
+    // A custom stop has no preset checklist -- nothing's pre-assigned to dose
+    // or vacuum at a hardware shop -- but a technician can still log an ad-hoc
+    // job they actually did there (e.g. "Collected filter cartridges"), the
+    // same +Add-another-job flow a real branch offers. Reuses addTask/
+    // taskListHtml/taskRow as-is -- they already key everything off s.outlet,
+    // which works identically whether that's a real code or a synthetic
+    // CUSTOM- id.
     if(done){
       const reopenConfirm = state.confirmReopen === s.outlet;
       const reopenBlock = reopenConfirm
@@ -1935,10 +1939,22 @@ function stopCard(s, i, r, isHeading){
              <button class="btn sm" style="flex:1" data-cancelreopen="${s.outlet}">Cancel</button>
            </div>`
         : `<button class="link" data-askreopen="${s.outlet}" style="align-self:flex-start">Left by mistake? Reopen</button>`;
-      body = `<div class="stop-body">${customStopNote(s)}${reopenBlock}</div>`;
+      body = `<div class="stop-body">${customStopNote(s)}${s.tasks.length ? `<div class="tasks">${taskListHtml(s)}</div>` : ""}${reopenBlock}</div>`;
     } else if(active){
+      const adding = state.adding === s.outlet;
       body = `<div class="stop-body">
         ${customStopNote(s)}
+        ${s.tasks.length ? `<div class="tasks">${taskListHtml(s)}</div>` : ""}
+        ${adding ? `
+        <div class="addbox">
+          <input type="text" id="newtask" placeholder="What did you do here?" autocomplete="off">
+          <div class="sugg">${SUGGESTIONS.map(x=>`<button data-sugg="${esc(x)}">${esc(x)}</button>`).join("")}</div>
+          <div class="row-2">
+            <button class="btn primary sm" data-addtask="${s.outlet}" style="flex:1">Add job</button>
+            <button class="btn sm" id="cancel-add" style="flex:1">Cancel</button>
+          </div>
+        </div>`
+        : `<button class="btn sm" data-openadd="${s.outlet}" style="align-self:flex-start">+ Add a job you did here</button>`}
         <button class="btn primary big" data-depart="${s.outlet}">Leave ${esc(label)}</button>
         <button class="link" data-unarrive="${s.outlet}" style="align-self:center">Wrong stop? Undo arrival</button>
       </div>`;
