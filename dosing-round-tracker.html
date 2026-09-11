@@ -1237,18 +1237,34 @@ function undoTask(code, tid){
     if(issueId) reopenIssue(issueId);
   });
 }
+// A quick on-site job ("+ Add another job") used to stay private to whoever
+// added it -- a teammate already covering the same outlet right now had no
+// way to know about it, unlike a formally reported issue (always visible
+// outlet-wide) or a supervisor's Task Setting extra (already pushed live).
+// Reuses syncExtraToLiveRounds, which already does exactly this: push into
+// any other round already open for this outlet today that hasn't departed,
+// matched by name+kind so it's never duplicated.
 function addTask(code, name){
   const n = (name||"").trim(); if(!n) return;
   state.adding = null;
   withRound(r => {
     const s = r.stops.find(x=>x.outlet===code); if(!s) return false;
     s.tasks.push({id:uid(), name:n, kind:"adhoc", startedAt:null, doneAt:null, claimedBy:null});
-  }, "Couldn't add that job. Try again.");
+  }, "Couldn't add that job. Try again.").then(() => {
+    syncExtraToLiveRounds(code, {name:n, kind:"adhoc"}, "add");
+  });
 }
 function removeTask(code, tid){
+  let removedName = null;
   withRound(r => {
     const s = r.stops.find(x=>x.outlet===code); if(!s) return false;
+    const t = s.tasks.find(x=>x.id===tid);
+    if(t && !t.startedAt) removedName = t.name;
     s.tasks = s.tasks.filter(t => t.id !== tid || t.startedAt);
+  }).then(() => {
+    // Only an unstarted job was actually removable above -- mirror that same
+    // removal into a teammate's copy so a mistaken add doesn't linger there.
+    if(removedName) syncExtraToLiveRounds(code, {name:removedName, kind:"adhoc"}, "remove");
   });
 }
 
@@ -1898,9 +1914,15 @@ function stopJobList(s){
                   : t.kind==="optional" ? '<span class="tag opt">If time allows</span>'
                   : t.kind==="issue"    ? '<span class="tag urgent">Reported issue</span>'
                   : '<span class="tag add">Added</span>';
+    // Who actually has (or finished) this job -- without it, two technicians
+    // sharing an outlet just look like two separate "Done" rows with no way
+    // to tell whether that's the same job correctly mirrored between them,
+    // or genuinely two different people each doing their own copy of it.
+    // Same "name · " prefix taskRow already uses for a teammate's claim.
+    const who = t.claimedBy ? esc(t.claimedBy)+" · " : "";
     return `<div class="issue-row">
       <span class="issue-desc">${t.pool?`<span class="tag pool">${esc(t.pool)}</span> `:""}${esc(t.name)} ${kindTag}</span>
-      <span class="issue-meta">${tStatus}</span>
+      <span class="issue-meta">${who}${tStatus}</span>
     </div>`;
   }).join("")}</div>`;
 }
