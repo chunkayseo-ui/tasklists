@@ -585,11 +585,23 @@ const localIssues = {
 async function persist(docPath, data, cacheFn){
   cacheFn();
   if(!state.db) return;
+  // Mark this write as in-flight for its FULL round-trip, not just after it
+  // fails. The dosing_rounds/etc listeners below check state.pending to
+  // avoid clobbering a change the person just made with a stale incoming
+  // snapshot -- but until now that guard only existed once a write had
+  // already failed once, leaving every ordinary (successful) write's
+  // network round-trip unprotected. That's exactly the window where a
+  // second technician active at the same outlet could cause an incoming
+  // snapshot to overwrite a just-added task before this write's own result
+  // came back.
+  const prior = state.pending[docPath];
+  state.pending[docPath] = {data, tries: prior ? prior.tries : 0};
   try{
     await state.db.doc(docPath).set(data);
-    if(state.pending[docPath]){ delete state.pending[docPath]; renderConn(); }
+    delete state.pending[docPath];
+    renderConn();
   } catch(e){
-    state.pending[docPath] = {data, tries:(state.pending[docPath]?.tries||0)+1};
+    state.pending[docPath].tries++;
     renderConn();
     setTimeout(flushPending, 2500);
   }
