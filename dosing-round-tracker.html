@@ -1298,7 +1298,7 @@ function reportIssue(outlet, description, priority, raisedBy){
     status: "open",
     raisedBy: raisedBy || state.me || "Supervisor",
     raisedAt: new Date().toISOString(),
-    assignee: null, targetDate: null, notes: "", resolvedAt: null,
+    assignee: null, targetDate: null, notes: "", resolvedAt: null, resolvedBy: null,
     convertedToTask: false
   });
 }
@@ -1351,24 +1351,30 @@ function planIssue(id, patch){
 }
 
 // Closes it out -- fixed, whether or not it was ever formally "planned" first
-// (a quick fix doesn't need the full planning form).
+// (a quick fix doesn't need the full planning form). Credited to whoever this
+// device is currently set to -- the technician who just finished the
+// converted job, or the supervisor who tapped "Mark resolved" -- same
+// fallback as reportIssue when no identity is set on this device.
 function resolveIssue(id){
   const cur = state.issues[id]; if(!cur) return;
   const next = clone(cur);
   next.status = "resolved";
   next.resolvedAt = new Date().toISOString();
+  next.resolvedBy = state.me || "Supervisor";
   saveIssue(next);
 }
 
 // Back onto the board if a "resolved" problem turns out not to have stuck,
 // or a planned one needs to be pulled back to square one. Assignee/target
 // date/notes are left as-is rather than wiped -- they're still useful
-// history for whoever picks it up again.
+// history for whoever picks it up again. resolvedAt/resolvedBy are tied to
+// the resolution event itself, so those clear along with the status.
 function reopenIssue(id){
   const cur = state.issues[id]; if(!cur) return;
   const next = clone(cur);
   next.status = "open";
   next.resolvedAt = null;
+  next.resolvedBy = null;
   saveIssue(next);
 }
 
@@ -1854,6 +1860,13 @@ function fmtWhen(iso){
   const today = todayKey() === dateKey(d);
   return (today ? "" : d.getDate()+" "+MONTH_ABBR[d.getMonth()]+", ") + pad(d.getHours())+":"+pad(d.getMinutes());
 }
+// Same as fmtWhen but always includes the date, even for today -- used where
+// a supervisor is scanning a "resolved recently" history rather than reading
+// something that's obviously about right now.
+function fmtWhenFull(iso){
+  const d = new Date(iso);
+  return d.getDate()+" "+MONTH_ABBR[d.getMonth()]+", "+pad(d.getHours())+":"+pad(d.getMinutes());
+}
 
 function overviewStats(rounds){
   const outletCodes = new Set();
@@ -2050,7 +2063,7 @@ function issueCard(issue){
   return `<div class="card issue-card">
     <div class="issue-card-head">
       <span class="tag pool">${esc(issue.outlet)}</span>${priorityTag(issue.priority)}
-      ${issue.status==="resolved" ? `<span class="tag st-done">Resolved ${fmtWhen(issue.resolvedAt)}</span>` : ""}
+      ${issue.status==="resolved" ? `<span class="tag st-done">Resolved${issue.resolvedBy?" by "+esc(issue.resolvedBy):""} · ${fmtWhenFull(issue.resolvedAt)}</span>` : ""}
     </div>
     <p class="issue-card-desc">${esc(issue.description)}</p>
     ${meta}
