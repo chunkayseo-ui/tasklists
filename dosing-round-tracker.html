@@ -1962,6 +1962,30 @@ function stopJobList(s){
   }).join("")}</div>`;
 }
 
+// When two technicians share an outlet tonight, each of their own round
+// documents carries its own copy of the same must-do job list -- kept in
+// sync as either one claims or finishes something (see syncTaskToOtherRounds
+// / seedTasksFor). Listing each person's copy side by side would just show
+// the same finished job twice, once under each name, which is exactly what
+// Chun Kay flagged as confusing to read at WWW. This merges every stop at
+// the outlet into one job, one line -- matched the same way the rest of the
+// app already treats two copies as "the same job" (name + kind + pool) --
+// crediting whoever actually has or finished it, so a job only ever shows
+// once no matter how many technicians are covering that outlet.
+function mergeStopTasks(stops){
+  const rank = t => t.doneAt ? 2 : (t.startedAt ? 1 : 0);
+  const merged = [];
+  stops.forEach(s => {
+    s.tasks.forEach(t => {
+      const key = t.name+"|"+t.kind+"|"+(t.pool||"");
+      const existing = merged.find(x => x.key === key);
+      if(!existing) merged.push({key, task:t});
+      else if(rank(t) > rank(existing.task)) existing.task = t;
+    });
+  });
+  return merged.map(x => x.task);
+}
+
 // Each outlet card on Overview can be expanded in place -- Chun Kay wanted to
 // click an outlet and see today's job list and its issues right there,
 // without switching to Routes (for the jobs) and scrolling the Issues & tasks
@@ -1976,10 +2000,7 @@ function outletStatusGrid(rounds){
     const expanded = !!state.expandedOutlets[o.code];
     const toggle = `<button type="button" class="link mono" data-toggleoutlet="${esc(o.code)}" aria-expanded="${expanded}">${expanded?"▲ hide details":"▼ show jobs & issues"}</button>`;
     const jobsPart = stops.length
-      ? stops.map(({s, person}) => `<div class="stack" style="gap:4px">
-          <span class="mono muted" style="font-size:11.5px;font-weight:700">${esc(person)}</span>
-          ${stopJobList(s)}
-        </div>`).join("")
+      ? stopJobList({tasks: mergeStopTasks(stops.map(x => x.s))})
       : `<p class="note" style="margin:0">Not started yet tonight.</p>`;
     const issuesPart = issueN
       ? `<div class="issue-list">${issues.map(issueSummaryRow).join("")}</div>`
