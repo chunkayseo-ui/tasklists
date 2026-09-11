@@ -1619,14 +1619,16 @@ function headingPicker(r, pending){
 }
 
 // An unplanned detour -- hardware shop, the office, anywhere that isn't one
-// of the ten registered pool branches -- added right when a technician has
-// left a stop and is deciding where to go next (same moment as the heading
-// picker above), or once they've finished their last planned stop for the
-// night. Blocked while actually checked in somewhere, same as picking a
-// "heading to" outlet -- you can't be travelling to a new place while still
-// standing at the last one.
+// of the ten registered pool branches. Chun Kay wanted this available even
+// while still checked in somewhere else -- a plan can change mid-visit (an
+// emergency call to go somewhere else), and he shouldn't have to leave his
+// current stop first just to get the option onto tonight's round. It works
+// exactly like "+ Add outlet" above, which was never blocked this way
+// either: adding a stop just queues it up as pending. Its own Arrive button
+// stays disabled ("Still checked in at X -- leave there first") until the
+// current stop is actually left, same as any other pending stop -- so this
+// only removes the button's visibility, not the real one-stop-at-a-time rule.
 function addCustomStopBlock(r){
-  if(activeStop(r)) return "";
   if(!state.addingCustomStop){
     return `<button class="btn" id="open-addcustom" style="align-self:flex-start">+ Add a stop (hardware shop, office, etc.)</button>`;
   }
