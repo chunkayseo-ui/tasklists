@@ -796,25 +796,42 @@ function tasksFor(outlet){
 }
 
 // A technician can pick an outlet someone else is already covering today (see
-// othersOn, which highlights this on the outlet picker) or add one mid-round
-// to cover for a teammate. Either way, if a job there has already been
-// claimed, started or finished by that teammate, the fresh copy this
-// technician gets must start from that live state -- not blank -- otherwise
-// their screen would show it as Open and let them claim or reopen work
-// that's already spoken for. tasksFor() gives the canonical job list (ids,
-// pools); this overlays whatever progress an existing round for that outlet
-// already has, matched the same way syncTaskToOtherRounds matches tasks, so
-// the two copies agree from the moment this one is created.
+// othersOn, which highlights this on the outlet picker), add one mid-round to
+// cover for a teammate, or simply be the second (or third) person to reach an
+// outlet someone else already finished and left earlier the same day. In
+// every case, if a job there has already been claimed, started or finished,
+// the fresh copy this technician gets must start from that real state -- not
+// blank. This isn't just a display nicety: a must-do job here is a physical
+// dosing action (chlorine, acid), and a technician whose screen wrongly shows
+// it as Open has every reason to do it again, stacking a second real dose on
+// top of one already given. So this looks at EVERY one of today's visits to
+// this outlet -- departed or still active -- not only a currently-active one,
+// and for each job takes whichever visit got furthest with it (done beats
+// started beats untouched). "Today" already accounts for a technician
+// arriving after midnight (see DAY_CUTOFF_HOUR/todayKey) -- a 1am arrival is
+// still the same operational day as the evening before, so it still finds an
+// earlier visit correctly. tasksFor() gives the canonical job list (ids,
+// pools); this overlays whatever progress has already happened, matched the
+// same way syncTaskToOtherRounds matches tasks, so every copy agrees from the
+// moment this one is created.
 function seedTasksFor(outlet){
   const fresh = tasksFor(outlet);
   const today = todayKey();
-  const existing = Object.values(state.rounds).find(r =>
-    r.date === today && r.stops && r.stops.some(s => s.outlet === outlet && !s.departAt));
-  if(!existing) return fresh;
-  const stop = existing.stops.find(s => s.outlet === outlet && !s.departAt);
+  const stops = [];
+  Object.values(state.rounds).forEach(r => {
+    if(r.date !== today || !r.stops) return;
+    const s = r.stops.find(x => x.outlet === outlet);
+    if(s) stops.push(s);
+  });
+  if(!stops.length) return fresh;
+  const rank = m => m.doneAt ? 2 : (m.startedAt ? 1 : 0);
   return fresh.map(t => {
-    const m = stop.tasks.find(x => x.name === t.name && x.kind === t.kind && (x.pool||null) === (t.pool||null));
-    return m ? Object.assign({}, t, {claimedBy: m.claimedBy||null, startedAt: m.startedAt||null, doneAt: m.doneAt||null}) : t;
+    let best = null;
+    for(const s of stops){
+      const m = s.tasks.find(x => x.name === t.name && x.kind === t.kind && (x.pool||null) === (t.pool||null));
+      if(m && (!best || rank(m) > rank(best))) best = m;
+    }
+    return best ? Object.assign({}, t, {claimedBy: best.claimedBy||null, startedAt: best.startedAt||null, doneAt: best.doneAt||null}) : t;
   });
 }
 
