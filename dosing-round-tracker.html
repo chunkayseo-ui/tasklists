@@ -525,6 +525,8 @@ const state = {
   pickingExtra:false,    // whether the "add outlet — covering for someone" picker is open
   pickingExtraFor:null,  // outlet code chosen in that picker, waiting on its optional note
   notingOutlet:null,     // outlet code whose covering-note box is open (add or edit)
+  addingCustomStop:false, // whether the "+ Add a stop" (unplanned errand -- hardware shop,
+                           // office, etc.) form is open on the technician's own round
   adding:null,           // outlet code whose "add task" box is open
   confirmDepart:null,    // outlet code of a Leave-with-open-must-do pending a second confirming tap
   confirmReopen:null,    // outlet code of a Reopen (undo a departure) pending a second confirming tap
@@ -933,7 +935,8 @@ function crewState(r){
   const a = activeStop(r);
   if(a){
     const rt = a.tasks.find(t => t.startedAt && !t.doneAt && t.claimedBy === r.person);
-    return {k:"onsite", label: rt ? a.outlet+" · "+rt.name : "At "+a.outlet, since: rt ? rt.startedAt : a.arriveAt};
+    const aLabel = stopLabel(a);
+    return {k:"onsite", label: rt ? aLabel+" · "+rt.name : "At "+aLabel, since: rt ? rt.startedAt : a.arriveAt};
   }
   if(nextStop(r)) return {k:"travel", label:"Travelling", since:lastDeparture(r)};
   return {k:"done", label:"Round complete"};
@@ -1124,6 +1127,80 @@ function addOutlet(code, note){
     r.stops.push({outlet:code, arriveAt:null, departAt:null, fixIn:null, fixOut:null,
       covering:true, coveringNote:(note||"").trim().slice(0,200), tasks: seedTasksFor(code)});
   }, "Couldn't add that outlet. Try again.");
+}
+
+// Lets a technician add an unplanned stop of their own to tonight's round —
+// a hardware shop, the office, anywhere that isn't one of the ten pool
+// branches — between two real stops. Unlike addOutlet above (a known pool
+// picked from a fixed list) this is a free-text place with no ready-made
+// coordinates, so it gets a synthetic id (never collides with a real
+// outlet code) and its own lat/lng filled in afterwards by geocodeAndSave,
+// once we know Singapore's OneMap can find it. No job list — there's
+// nothing to dose or vacuum at a hardware shop — just why they went.
+function addCustomStop(name, address, postal, remark){
+  name = (name||"").trim().slice(0,80);
+  if(!name) { flash("Give this stop a name."); return; }
+  const code = "CUSTOM-"+uid();
+  const stop = {outlet:code, custom:true,
+    customName:name, customAddress:(address||"").trim().slice(0,200),
+    customPostal:(postal||"").trim().slice(0,10), customRemark:(remark||"").trim().slice(0,200),
+    lat:null, lng:null, geoFailed:false,
+    arriveAt:null, departAt:null, fixIn:null, fixOut:null, tasks:[]};
+  state.addingCustomStop = false;
+  withRound(r => { r.stops.push(stop); }, "Couldn't add that stop. Try again.")
+    .then(() => geocodeAndSave(code, stop));
+}
+
+// Singapore-only geocoding via OneMap's public search API (no key needed,
+// free, and it's what every address/postal-code field in this app already
+// implicitly assumes given the ten branches are all Singapore addresses).
+// Tries the postal code first (most reliable when given), then the address
+// text, then the place name as a last resort -- returns the first hit that
+// actually parses to a coordinate, or null if nothing was found/reachable.
+async function geocodeSG(query){
+  if(!query || !query.trim()) return null;
+  try{
+    const url = "https://www.onemap.gov.sg/api/common/elastic/search?searchVal="
+      + encodeURIComponent(query.trim()) + "&returnGeom=Y&getAddrDetails=Y&pageNum=1";
+    const res = await fetch(url);
+    if(!res.ok) return null;
+    const data = await res.json();
+    const hit = data && Array.isArray(data.results) && data.results[0];
+    if(!hit) return null;
+    const lat = parseFloat(hit.LATITUDE), lng = parseFloat(hit.LONGITUDE);
+    return (isFinite(lat) && isFinite(lng)) ? {lat, lng} : null;
+  } catch(e){ return null; }
+}
+async function geocodeCustomStop(s){
+  const postal = (s.customPostal||"").trim();
+  const queries = [];
+  if(/^\d{6}$/.test(postal)) queries.push(postal);
+  if(s.customAddress) queries.push(s.customAddress);
+  if(s.customName) queries.push(s.customName + " Singapore");
+  for(const q of queries){
+    const pt = await geocodeSG(q);
+    if(pt) return pt;
+  }
+  return null;
+}
+// Runs after the stop is already saved and visible, so a slow or failed
+// lookup never blocks the technician from moving on -- it just quietly
+// patches the map pin in once (or if) a coordinate is found. Marked
+// geoFailed on a miss so the stop card can offer a manual retry instead of
+// silently never showing on the Routes map with no explanation.
+async function geocodeAndSave(code, stopSeed){
+  const pt = await geocodeCustomStop(stopSeed);
+  withRound(r => {
+    const s = r.stops.find(x => x.outlet === code); if(!s) return false;
+    if(pt){ s.lat = pt.lat; s.lng = pt.lng; s.geoFailed = false; }
+    else s.geoFailed = true;
+  });
+}
+function retryGeocodeStop(code){
+  const r = myRound(); const s = r && r.stops.find(x => x.outlet === code);
+  if(!s) return;
+  withRound(r2 => { const s2 = r2.stops.find(x=>x.outlet===code); if(!s2) return false; s2.geoFailed = false; })
+    .then(() => geocodeAndSave(code, s));
 }
 
 // Lets a technician add or edit a short free-text note on a covering stop —
@@ -1530,14 +1607,39 @@ function buildRound(){
 function headingPicker(r, pending){
   if(!pending.length) return "";
   const pills = pending.map(s =>
-    `<button class="pill" data-heading="${esc(s.outlet)}" aria-pressed="${r.headingTo===s.outlet}">${esc(s.outlet)}</button>`
+    `<button class="pill" data-heading="${esc(s.outlet)}" aria-pressed="${r.headingTo===s.outlet}">${esc(stopLabel(s))}</button>`
   ).join("");
   const prompt = pending.length === 1
-    ? `Heading to ${esc(pending[0].outlet)}? <span class="muted">Optional — shows on the Routes map.</span>`
+    ? `Heading to ${esc(stopLabel(pending[0]))}? <span class="muted">Optional — shows on the Routes map.</span>`
     : `Heading to next? <span class="muted">Optional — shows on the Routes map.</span>`;
   return `<div class="card" style="padding:14px">
     <p class="note" style="margin:0 0 8px">${prompt}</p>
     <div class="pill-grid">${pills}</div>
+  </div>`;
+}
+
+// An unplanned detour -- hardware shop, the office, anywhere that isn't one
+// of the ten registered pool branches -- added right when a technician has
+// left a stop and is deciding where to go next (same moment as the heading
+// picker above), or once they've finished their last planned stop for the
+// night. Blocked while actually checked in somewhere, same as picking a
+// "heading to" outlet -- you can't be travelling to a new place while still
+// standing at the last one.
+function addCustomStopBlock(r){
+  if(activeStop(r)) return "";
+  if(!state.addingCustomStop){
+    return `<button class="btn" id="open-addcustom" style="align-self:flex-start">+ Add a stop (hardware shop, office, etc.)</button>`;
+  }
+  return `<div class="card" style="padding:14px">
+    <p class="note" style="margin:0 0 8px">Add an unplanned stop — shows on your route with why you went. <span class="muted">Address/postal is what lets it show up on the map too.</span></p>
+    <input type="text" id="customname" placeholder="Place name, e.g. Ah Huat Hardware" autocomplete="off" maxlength="80">
+    <input type="text" id="customaddr" placeholder="Address" autocomplete="off" maxlength="200" style="margin-top:8px">
+    <input type="text" id="custompostal" placeholder="Postal code" autocomplete="off" maxlength="10" inputmode="numeric" style="margin-top:8px">
+    <textarea id="customremark" placeholder="Why are you going here?" maxlength="200" style="margin-top:8px;min-height:56px"></textarea>
+    <div class="row-2" style="margin-top:10px">
+      <button class="btn primary sm" id="confirm-addcustom" style="flex:1">Add stop</button>
+      <button class="btn sm" id="cancel-addcustom" style="flex:1">Cancel</button>
+    </div>
   </div>`;
 }
 
@@ -1623,6 +1725,7 @@ function runRound(r){
     <div class="kpi"><div class="v" style="color:var(--travel)">${dur(t.travel)}</div><div class="k eyebrow">Travelling</div></div>
   </div>
   <div class="route">${out.join("")}</div>
+  ${addCustomStopBlock(r)}
   ${addOutletBlock(r)}
   <div class="row-2">
     <button class="btn" id="switch-user" style="flex:1">Not ${esc(state.me)}?</button>
@@ -1798,18 +1901,57 @@ function issueBlock(s){
   return `${list}${trigger}`;
 }
 
+// The address+remark block shown on a custom (unplanned) stop's card in every
+// state -- pending, on-site, or already left -- so a technician (or anyone
+// looking back at this round later) can always see where it was and why.
+function customStopNote(s){
+  return `${s.customAddress ? `<p class="note" style="margin:0">${esc(s.customAddress)}</p>` : ""}
+    ${s.customRemark ? `<p class="note" style="margin:4px 0 0"><em>${esc(s.customRemark)}</em></p>` : ""}
+    ${s.geoFailed ? `<p class="note" style="margin:4px 0 0;color:var(--warn)">Couldn't place this on the map. <button class="link" data-retrygeo="${s.outlet}">Retry</button></p>` : ""}`;
+}
+function stopLabel(s){ return s.custom ? (s.customName || "Stop") : s.outlet; }
+
 function stopCard(s, i, r, isHeading){
   const done = !!s.departAt, active = !!s.arriveAt && !done;
   const open = activeStop(r);
   const blocked = open && open.outlet !== s.outlet;
   const cls = done ? "is-done" : (active ? "is-active" : (isHeading ? "is-next" : ""));
+  const label = stopLabel(s);
   let times = "";
   if(s.arriveAt) times += `<span class="mono">in ${clockOf(s.arriveAt)}</span>`;
   if(done) times += `<span class="mono">out ${clockOf(s.departAt)}</span><span class="mono" style="color:var(--accent)">${dur(mins(s.arriveAt,s.departAt))}</span>`;
   else if(active) times += `<span class="mono" style="color:var(--accent)">${liveDur(s.arriveAt)}</span>`;
 
   let body = "";
-  if(done){
+  if(s.custom){
+    // A custom stop has no job checklist -- there's nothing to dose or vacuum
+    // at a hardware shop -- so its three states are much simpler than a real
+    // branch's: just the place, why, and an Arrive/Leave button.
+    if(done){
+      const reopenConfirm = state.confirmReopen === s.outlet;
+      const reopenBlock = reopenConfirm
+        ? `<div class="row-2">
+             <button class="btn warn sm" style="flex:1" data-reopen="${s.outlet}">Yes, reopen ${esc(label)}</button>
+             <button class="btn sm" style="flex:1" data-cancelreopen="${s.outlet}">Cancel</button>
+           </div>`
+        : `<button class="link" data-askreopen="${s.outlet}" style="align-self:flex-start">Left by mistake? Reopen</button>`;
+      body = `<div class="stop-body">${customStopNote(s)}${reopenBlock}</div>`;
+    } else if(active){
+      body = `<div class="stop-body">
+        ${customStopNote(s)}
+        <button class="btn primary big" data-depart="${s.outlet}">Leave ${esc(label)}</button>
+        <button class="link" data-unarrive="${s.outlet}" style="align-self:center">Wrong stop? Undo arrival</button>
+      </div>`;
+    } else {
+      body = `<div class="stop-body">
+        ${customStopNote(s)}
+        ${blocked
+          ? `<p class="note" style="margin:0;color:var(--warn)">Still checked in at ${esc(stopLabel(open))} — leave there first.</p>`
+          : `<button class="btn big" data-arrive="${s.outlet}">Arrive</button>`}
+        <button class="link" data-skip="${s.outlet}" style="align-self:center">Remove from round</button>
+      </div>`;
+    }
+  } else if(done){
     // Same row-with-bar treatment the supervisor's "Time by job" uses, so a
     // finished stop reads the same way here as it does on the supervisor board.
     const doneTasks = s.tasks.filter(t=>t.doneAt);
@@ -1875,7 +2017,7 @@ function stopCard(s, i, r, isHeading){
     body = `<div class="stop-body">
       <p class="note" style="margin:0">${n} job${n===1?"":"s"} waiting${s.tasks.some(t=>t.kind==="optional")?" — includes jobs to do if time allows":""}</p>
       ${blocked
-        ? `<p class="note" style="margin:0;color:var(--warn)">Still checked in at ${esc(open.outlet)} — leave there first.</p>`
+        ? `<p class="note" style="margin:0;color:var(--warn)">Still checked in at ${esc(stopLabel(open))} — leave there first.</p>`
         : `<button class="btn big" data-arrive="${s.outlet}">Arrive</button>`}
       <button class="link" data-skip="${s.outlet}" style="align-self:center">Remove from round</button>
     </div>`;
@@ -1888,14 +2030,15 @@ function stopCard(s, i, r, isHeading){
   return `<div class="stop ${cls}">
     <div class="idx mono">${idxLabel}</div>
     <div class="stop-head">
-      <span class="stop-name">${esc(s.outlet)}</span>
+      <span class="stop-name">${esc(label)}</span>
+      ${s.custom?'<span class="tag add">Stop</span>':""}
       ${active?'<span class="chip onsite"><span class="dot"></span>On site</span>':""}
       ${isHeading?'<span class="chip travel"><span class="dot"></span>Next</span>':""}
       ${s.covering?'<span class="tag covering">Covering</span>':""}
       <span class="stop-times">${times}</span>
     </div>
     ${s.covering ? coveringNoteBlock(s) : ""}
-    ${issueBlock(s)}
+    ${s.custom ? "" : issueBlock(s)}
     ${body}</div>`;
 }
 
@@ -2422,10 +2565,15 @@ function mgrView(){
 // Singapore spans well under a quarter of a degree here, so plain linear lat/lng
 // scaling (no map projection math) places the outlets accurately enough for a
 // schematic — a real projection would be invisible at this scale.
-function geoProjector(viewW, viewH, margin){
+// extraPts (optional) are folded into the bounding box alongside the ten
+// fixed branches -- e.g. a custom stop's geocoded coordinate might sit just
+// outside the branches' own footprint, and without this it would still get
+// projected (using the branches-only box) and just land off toward an edge.
+function geoProjector(viewW, viewH, margin, extraPts){
   margin = margin || 34;
   const innerW = viewW - margin*2, innerH = viewH - margin*2;
-  const lats = OUTLETS.map(o=>o.lat), lngs = OUTLETS.map(o=>o.lng);
+  const lats = OUTLETS.map(o=>o.lat).concat((extraPts||[]).map(p=>p.lat));
+  const lngs = OUTLETS.map(o=>o.lng).concat((extraPts||[]).map(p=>p.lng));
   const minLat = Math.min(...lats), maxLat = Math.max(...lats);
   const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
   const spanLat = (maxLat-minLat) || 1, spanLng = (maxLng-minLng) || 1;
@@ -2506,8 +2654,8 @@ function routeCard(r, proj, byCode){
     const nearest = Math.min(...pendingPts.filter((_,k)=>k!==i).map(q => Math.hypot(q.x-p.x, q.y-p.y)).concat([999]));
     const suffix = isHeading ? " · heading here" : "";
     const t = nearest < 26
-      ? `<text x="${(p.x+7).toFixed(1)}" y="${(p.y+3).toFixed(1)}" text-anchor="start" font-size="10" font-weight="600" fill="var(--accent)" opacity="${isHeading?"1":".75"}">${esc(o.code)}${suffix}</text>`
-      : `<text x="${p.x.toFixed(1)}" y="${(p.y-8).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="600" fill="var(--accent)" opacity="${isHeading?"1":".75"}">${esc(o.code)}${suffix}</text>`;
+      ? `<text x="${(p.x+7).toFixed(1)}" y="${(p.y+3).toFixed(1)}" text-anchor="start" font-size="10" font-weight="600" fill="var(--accent)" opacity="${isHeading?"1":".75"}">${esc(o.label)}${suffix}</text>`
+      : `<text x="${p.x.toFixed(1)}" y="${(p.y-8).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="600" fill="var(--accent)" opacity="${isHeading?"1":".75"}">${esc(o.label)}${suffix}</text>`;
     const dot = isHeading
       ? `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="6" fill="var(--accent)" stroke="var(--surface)" stroke-width="1.5"/>`
       : `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="2.5 2" opacity=".8"/>`;
@@ -2552,13 +2700,14 @@ function routeCard(r, proj, byCode){
     const suffix = isHere ? " · here now" : isFinal ? " · last stop" : "";
     return `${ring}<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="9" fill="${fill}" stroke="var(--surface)" stroke-width="1.5"/>
       <text x="${p.x.toFixed(1)}" y="${(p.y+3.5).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">${o.idx}</text>
-      <text ${labelAttrs} font-size="11" font-weight="600" fill="currentColor">${esc(o.code)}${suffix}</text>`;
+      <text ${labelAttrs} font-size="11" font-weight="600" fill="currentColor">${esc(o.label)}${suffix}</text>`;
   }).join("");
+  const headingLabel = headingCode ? (plannedRemaining.find(o=>o.code===headingCode)||{}).label : null;
   const ariaLabel = seq.length
-    ? `Route for ${r.person}: `+seq.map(o=>o.code).join(" then ")+(
+    ? `Route for ${r.person}: `+seq.map(o=>o.label).join(" then ")+(
         roundComplete ? " — round complete." :
-        headingCode ? " — heading to "+headingCode+" next." :
-        plannedRemaining.length ? " — still has "+plannedRemaining.map(o=>o.code).join(", ")+" to visit tonight." : "."
+        headingLabel ? " — heading to "+headingLabel+" next." :
+        plannedRemaining.length ? " — still has "+plannedRemaining.map(o=>o.label).join(", ")+" to visit tonight." : "."
       )
     : `${r.person} has not checked in anywhere yet tonight.`;
 
@@ -2598,23 +2747,6 @@ function routeCard(r, proj, byCode){
     const arr = clockOf(o.arriveAt);
     const dep = o.departAt ? clockOf(o.departAt) : null;
     const stillHere = i === lastIdx && onSiteNow;
-    const left = requiredLeft(o);
-    const doneN = o.tasks.filter(t=>t.doneAt).length;
-    const status = stillHere
-      ? `<span class="tag st-prog">On site</span>`
-      : left
-      ? `<span class="tag req">${left} must-do left open</span>`
-      : `<span class="tag st-done">All done</span>`;
-    // Any issue raised at this outlet (still open or already planned, but not
-    // yet resolved) shows right here too -- a supervisor scanning routes
-    // shouldn't have to separately check Overview to see that a stop they're
-    // looking at has a heater replacement pending.
-    const issueN = openIssuesFor(o.code).length;
-    const issueTag = issueN ? `<span class="tag urgent">${issueN} issue${issueN>1?"s":""}</span>` : "";
-    // A covering stop's note wraps to its own full-width line (flex-wrap on
-    // .route-stop already handles this) rather than squeezing into the row.
-    const noteLine = (o.covering && o.coveringNote)
-      ? `<span class="mono muted" style="flex-basis:100%;font-style:italic">“${esc(o.coveringNote)}”</span>` : "";
     // The leg between this stop and the one before it -- how long the drive
     // (plus whatever else) actually took, straight from departure-to-arrival
     // timestamps, same math already used on the technician's own view. Every
@@ -2634,6 +2766,35 @@ function routeCard(r, proj, byCode){
         : "";
       return `<div class="travel-gap"><span>▼ travel ${dur(gapMin)}</span>${short}<span class="ln"></span></div>`;
     })();
+    // An unplanned custom stop has no job checklist and no issues -- just the
+    // place, when they were there, and the remark they gave for going.
+    if(o.custom){
+      return `${gap}<div class="route-stop">
+        <span class="route-idx">${o.idx}</span>
+        <span class="route-name"><strong>${esc(o.label)}</strong></span>
+        <span class="tag add">Stop</span>
+        <span class="mono muted">${arr}${dep?" – "+dep:" – on site"}</span>
+        ${stillHere?'<span class="tag st-prog">On site</span>':""}
+        ${o.remark ? `<span class="mono muted" style="flex-basis:100%;font-style:italic">“${esc(o.remark)}”</span>` : ""}
+      </div>`;
+    }
+    const left = requiredLeft(o);
+    const doneN = o.tasks.filter(t=>t.doneAt).length;
+    const status = stillHere
+      ? `<span class="tag st-prog">On site</span>`
+      : left
+      ? `<span class="tag req">${left} must-do left open</span>`
+      : `<span class="tag st-done">All done</span>`;
+    // Any issue raised at this outlet (still open or already planned, but not
+    // yet resolved) shows right here too -- a supervisor scanning routes
+    // shouldn't have to separately check Overview to see that a stop they're
+    // looking at has a heater replacement pending.
+    const issueN = openIssuesFor(o.code).length;
+    const issueTag = issueN ? `<span class="tag urgent">${issueN} issue${issueN>1?"s":""}</span>` : "";
+    // A covering stop's note wraps to its own full-width line (flex-wrap on
+    // .route-stop already handles this) rather than squeezing into the row.
+    const noteLine = (o.covering && o.coveringNote)
+      ? `<span class="mono muted" style="flex-basis:100%;font-style:italic">“${esc(o.coveringNote)}”</span>` : "";
     // The X/Y jobs count is clickable -- expands to the actual list of what's
     // done and what isn't at this stop, right on the Routes tab, instead of a
     // supervisor having to switch to Supervisor/Overview to see which job is
@@ -2645,7 +2806,7 @@ function routeCard(r, proj, byCode){
     const taskBreakdown = expanded ? `<div style="flex-basis:100%;margin-top:2px">${stopJobList(o)}</div>` : "";
     return `${gap}<div class="route-stop">
       <span class="route-idx">${o.idx}</span>
-      <span class="route-name"><strong>${esc(o.code)}</strong></span>
+      <span class="route-name"><strong>${esc(o.label)}</strong></span>
       ${o.covering?'<span class="tag covering">Covering</span>':""}
       <span class="mono muted">${arr}${dep?" – "+dep:" – on site"}</span>
       ${jobsToggle}
@@ -2724,8 +2885,26 @@ function routesView(){
     </div>`;
   }
 
-  const proj = geoProjector(340, 230);
-  const byCode = {}; OUTLETS.forEach(o => byCode[o.code] = o);
+  // Real branches key byCode by their own fixed code, label==code, addr from
+  // the master OUTLETS list. A custom (unplanned) stop that's been geocoded
+  // gets registered the same way, under ITS OWN synthetic outlet id -- so
+  // every byCode[s.outlet] lookup inside routeCard works unchanged for both
+  // kinds of stop, it just resolves to a different shape of entry. One still
+  // waiting on (or that failed) geocoding has no lat/lng, so it's left out of
+  // byCode entirely -- exactly like a real outlet routeCard already can't
+  // plot without coordinates, it stays off the map here too (though it's
+  // always visible on the technician's own device either way).
+  const byCode = {};
+  OUTLETS.forEach(o => byCode[o.code] = Object.assign({label:o.code}, o));
+  const customPts = [];
+  withStops.forEach(r => r.stops.forEach(s => {
+    if(s.custom && s.lat!=null && s.lng!=null){
+      byCode[s.outlet] = {code:s.outlet, label:s.customName||"Stop", lat:s.lat, lng:s.lng,
+        addr:s.customAddress||"", custom:true, remark:s.customRemark||""};
+      customPts.push({lat:s.lat, lng:s.lng});
+    }
+  }));
+  const proj = geoProjector(340, 230, 34, customPts);
   const cards = withStops.map(r => routeCard(r, proj, byCode)).join("");
 
   return `${dateNav}
@@ -2871,6 +3050,13 @@ function wire(){
   if(cn) cn.addEventListener("keydown", e => {
     if(e.key === "Enter"){ const b = $("#confirm-addoutlet"); if(b) b.click(); }
   });
+  on("#open-addcustom",   () => { state.addingCustomStop = true; render(); const i=$("#customname"); if(i) i.focus(); });
+  on("#cancel-addcustom", () => { state.addingCustomStop = false; render(); });
+  on("#confirm-addcustom", () => {
+    const name = $("#customname"), addr = $("#customaddr"), postal = $("#custompostal"), remark = $("#customremark");
+    addCustomStop(name?name.value:"", addr?addr.value:"", postal?postal.value:"", remark?remark.value:"");
+  });
+  each("[data-retrygeo]", b => retryGeocodeStop(b.dataset.retrygeo));
   each("[data-asknote]",    b => { state.notingOutlet = b.dataset.asknote; render(); const i=$("#notenote"); if(i) i.focus(); });
   each("[data-cancelnote]", b => { state.notingOutlet = null; render(); });
   each("[data-savenote]",   b => {
