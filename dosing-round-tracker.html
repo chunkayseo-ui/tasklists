@@ -317,6 +317,18 @@ details.panel[open] summary::after{content:"▴"}
   background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
 .issue-desc{flex:1 1 160px}
 .issue-meta{margin-left:auto;white-space:nowrap}
+
+/* job list -- a stop's jobs on Overview's outlet cards and the Routes tab's
+   per-stop breakdown. Name gets its own line so it never has to compete with
+   the tags for space and wrap mid-sentence; tags sit on a second line below,
+   free to wrap on their own without dragging the name around with them. */
+.job-list{display:flex;flex-direction:column;gap:6px}
+.job-row{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
+  padding:8px 10px;font-size:13px}
+.job-row-name{font-weight:600;line-height:1.4;overflow-wrap:anywhere}
+.job-row-tags{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:5px}
+.job-row-tags .who{font:600 11px/1.5 "IBM Plex Mono",monospace;color:var(--ink-3);
+  letter-spacing:.02em}
 .issue-form{background:var(--surface-2);border:1px dashed var(--line);border-radius:9px;padding:11px 12px;
   display:flex;flex-direction:column;gap:9px}
 .issue-form textarea{font-family:"IBM Plex Sans",sans-serif;font-size:14px;padding:10px 11px;
@@ -327,6 +339,11 @@ details.panel[open] summary::after{content:"▴"}
 .outlet-status-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:8px}
 .outlet-status{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
   padding:11px 12px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+/* An expanded card breaks out of its narrow grid column to take the full
+   row -- there's no room to read a job list clearly in a ~150px column, and
+   only one or two cards are ever open at once. Collapsed cards stay compact
+   so the whole night's outlets are still scannable at a glance. */
+.outlet-status.is-expanded{grid-column:1/-1}
 .outlet-status .oc{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:18px;
   text-transform:uppercase;letter-spacing:.02em}
 
@@ -1923,7 +1940,7 @@ function overviewStats(rounds){
 // breakdown does -- reused here so an outlet card on Overview and a stop on
 // Routes read identically.
 function stopJobList(s){
-  return `<div class="issue-list">${s.tasks.map(t => {
+  return `<div class="job-list">${s.tasks.map(t => {
     const tStatus = t.doneAt ? '<span class="tag st-done">Done</span>'
                   : t.startedAt ? '<span class="tag st-prog">In Progress</span>'
                   : '<span class="tag st-open">Open</span>';
@@ -1935,11 +1952,12 @@ function stopJobList(s){
     // sharing an outlet just look like two separate "Done" rows with no way
     // to tell whether that's the same job correctly mirrored between them,
     // or genuinely two different people each doing their own copy of it.
-    // Same "name · " prefix taskRow already uses for a teammate's claim.
-    const who = t.claimedBy ? esc(t.claimedBy)+" · " : "";
-    return `<div class="issue-row">
-      <span class="issue-desc">${t.pool?`<span class="tag pool">${esc(t.pool)}</span> `:""}${esc(t.name)} ${kindTag}</span>
-      <span class="issue-meta">${who}${tStatus}</span>
+    const who = t.claimedBy ? `<span class="who">${esc(t.claimedBy)}</span>` : "";
+    // Name gets its own line, tags/status/claimer sit together below it --
+    // keeps the job title readable instead of wrapping mid-word around tags.
+    return `<div class="job-row">
+      <div class="job-row-name">${t.pool?`<span class="tag pool">${esc(t.pool)}</span> `:""}${esc(t.name)}</div>
+      <div class="job-row-tags">${kindTag}${who}${tStatus}</div>
     </div>`;
   }).join("")}</div>`;
 }
@@ -1971,7 +1989,7 @@ function outletStatusGrid(rounds){
         <div class="stack" style="gap:6px"><div class="eyebrow">Issues</div>${issuesPart}</div>
       </div>` : "";
     if(!stops.length){
-      return `<div class="outlet-status">
+      return `<div class="outlet-status${expanded?" is-expanded":""}">
         <span class="oc">${esc(o.code)}</span><span class="tag st-open">Not started</span>${issueTag}
         ${toggle}
         ${details}
@@ -1983,7 +2001,7 @@ function outletStatusGrid(rounds){
     const tag = onSite.length ? '<span class="tag st-prog">In progress</span>'
               : departed.length ? '<span class="tag st-done">Done</span>'
               : '<span class="tag st-open">Not started</span>';
-    return `<div class="outlet-status">
+    return `<div class="outlet-status${expanded?" is-expanded":""}">
       <span class="oc">${esc(o.code)}</span>
       ${tag}${issueTag}
       <span class="mono muted">${esc(names.join(", "))}</span>
