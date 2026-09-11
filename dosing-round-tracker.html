@@ -524,6 +524,8 @@ const state = {
   expandedStops:{},      // roundId+"__"+outlet -> true, for stops whose job list is expanded on the Routes tab.
                           // Purely a view toggle (which jobs are done/undone at that stop) -- not persisted,
                           // resets on reload same as any other UI-only state here.
+  expandedOutlets:{},     // outlet code -> true, for cards expanded on Overview's "Outlets tonight" grid
+                          // (shows that outlet's job list + open issues in place). Also view-only, not persisted.
   taskSettingDay:null     // 0-6 (Sun-Sat) -- which day's per-branch job assignment is currently being viewed/edited
                           // on the Task Setting tab. Defaults to today the first time that tab is opened.
 };
@@ -1871,14 +1873,57 @@ function overviewStats(rounds){
 
 // Every outlet, whether or not anyone's covering it tonight -- "not started"
 // is as much a status a supervisor needs to see as "in progress" or "done".
+// A stop's job list, rendered the same way the Routes tab's expanded X/Y
+// breakdown does -- reused here so an outlet card on Overview and a stop on
+// Routes read identically.
+function stopJobList(s){
+  return `<div class="issue-list">${s.tasks.map(t => {
+    const tStatus = t.doneAt ? '<span class="tag st-done">Done</span>'
+                  : t.startedAt ? '<span class="tag st-prog">In Progress</span>'
+                  : '<span class="tag st-open">Open</span>';
+    const kindTag = t.kind==="required" ? '<span class="tag req">Must do</span>'
+                  : t.kind==="optional" ? '<span class="tag opt">If time allows</span>'
+                  : t.kind==="issue"    ? '<span class="tag urgent">Reported issue</span>'
+                  : '<span class="tag add">Added</span>';
+    return `<div class="issue-row">
+      <span class="issue-desc">${t.pool?`<span class="tag pool">${esc(t.pool)}</span> `:""}${esc(t.name)} ${kindTag}</span>
+      <span class="issue-meta">${tStatus}</span>
+    </div>`;
+  }).join("")}</div>`;
+}
+
+// Each outlet card on Overview can be expanded in place -- Chun Kay wanted to
+// click an outlet and see today's job list and its issues right there,
+// without switching to Routes (for the jobs) and scrolling the Issues & tasks
+// board (for the issues) and matching them up by outlet himself.
 function outletStatusGrid(rounds){
   const cards = OUTLETS.map(o => {
     const stops = [];
     rounds.forEach(r => { const s = r.stops.find(x => x.outlet===o.code); if(s) stops.push({s, person:r.person}); });
-    const issueN = openIssuesFor(o.code).length;
+    const issues = openIssuesFor(o.code);
+    const issueN = issues.length;
     const issueTag = issueN ? `<span class="tag urgent">${issueN} issue${issueN>1?"s":""}</span>` : "";
+    const expanded = !!state.expandedOutlets[o.code];
+    const toggle = `<button type="button" class="link mono" data-toggleoutlet="${esc(o.code)}" aria-expanded="${expanded}">${expanded?"▲ hide details":"▼ show jobs & issues"}</button>`;
+    const jobsPart = stops.length
+      ? stops.map(({s, person}) => `<div class="stack" style="gap:4px">
+          <span class="mono muted" style="font-size:11.5px;font-weight:700">${esc(person)}</span>
+          ${stopJobList(s)}
+        </div>`).join("")
+      : `<p class="note" style="margin:0">Not started yet tonight.</p>`;
+    const issuesPart = issueN
+      ? `<div class="issue-list">${issues.map(issueSummaryRow).join("")}</div>`
+      : `<p class="note" style="margin:0">No open issues.</p>`;
+    const details = expanded ? `<div class="stack" style="gap:10px;width:100%;margin-top:2px">
+        <div class="stack" style="gap:6px"><div class="eyebrow">Jobs tonight</div>${jobsPart}</div>
+        <div class="stack" style="gap:6px"><div class="eyebrow">Issues</div>${issuesPart}</div>
+      </div>` : "";
     if(!stops.length){
-      return `<div class="outlet-status"><span class="oc">${esc(o.code)}</span><span class="tag st-open">Not started</span>${issueTag}</div>`;
+      return `<div class="outlet-status">
+        <span class="oc">${esc(o.code)}</span><span class="tag st-open">Not started</span>${issueTag}
+        ${toggle}
+        ${details}
+      </div>`;
     }
     const onSite = stops.filter(x => x.s.arriveAt && !x.s.departAt);
     const departed = stops.filter(x => x.s.departAt);
@@ -1890,6 +1935,8 @@ function outletStatusGrid(rounds){
       <span class="oc">${esc(o.code)}</span>
       ${tag}${issueTag}
       <span class="mono muted">${esc(names.join(", "))}</span>
+      ${toggle}
+      ${details}
     </div>`;
   }).join("");
   return `<div class="outlet-status-grid">${cards}</div>`;
@@ -2501,21 +2548,7 @@ function routeCard(r, proj, byCode){
     const stopKey = r.id+"__"+o.code;
     const expanded = !!state.expandedStops[stopKey];
     const jobsToggle = `<button type="button" class="link mono jobs-toggle" data-toggletasks="${esc(stopKey)}" style="margin-left:auto" aria-expanded="${expanded}">${doneN}/${o.tasks.length} jobs ${expanded?"▲":"▼"}</button>`;
-    const taskBreakdown = expanded ? `<div class="issue-list" style="flex-basis:100%;margin-top:2px">${
-      o.tasks.map(t => {
-        const tStatus = t.doneAt ? '<span class="tag st-done">Done</span>'
-                      : t.startedAt ? '<span class="tag st-prog">In Progress</span>'
-                      : '<span class="tag st-open">Open</span>';
-        const kindTag = t.kind==="required" ? '<span class="tag req">Must do</span>'
-                      : t.kind==="optional" ? '<span class="tag opt">If time allows</span>'
-                      : t.kind==="issue"    ? '<span class="tag urgent">Reported issue</span>'
-                      : '<span class="tag add">Added</span>';
-        return `<div class="issue-row">
-          <span class="issue-desc">${t.pool?`<span class="tag pool">${esc(t.pool)}</span> `:""}${esc(t.name)} ${kindTag}</span>
-          <span class="issue-meta">${tStatus}</span>
-        </div>`;
-      }).join("")
-    }</div>` : "";
+    const taskBreakdown = expanded ? `<div style="flex-basis:100%;margin-top:2px">${stopJobList(o)}</div>` : "";
     return `${gap}<div class="route-stop">
       <span class="route-idx">${o.idx}</span>
       <span class="route-name"><strong>${esc(o.code)}</strong></span>
@@ -2873,6 +2906,13 @@ function wire(){
   each("[data-toggletasks]", b => {
     const key = b.dataset.toggletasks;
     state.expandedStops[key] = !state.expandedStops[key];
+    render();
+  });
+  // Same idea, but for an outlet card on Overview's "Outlets tonight" grid --
+  // expands that outlet's job list and open issues in place.
+  each("[data-toggleoutlet]", b => {
+    const key = b.dataset.toggleoutlet;
+    state.expandedOutlets[key] = !state.expandedOutlets[key];
     render();
   });
   each("[data-openissue]", b => { state.reportingIssue = b.dataset.openissue; render(); const i=$("#issue-desc"); if(i) i.focus(); });
