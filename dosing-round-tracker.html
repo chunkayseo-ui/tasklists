@@ -267,9 +267,6 @@ td.num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;w
 .datebar .dmid .mono{font-weight:600;font-size:15.5px;white-space:nowrap}
 .datebar input[type=date]{width:auto;flex:none;padding:8px 10px;font-size:14.5px}
 .empty{padding:28px 18px;text-align:center;color:var(--ink-3);font-size:15.5px;line-height:1.6}
-.sample-note{background:var(--travel-soft);color:var(--travel);border-radius:8px;padding:8px 12px;
-  font:600 12px/1.4 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.1em;display:inline-block}
-
 details.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
 details.panel summary{padding:12px 14px;cursor:pointer;font-weight:600;font-size:15.5px;list-style:none}
 details.panel summary::-webkit-details-marker{display:none}
@@ -524,7 +521,6 @@ const state = {
   roster: [],
   cfg: clone(DEFAULT_TASKS),
   rounds: {},
-  showSample:false,
   db:null, dbTried:false,
   picking:null,
   pickingExtra:false,    // whether the "add outlet — covering for someone" picker is open
@@ -943,7 +939,17 @@ function crewState(r){
     const aLabel = stopLabel(a);
     return {k:"onsite", label: rt ? aLabel+" · "+rt.name : "At "+aLabel, since: rt ? rt.startedAt : a.arriveAt};
   }
-  if(nextStop(r)) return {k:"travel", label:"Travelling", since:lastDeparture(r)};
+  const upNext = nextStop(r);
+  if(upNext){
+    // Show where they're headed, not just "Travelling" -- Chun Kay wants a
+    // supervisor glancing at the crew list to see the destination without
+    // opening the technician's route. r.headingTo is the outlet they've
+    // explicitly tapped as next (see the pill buttons in stopCard); if they
+    // haven't picked one yet, fall back to the next stop in their original
+    // pick order, same as the route view's own default ordering.
+    const destStop = (r.headingTo && r.stops.find(s => s.outlet === r.headingTo)) || upNext;
+    return {k:"travel", label:"Travelling to "+stopLabel(destStop), since:lastDeparture(r)};
+  }
   return {k:"done", label:"Round complete"};
 }
 function totals(r){
@@ -2108,11 +2114,12 @@ function overviewStats(rounds){
 function stopJobList(s){
   return `<div class="job-list">${s.tasks.map(t => {
     // Done jobs carry when they actually happened (claim to finish) as a
-    // clock range, not just a bare duration -- Chun Kay asked for this so a
-    // supervisor can see exactly when a job was done, not only how long it
-    // took. Falls back to the duration if a job's startedAt is somehow
+    // clock range, AND how long that took -- Chun Kay asked first for the
+    // clock range so a supervisor can see exactly when a job was done, then
+    // asked for the duration back alongside it rather than in place of it.
+    // Falls back to just the duration if a job's startedAt is somehow
     // missing (very old data from before per-task timing existed).
-    const tStatus = t.doneAt ? `<span class="tag st-done">Done · ${t.startedAt ? clockOf(t.startedAt)+"–"+clockOf(t.doneAt) : dur(mins(t.startedAt,t.doneAt))}</span>`
+    const tStatus = t.doneAt ? `<span class="tag st-done">Done · ${t.startedAt ? clockOf(t.startedAt)+"–"+clockOf(t.doneAt)+" · "+dur(mins(t.startedAt,t.doneAt)) : dur(mins(t.startedAt,t.doneAt))}</span>`
                   : t.startedAt ? '<span class="tag st-prog">In Progress</span>'
                   : '<span class="tag st-open">Open</span>';
     const kindTag = t.kind==="required" ? '<span class="tag req">Must do</span>'
@@ -2379,7 +2386,7 @@ function overviewView(){
     <div class="kpi"><div class="v">${stats.outletsDone}<span style="font-size:16.5px;color:var(--ink-3)">/${stats.outletsTotal||OUTLETS.length}</span></div><div class="k eyebrow">Outlets done</div></div>
     <div class="kpi"><div class="v" style="color:var(--accent)">${stats.jobsDone}</div><div class="k eyebrow">Jobs done</div></div>
     <div class="kpi"><div class="v" style="color:var(--travel)">${stats.activeTechs}</div><div class="k eyebrow">Active now</div></div>
-    <div class="kpi"><div class="v" style="color:${urgentN?"var(--urgent)":"var(--ink)"}">${openN}</div><div class="k eyebrow">Open issues${urgentN?" · "+urgentN+" urgent":""}</div></div>
+    <button type="button" class="kpi" id="kpi-open-issues" aria-label="Jump to the issues list below" style="cursor:pointer;text-align:left;border:1px solid var(--line);background:var(--surface);font:inherit;width:100%;margin:0"><div class="v" style="color:${urgentN?"var(--urgent)":"var(--ink)"}">${openN}</div><div class="k eyebrow">Open issues${urgentN?" · "+urgentN+" urgent":""}</div></button>
   </div>
 
   <div class="stack" style="gap:9px">
@@ -2397,7 +2404,7 @@ function overviewView(){
     ${unfinishedJobsBlock(rounds)}
   </div>
 
-  <div class="stack" style="gap:9px">
+  <div class="stack" style="gap:9px" id="issues-section">
     <h2 class="sec">Issues &amp; tasks</h2>
     <p class="note" style="margin:0">Problems flagged by the team, or tasks you've assigned to an outlet — anything that needs a plan and a date, not routine checklist jobs.</p>
     ${addIssueBlock()}
@@ -2406,22 +2413,6 @@ function overviewView(){
 }
 
 /* ---------- supervisor ---------- */
-function iso(h,m){ const d=new Date(); d.setHours(h,m,0,0); return d.toISOString(); }
-function sampleRound(){
-  const mk = (n,k,a,b) => ({id:uid(), name:n, kind:k, startedAt:a, doneAt:b, claimedBy:a?"Sample round":null});
-  return {id:"sample", person:"Sample round", date:todayKey(), stops:[
-    {outlet:"JE", arriveAt:iso(7,58), departAt:iso(8,26), tasks:[
-      mk("Water test & dosing","required",iso(7,59),iso(8,14)), mk("Manual vacuum pool","optional",iso(8,14),iso(8,25))]},
-    {outlet:"TENGAH", arriveAt:iso(8,49), departAt:iso(9,11), tasks:[
-      mk("Water test & dosing","required",iso(8,50),iso(9,4)), mk("Soap dispenser","adhoc",iso(9,4),iso(9,10))]},
-    {outlet:"BK", arriveAt:iso(9,28), departAt:iso(10,17), tasks:[
-      mk("Water test & dosing","required",iso(9,29),iso(9,45)), mk("Manual vacuum pool","optional",iso(9,45),iso(10,16))]},
-    {outlet:"CC", arriveAt:iso(10,42), departAt:null, tasks:[
-      mk("Water test & dosing","required",iso(10,43),null)]},
-    {outlet:"WWW", arriveAt:null, departAt:null, tasks:[mk("Water test & dosing","required",null,null)]}
-  ]};
-}
-
 // One technician's row in a "crew" list -- shared by the Supervisor board and
 // the Overview tab so the two never drift apart on what "on site" or a
 // job/on-site/travel summary actually shows.
@@ -2438,7 +2429,7 @@ function crewRow(r, isToday, opts){
   // Supervisor-only, e.g. for wiping test/practice rounds -- Overview stays
   // read-only so nobody deletes a live round by mistake while just watching
   // tonight's progress.
-  const delBtn = (opts.deletable && r.id !== "sample")
+  const delBtn = opts.deletable
     ? `<button type="button" class="btn sm" data-delround="${esc(r.id)}" title="Delete this round" aria-label="Delete ${esc(r.person)}'s round" style="margin-left:auto;color:var(--urgent);border-color:var(--urgent);padding:4px 10px">Delete</button>`
     : "";
   return `<div class="crew-row"><div class="crew-top">
@@ -2474,15 +2465,13 @@ function mgrView(){
     }
   }
 
-  const live = roundsForDate(viewDate);
-  const rounds = (isToday && state.showSample) ? live.concat([sampleRound()]) : live;
+  const rounds = roundsForDate(viewDate);
 
   if(!rounds.length){
     return `${dateNav}<div class="card empty">
       <div class="eyebrow" style="margin-bottom:8px">${isToday ? "No rounds started today" : "No rounds recorded on "+esc(fmtDate(viewDate))}</div>
       ${isToday
-        ? `Once a technician claims their first job, they appear here live — where they are,<br>which job they're on, and how long each one took.
-           <div style="margin-top:16px"><button class="btn" id="toggle-sample">Show me an example</button></div>`
+        ? `Once a technician claims their first job, they appear here live — where they are,<br>which job they're on, and how long each one took.`
         : `Nobody logged a round that day, or it hasn't loaded yet.`}
     </div>${isToday ? rosterPanel() : ""}`;
   }
@@ -2578,9 +2567,7 @@ function mgrView(){
   <div class="stack" style="gap:9px">
     <div class="sec-head"><h2 class="sec">${isToday?"Crew right now":"Technicians that day"}</h2>
       ${isToday ? `<span class="legend"><span><i style="background:var(--accent)"></i>on site</span><span><i style="background:var(--travel);opacity:.55"></i>travelling</span></span>` : ""}</div>
-    ${state.showSample?'<div class="sample-note">Example data shown — not your team</div>':""}
     <div class="crew">${crew}</div>
-    ${isToday ? `<button class="btn sm" id="toggle-sample" style="align-self:flex-start">${state.showSample?"Hide example":"Show an example round"}</button>` : ""}
   </div>
 
   ${names.length ? `<div class="stack" style="gap:9px">
@@ -2951,8 +2938,7 @@ function routesView(){
     }
   }
 
-  const live = roundsForDate(viewDate);
-  const rounds = (isToday && state.showSample) ? live.concat([sampleRound()]) : live;
+  const rounds = roundsForDate(viewDate);
   const withStops = rounds.filter(r => r.stops.some(s => s.arriveAt));
 
   if(!withStops.length){
@@ -3204,7 +3190,6 @@ function wire(){
     if(e.key === "Enter"){ const b = document.querySelector("[data-addtask]"); if(b) addTask(b.dataset.addtask, nt.value); }
   });
 
-  on("#toggle-sample", () => { state.showSample = !state.showSample; render(); });
   each("[data-tbgroup]", b => { state.timeByGroup = b.dataset.tbgroup; render(); });
 
   on("#date-prev", () => { state.viewDate = shiftDate(state.viewDate||todayKey(), -1); render(); });
@@ -3309,6 +3294,13 @@ function wire(){
     reportIssue(outlet, d ? d.value : "", p ? p.value : "medium");
   });
 
+  // Chun Kay wanted the "Open issues" count to actually take you to the
+  // issues, not just sit there as a number -- both this KPI card and the
+  // matching red badge on the Overview nav tab (wired separately, since the
+  // nav bar sits outside #view and isn't rebuilt by wire()) jump straight to
+  // the "Issues & tasks" board at the bottom of the page.
+  on("#kpi-open-issues", () => { const el = $("#issues-section"); if(el) el.scrollIntoView({behavior:"smooth", block:"start"}); });
+
   // issues — supervisor adding a non-urgent task straight to an outlet, from Overview
   on("#open-addissue",   () => { state.addingIssue = true; render(); const i=$("#addissue-desc"); if(i) i.focus(); });
   on("#cancel-addissue", () => { state.addingIssue = false; render(); });
@@ -3341,7 +3333,13 @@ function wire(){
 }
 
 $("#btn-tech").addEventListener("click", () => { state.role="tech"; render(); });
-$("#btn-overview").addEventListener("click", () => { state.role="overview"; render(); });
+$("#btn-overview").addEventListener("click", (e) => {
+  // Tapping the red issue-count badge should land you ON the issues, not
+  // just on the Overview tab you'd then have to scroll down from yourself.
+  const toIssues = e.target.closest(".nav-badge");
+  state.role="overview"; render();
+  if(toIssues){ const el = $("#issues-section"); if(el) el.scrollIntoView({behavior:"smooth", block:"start"}); }
+});
 $("#btn-mgr").addEventListener("click",  () => { state.role="mgr";  render(); });
 $("#btn-routes").addEventListener("click", () => { state.role="routes"; render(); });
 $("#btn-tasksetting").addEventListener("click", () => { state.role="tasksetting"; render(); });
