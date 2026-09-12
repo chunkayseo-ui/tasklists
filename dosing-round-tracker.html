@@ -2097,14 +2097,9 @@ function stopCard(s, i, r, isHeading){
  * checks in sequence -- are outlets getting done, who's where right now,
  * what got left behind, and what's waiting on a decision from them.
  */
-function fmtWhen(iso){
-  const d = new Date(iso);
-  const today = todayKey() === dateKey(d);
-  return (today ? "" : d.getDate()+" "+MONTH_ABBR[d.getMonth()]+", ") + pad(d.getHours())+":"+pad(d.getMinutes());
-}
-// Same as fmtWhen but always includes the date, even for today -- used where
-// a supervisor is scanning a "resolved recently" history rather than reading
-// something that's obviously about right now.
+// Always includes the date, even for today -- an issue/task's own reported-at
+// stamp and a "resolved recently" history both want a fixed, unambiguous date
+// rather than a relative "today" reading that quietly changes at midnight.
 function fmtWhenFull(iso){
   const d = new Date(iso);
   return d.getDate()+" "+MONTH_ABBR[d.getMonth()]+", "+pad(d.getHours())+":"+pad(d.getMinutes());
@@ -2305,7 +2300,7 @@ function issueSortCompare(a,b){
 function issueCard(issue){
   const editing = state.planningIssue === issue.id;
   const rosterOpts = state.roster.map(n => `<option value="${esc(n)}" ${issue.assignee===n?"selected":""}>${esc(n)}</option>`).join("");
-  const meta = `<span class="mono muted">reported by ${esc(issue.raisedBy)} · ${fmtWhen(issue.raisedAt)}</span>`;
+  const meta = `<span class="mono muted">reported by ${esc(issue.raisedBy)} · ${fmtWhenFull(issue.raisedAt)}</span>`;
   let body;
   if(editing){
     body = `<div class="issue-form">
