@@ -1426,6 +1426,22 @@ function issueTasksFor(outlet){
     .map(i => ({id:uid(), name:i.description, kind:"issue", issueId:i.id, startedAt:null, doneAt:null, claimedBy:null, addedBy:i.raisedBy||null}));
 }
 
+// Who to credit an unclaimed job to. Reads the task's own `addedBy` first
+// (every job created since that field existed carries it), but a converted
+// issue's stored task can predate that field -- its underlying issue has
+// always recorded `raisedBy`, though, so a converted issue can always be
+// traced this way even if it was converted before `addedBy` existed. An
+// ad-hoc job or Task Setting extra added before this all existed has no such
+// fallback -- that information was genuinely never captured for those.
+function addedByOf(t){
+  if(t.addedBy) return t.addedBy;
+  if(t.kind === "issue" && t.issueId){
+    const iss = state.issues[t.issueId];
+    if(iss) return iss.raisedBy || null;
+  }
+  return null;
+}
+
 // A technician flags a problem they can't fix themselves, right from the
 // outlet stop they're standing at -- or a supervisor gets ahead of one,
 // assigning a non-urgent task to an outlet before anyone's even reported it
@@ -2138,8 +2154,9 @@ function stopJobList(s){
     // ad-hoc job, a Task Setting extra, or a converted issue all carry this)
     // -- so an unrecognized job on the list can actually be asked about,
     // rather than sitting there anonymous until someone claims it.
+    const addedBy = addedByOf(t);
     const who = t.claimedBy ? `<span class="who">${esc(t.claimedBy)}</span>`
-              : t.addedBy   ? `<span class="who">Added by ${esc(t.addedBy)}</span>`
+              : addedBy     ? `<span class="who">Added by ${esc(addedBy)}</span>`
               : "";
     // Name gets its own line, tags/status/claimer sit together below it --
     // keeps the job title readable instead of wrapping mid-word around tags.
@@ -2528,7 +2545,7 @@ function mgrView(){
       <td>${esc(it.t.name)}</td>
       <td>${it.t.kind==="required"?'<span class="tag req">Must do</span>':it.t.kind==="optional"?'<span class="tag opt">If time allows</span>':it.t.kind==="issue"?'<span class="tag urgent">Reported issue</span>':'<span class="tag add">Added</span>'}</td>
       <td>${status}</td>
-      <td>${it.t.claimedBy ? esc(it.t.claimedBy) : it.t.addedBy ? `<span class="muted">added by ${esc(it.t.addedBy)}</span>` : '<span class="muted">—</span>'}</td>
+      <td>${it.t.claimedBy ? esc(it.t.claimedBy) : addedByOf(it.t) ? `<span class="muted">added by ${esc(addedByOf(it.t))}</span>` : '<span class="muted">—</span>'}</td>
       <td class="num">${finished ? dur(mins(it.t.startedAt,it.t.doneAt)) : (running ? '<span style="color:var(--accent)">running</span>' : '<span class="muted">—</span>')}</td>
     </tr>`;
   }).join("");
