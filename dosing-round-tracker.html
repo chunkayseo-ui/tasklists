@@ -126,6 +126,11 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 .tag.st-open{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
 .tag.st-prog{background:var(--warn-soft);color:var(--warn)}
 .tag.st-done{background:var(--ok-soft);color:var(--ok)}
+/* A checkmark ahead of the text on every "done"-style tag (a finished job, a
+   fully-departed outlet, a resolved issue, a completed round) -- purely a
+   visual affordance via generated content, so it never changes what any of
+   these tags actually say (textContent is unaffected, only what's rendered). */
+.tag.st-done::before{content:"✓ "}
 .tag.covering{background:var(--travel-soft);color:var(--travel)}
 
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
