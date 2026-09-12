@@ -2107,10 +2107,12 @@ function overviewStats(rounds){
 // Routes read identically.
 function stopJobList(s){
   return `<div class="job-list">${s.tasks.map(t => {
-    // Done jobs carry how long they actually took (claim to finish) --
-    // useful on its own, and it's what lets a supervisor spot a job that
-    // was marked done suspiciously fast.
-    const tStatus = t.doneAt ? `<span class="tag st-done">Done · ${dur(mins(t.startedAt,t.doneAt))}</span>`
+    // Done jobs carry when they actually happened (claim to finish) as a
+    // clock range, not just a bare duration -- Chun Kay asked for this so a
+    // supervisor can see exactly when a job was done, not only how long it
+    // took. Falls back to the duration if a job's startedAt is somehow
+    // missing (very old data from before per-task timing existed).
+    const tStatus = t.doneAt ? `<span class="tag st-done">Done · ${t.startedAt ? clockOf(t.startedAt)+"–"+clockOf(t.doneAt) : dur(mins(t.startedAt,t.doneAt))}</span>`
                   : t.startedAt ? '<span class="tag st-prog">In Progress</span>'
                   : '<span class="tag st-open">Open</span>';
     const kindTag = t.kind==="required" ? '<span class="tag req">Must do</span>'
