@@ -791,7 +791,7 @@ function tasksFor(outlet){
   if(!pools){
     const req = state.cfg.required.map(n => ({id:uid(), name:n, kind:"required", startedAt:null, doneAt:null, claimedBy:null}));
     const asg = asgNames.map(n => ({id:uid(), name:n, kind:"optional", startedAt:null, doneAt:null, claimedBy:null}));
-    const ex  = extraList.map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null}));
+    const ex  = extraList.map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null}));
     return req.concat(asg).concat(ex).concat(issueTasks);
   }
 
@@ -804,12 +804,12 @@ function tasksFor(outlet){
   // that pool was added after the standing ones.
   const wholeOutlet = extraList
     .filter(e => !e.pool)
-    .map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null}));
+    .map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null}));
   const perPool = pools.flatMap(p => {
     const req = state.cfg.required.map(n => ({id:uid(), name:n, pool:p, kind:"required", startedAt:null, doneAt:null, claimedBy:null}));
     const asg = asgNames.map(n => ({id:uid(), name:n, pool:p, kind:"optional", startedAt:null, doneAt:null, claimedBy:null}));
     const ex  = extraList.filter(e => e.pool === p)
-      .map(e => ({id:uid(), name:e.name, pool:p, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null}));
+      .map(e => ({id:uid(), name:e.name, pool:p, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null}));
     return req.concat(asg).concat(ex);
   });
   return wholeOutlet.concat(issueTasks).concat(perPool);
@@ -1014,7 +1014,7 @@ async function syncExtraToLiveRounds(outlet, job, action){
     let changed = false;
     if(action === "add"){
       if(!s.tasks.some(matches)){
-        s.tasks.push(Object.assign({id:uid(), name:job.name, kind:job.kind, startedAt:null, doneAt:null, claimedBy:null}, job.pool ? {pool:job.pool} : {}));
+        s.tasks.push(Object.assign({id:uid(), name:job.name, kind:job.kind, startedAt:null, doneAt:null, claimedBy:null, addedBy:job.addedBy||null}, job.pool ? {pool:job.pool} : {}));
         changed = true;
       }
     } else {
@@ -1369,11 +1369,15 @@ function undoTask(code, tid){
 function addTask(code, name){
   const n = (name||"").trim(); if(!n) return;
   state.adding = null;
+  // Who typed this in matters even before anyone claims it -- a supervisor
+  // (or a teammate sharing the outlet) seeing an unclaimed ad-hoc job has no
+  // other way to ask "what's this for?" until it's shown on-screen.
+  const addedBy = state.me || null;
   withRound(r => {
     const s = r.stops.find(x=>x.outlet===code); if(!s) return false;
-    s.tasks.push({id:uid(), name:n, kind:"adhoc", startedAt:null, doneAt:null, claimedBy:null});
+    s.tasks.push({id:uid(), name:n, kind:"adhoc", startedAt:null, doneAt:null, claimedBy:null, addedBy});
   }, "Couldn't add that job. Try again.").then(() => {
-    syncExtraToLiveRounds(code, {name:n, kind:"adhoc"}, "add");
+    syncExtraToLiveRounds(code, {name:n, kind:"adhoc", addedBy}, "add");
   });
 }
 function removeTask(code, tid){
@@ -1419,7 +1423,7 @@ function openIssuesFor(outlet){
 // job that happens to share the same wording.
 function issueTasksFor(outlet){
   return openIssuesFor(outlet).filter(i => i.convertedToTask)
-    .map(i => ({id:uid(), name:i.description, kind:"issue", issueId:i.id, startedAt:null, doneAt:null, claimedBy:null}));
+    .map(i => ({id:uid(), name:i.description, kind:"issue", issueId:i.id, startedAt:null, doneAt:null, claimedBy:null, addedBy:i.raisedBy||null}));
 }
 
 // A technician flags a problem they can't fix themselves, right from the
@@ -1469,7 +1473,7 @@ async function syncIssueTaskToLiveRounds(outlet, issue){
     const s = r.stops.find(x => x.outlet === outlet && !x.departAt);
     if(!s) continue;
     if(s.tasks.some(t => t.issueId === issue.id)) continue;
-    s.tasks.push({id:uid(), name:issue.description, kind:"issue", issueId:issue.id, startedAt:null, doneAt:null, claimedBy:null});
+    s.tasks.push({id:uid(), name:issue.description, kind:"issue", issueId:issue.id, startedAt:null, doneAt:null, claimedBy:null, addedBy:issue.raisedBy||null});
     try{ await saveRound(r); }catch(e){}
   }
 }
@@ -2130,7 +2134,13 @@ function stopJobList(s){
     // sharing an outlet just look like two separate "Done" rows with no way
     // to tell whether that's the same job correctly mirrored between them,
     // or genuinely two different people each doing their own copy of it.
-    const who = t.claimedBy ? `<span class="who">${esc(t.claimedBy)}</span>` : "";
+    // Before anyone's claimed it, credit whoever typed it in instead (an
+    // ad-hoc job, a Task Setting extra, or a converted issue all carry this)
+    // -- so an unrecognized job on the list can actually be asked about,
+    // rather than sitting there anonymous until someone claims it.
+    const who = t.claimedBy ? `<span class="who">${esc(t.claimedBy)}</span>`
+              : t.addedBy   ? `<span class="who">Added by ${esc(t.addedBy)}</span>`
+              : "";
     // Name gets its own line, tags/status/claimer sit together below it --
     // keeps the job title readable instead of wrapping mid-word around tags.
     return `<div class="job-row">
@@ -2518,7 +2528,7 @@ function mgrView(){
       <td>${esc(it.t.name)}</td>
       <td>${it.t.kind==="required"?'<span class="tag req">Must do</span>':it.t.kind==="optional"?'<span class="tag opt">If time allows</span>':it.t.kind==="issue"?'<span class="tag urgent">Reported issue</span>':'<span class="tag add">Added</span>'}</td>
       <td>${status}</td>
-      <td>${it.t.claimedBy ? esc(it.t.claimedBy) : '<span class="muted">—</span>'}</td>
+      <td>${it.t.claimedBy ? esc(it.t.claimedBy) : it.t.addedBy ? `<span class="muted">added by ${esc(it.t.addedBy)}</span>` : '<span class="muted">—</span>'}</td>
       <td class="num">${finished ? dur(mins(it.t.startedAt,it.t.doneAt)) : (running ? '<span style="color:var(--accent)">running</span>' : '<span class="muted">—</span>')}</td>
     </tr>`;
   }).join("");
@@ -3249,7 +3259,10 @@ function wire(){
     const days = [];
     for(let d=0; d<7; d++){ const el = document.getElementById("extra-day-"+outlet+"-"+d); if(el && el.checked) days.push(d); }
     const c = cfg();
-    const entry = {id:uid(), name:v, kind, oneTime, addedDate: todayKey()};
+    // Recorded so a job on the checklist that nobody recognizes ("Light bulb
+    // replace"?) can be traced back to whoever on the team set it up, same
+    // idea as crediting an ad-hoc job or a reported issue to its author.
+    const entry = {id:uid(), name:v, kind, oneTime, addedDate: todayKey(), addedBy: state.me || "Supervisor"};
     if(pool) entry.pool = pool;
     if(days.length) entry.days = days;
     c.extra[outlet] = (c.extra[outlet]||[]).concat([entry]);
@@ -3257,7 +3270,7 @@ function wire(){
     // Only push it into tonight's open round if it actually applies tonight --
     // a job scoped to other nights shouldn't show up early just because it
     // was added just now.
-    if(!days.length || days.includes(operationalNow().getDay())) syncExtraToLiveRounds(outlet, {name:v, kind, pool}, "add");
+    if(!days.length || days.includes(operationalNow().getDay())) syncExtraToLiveRounds(outlet, {name:v, kind, pool, addedBy:entry.addedBy}, "add");
   });
   each("[data-rmextra]", b => {
     const [outlet, id] = two(b.dataset.rmextra); const c = cfg();
