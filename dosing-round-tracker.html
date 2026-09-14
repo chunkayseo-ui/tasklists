@@ -2305,6 +2305,15 @@ function relayErrorText(raw){
     return "The relay didn't receive the photo. Try taking it again.";
   return "The relay refused it: " + msg.slice(0, 160);
 }
+// Why there is no number. A photo the model looked at and couldn't make out is
+// the technician's problem to fix (retake it); a reader that never ran is not,
+// and telling them to retake a perfectly good photo just wastes their night.
+function readerNote(rd){
+  const st = rd && rd.status;
+  if(st === "unreadable") return "Couldn't make out the display — check the photo shows it clearly.";
+  if(st === "no-key" || st === "error") return "The scale reader isn't running — nothing wrong with the photo.";
+  return "No reading came back.";
+}
 function photoStampLines(code, poolKey, jobName){
   const n = new Date();
   return [`${code}${poolKey !== code ? " · "+poolKey : ""} · ${jobName}`, `${state.me || "?"} · ${n.getDate()} ${MONTH_ABBR[n.getMonth()]} ${n.getFullYear()} ${pad(n.getHours())}:${pad(n.getMinutes())}`];
@@ -2423,7 +2432,7 @@ function dosingPhotoHtml(key, d){
       const rd = ph.reading;
       const msg = tool === "jug" ? `${photoName(ph.n)} saved.`
         : (rd && rd.status === "ok") ? `${photoName(ph.n)} · read <b>${Math.round(rd.grams)} g</b>${rd.confidence === "low" ? " (not 100% sure — check it)" : ""}`
-        : `${photoName(ph.n)} saved — display couldn't be read.`;
+        : `${photoName(ph.n)} saved. ${readerNote(rd)}`;
       status = `<span class="ph-status ok">${msg}</span>`;
       actions = `<button class="link" type="button" data-dmphotorm="${key}|${ph.id}">remove</button>`;
     } else if(ph.status === "failed"){
@@ -2437,7 +2446,8 @@ function dosingPhotoHtml(key, d){
   const want = jugPhotosExpected(d);
   const hint = tool === "jug"
     ? `<span class="wt-src">${photos.length} photo${photos.length===1?"":"s"} for ${want} fill${want===1?"":"s"}.${photos.length < want ? " Take one for each." : ""}</span>`
-    : (reads.length === 0 && photos.some(p=>p.status==="done") ? `<span class="wt-src">Display couldn't be read — type the amount.</span>` : "");
+    : (reads.length === 0 && photos.some(p=>p.status==="done")
+        ? `<span class="wt-src">${readerNote((photos.filter(p=>p.status==="done").pop()||{}).reading)} Type the amount.</span>` : "");
   return `<div class="stack" style="gap:8px">${rows}${total}${hint}
     <button class="btn sm" type="button" data-dmphotobtn="${key}">+ Add another photo</button>${input}</div>`;
 }
