@@ -377,6 +377,13 @@ details.panel[open] summary::after{content:"▴"}
 .wt-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .wt-field{display:flex;flex-direction:column;gap:5px}
 .wt-field .wt-chips .tog{font-family:"IBM Plex Sans",sans-serif;font-weight:500;font-size:14px;min-width:0;flex:1}
+.wt-field .num{display:flex;align-items:center;border:1px solid var(--line);border-radius:8px;background:var(--surface);overflow:hidden}
+.wt-field .num input{flex:1;min-width:0;border:0;background:transparent;font:600 20px "IBM Plex Mono",monospace;padding:9px 10px;color:var(--ink);font-variant-numeric:tabular-nums}
+.wt-field .num input:focus{outline:none}
+.wt-field .num:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.wt-field .num span{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--ink-3);padding:0 10px;border-left:1px solid var(--line-soft)}
+.wt-field .plan{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-3)}
+.dev{color:var(--warn);font-weight:600}
 .wt .panel{background:var(--surface-2)}
 .wt .panel summary{font-size:14.5px;padding:10px 12px}
 .wt-ref-body{padding:0 12px 12px;font-size:14px;color:var(--ink-2)}
@@ -585,6 +592,7 @@ const state = {
   expandedStops:{},      // roundId+"__"+outlet -> true, for stops whose job list is expanded on the Routes tab.
                           // Purely a view toggle (which jobs are done/undone at that stop) -- not persisted,
                           // resets on reload same as any other UI-only state here.
+  dm:{},                  // outlet|taskId -> the in-progress dosing entry (grams/ml measured, scale or jug)
   wt:{},                  // outlet|taskId -> the in-progress water-test entry (FC/pH chips tapped, temp typed...)
                           // for a claimed water-test job. Lives here rather than in the DOM because the
                           // view is rebuilt on every save/tick -- a half-entered reading must survive that.
@@ -648,7 +656,7 @@ const localIssues = {
  * through, so a flaky connection heals itself instead of needing the person
  * to notice and redo the change.
  */
-async function persist(docPath, data, cacheFn){
+async function persist(docPath, data, cacheFn, opts){
   cacheFn();
   if(!state.db) return;
   // Mark this write as in-flight for its FULL round-trip, not just after it
@@ -661,9 +669,9 @@ async function persist(docPath, data, cacheFn){
   // snapshot to overwrite a just-added task before this write's own result
   // came back.
   const prior = state.pending[docPath];
-  state.pending[docPath] = {data, tries: prior ? prior.tries : 0};
+  state.pending[docPath] = {data, tries: prior ? prior.tries : 0, merge: !!(opts && opts.merge)};
   try{
-    await state.db.doc(docPath).set(data);
+    await state.db.doc(docPath).set(data, state.pending[docPath].merge ? {merge:true} : {});
     delete state.pending[docPath];
     renderConn();
   } catch(e){
@@ -677,7 +685,7 @@ async function flushPending(){
   const paths = Object.keys(state.pending);
   for(const p of paths){
     const item = state.pending[p]; if(!item) continue;
-    try{ await state.db.doc(p).set(item.data); delete state.pending[p]; }
+    try{ await state.db.doc(p).set(item.data, item.merge ? {merge:true} : {}); delete state.pending[p]; }
     catch(e){ item.tries++; }
   }
   renderConn();
@@ -895,7 +903,13 @@ function seedTasksFor(outlet){
       const m = s.tasks.find(x => x.name === t.name && x.kind === t.kind && (x.pool||null) === (t.pool||null));
       if(m && (!best || rank(m) > rank(best))) best = m;
     }
-    return best ? Object.assign({}, t, {claimedBy: best.claimedBy||null, startedAt: best.startedAt||null, doneAt: best.doneAt||null}) : t;
+    if(!best) return t;
+    // Carry the water-test reading, the measured dose and the planned dose
+    // across too -- a later arrival's Manual Dosing job must show what was
+    // already dosed (and what the plan was), not just a bare "Done".
+    const carried = {claimedBy: best.claimedBy||null, startedAt: best.startedAt||null, doneAt: best.doneAt||null};
+    ["reading","dosed","plannedDose"].forEach(k => { if(best[k]) carried[k] = best[k]; });
+    return Object.assign({}, t, carried);
   });
 }
 
@@ -1365,6 +1379,11 @@ function finishTask(code, tid){
     const w = wtState(code+"|"+tid);
     if(w.fc === null || w.ph === null){ flash("Enter the water test reading below first — tap FC and pH, then Save."); return; }
     finishWaterTest(code, tid); return;
+  }
+  if(t0 && isDosingTask(t0) && t0.claimedBy === state.me){
+    const d = dmState(code+"|"+tid, t0);
+    if(d.chlorine === "" || isNaN(Number(d.chlorine))){ flash("Enter the chlorine measured below first, then Save."); return; }
+    finishDosing(code, tid); return;
   }
   let finished = null, stopOutlet = null, issueId = null;
   withRound(r => {
@@ -1917,6 +1936,90 @@ function finishWaterTest(code, tid){
   });
 }
 
+/* ---------- manual dosing: what was actually measured out ----------
+ * The calculator screenshot used to be the proof that the dose was looked
+ * up; the tracker now holds the dose itself, so what's left to record is
+ * what was actually measured out. The team's own convention: 1 ml = 1 g,
+ * so a measuring jug stands in for the digital scale when the scale is
+ * playing up -- the amount is typed in grams either way, and "Scale / Jug"
+ * says which tool it came off, which over time shows where the scales are
+ * failing. The planned amounts from the water test are pre-filled, so the
+ * common case is a glance and a tap; only a real difference needs typing.
+ */
+const toGrams = (v,u) => u === "kg" ? v*1000 : v;
+const toMl = (v,u) => u === "l" ? v*1000 : v;
+const fmtG = g => (g >= 1000 && g % 100 === 0) ? (g/1000).toFixed(g % 1000 === 0 ? 0 : 1)+" kg" : g+" g";
+const fmtMl = ml => (ml >= 1000 && ml % 100 === 0) ? (ml/1000).toFixed(ml % 1000 === 0 ? 0 : 1)+" L" : ml+" ml";
+// More than 10% off the plan (or anything at all when the plan was zero).
+const offPlan = (dosed, planned) => (planned === null || planned === undefined) ? false : planned > 0 ? Math.abs(dosed-planned)/planned > 0.1 : dosed > 0;
+function dmState(key, t){
+  if(!state.dm[key]) state.dm[key] = {chlorine:"", acid:"", tool:"scale", seeded:false, touched:false};
+  const d = state.dm[key], pd = t && t.plannedDose;
+  // Pre-fill from the water test's plan -- including when the plan only
+  // arrives after this job was already claimed -- unless the technician has
+  // already typed something of their own.
+  if(!d.seeded && pd && !d.touched){
+    d.chlorine = String(toGrams(pd.chlorine, pd.chlorineUnit)); d.acid = String(toMl(pd.acid, pd.acidUnit)); d.seeded = true;
+  }
+  return d;
+}
+function dosedSummary(d){
+  const flag = offPlan(d.chlorineG, d.plannedChlorineG) || offPlan(d.acidMl, d.plannedAcidMl);
+  const plan = (d.plannedChlorineG !== null && d.plannedChlorineG !== undefined) ? ` · planned ${fmtG(d.plannedChlorineG)} / ${fmtMl(d.plannedAcidMl)}` : "";
+  return `Dosed <b>${fmtG(d.chlorineG)} chlorine · ${fmtMl(d.acidMl)} acid</b> (${d.tool === "jug" ? "jug" : "scale"})${plan}${flag ? ' <span class="dev">⚠ off plan</span>' : ""}`;
+}
+function dosingPanel(s, t){
+  const key = s.outlet+"|"+t.id, d = dmState(key, t), pd = t.plannedDose;
+  const poolKey = dosingKeyFor(s.outlet, t.pool);
+  const planHtml = pd
+    ? `<div class="wt-dose"><div class="head"><span class="pool">${esc(poolKey)}</span><span class="when">to dose · from water test FC ${pd.fc} · pH ${Number(pd.ph).toFixed(1)}</span></div>
+       <div><div class="k">Chlorine</div><div class="v">${fmtG(toGrams(pd.chlorine, pd.chlorineUnit))}</div></div>
+       <div><div class="k">Acid</div><div class="v">${fmtMl(toMl(pd.acid, pd.acidUnit))}</div></div></div>`
+    : `<div class="wt-dose empty">No water test saved for ${esc(poolKey)} yet tonight — do the water test first to get tonight's dose, or enter what you measured below.</div>`;
+  const ok = d.chlorine !== "" && !isNaN(Number(d.chlorine)) && Number(d.chlorine) >= 0 && (d.acid === "" || (!isNaN(Number(d.acid)) && Number(d.acid) >= 0));
+  return `<div class="wt" data-dmpanel="${key}">
+    <div class="wt-head"><span class="wt-title">Manual dosing · ${esc(poolKey)}</span></div>
+    ${planHtml}
+    <div class="wt-grid">
+      <label class="wt-field"><span class="wt-lbl">Chlorine measured</span><span class="num"><input type="number" inputmode="numeric" min="0" step="1" data-dmin="${key}|chlorine" value="${esc(d.chlorine)}" placeholder="0"><span>g</span></span>${pd ? `<span class="plan">1 ml = 1 g if using the jug</span>` : ""}</label>
+      <label class="wt-field"><span class="wt-lbl">Acid measured</span><span class="num"><input type="number" inputmode="numeric" min="0" step="1" data-dmin="${key}|acid" value="${esc(d.acid)}" placeholder="0"><span>ml</span></span></label>
+      <div class="wt-field" style="grid-column:1/-1"><span class="wt-lbl">Measured with</span><div class="wt-chips">
+        <button class="tog" aria-pressed="${d.tool==="scale"}" data-dmset="${key}|tool|scale">Digital scale</button>
+        <button class="tog" aria-pressed="${d.tool==="jug"}" data-dmset="${key}|tool|jug">Measuring jug</button></div></div>
+    </div>
+    <button class="btn primary big" data-dmsave="${key}" ${ok ? "" : "disabled"}>${ok ? "Save amounts · job done" : "Enter the chlorine measured first"}</button>
+  </div>`;
+}
+function finishDosing(code, tid){
+  const r0 = myRound(); if(!r0) return;
+  const s0 = r0.stops.find(x => x.outlet === code); const t0 = s0 && s0.tasks.find(x => x.id === tid); if(!t0) return;
+  const key = code+"|"+tid, d = dmState(key, t0), poolKey = dosingKeyFor(code, t0.pool);
+  const cl = Number(d.chlorine), acid = d.acid === "" ? 0 : Number(d.acid);
+  if(d.chlorine === "" || isNaN(cl) || cl < 0 || isNaN(acid) || acid < 0){ flash("Enter the chlorine measured (in grams) first."); return; }
+  const pd = t0.plannedDose;
+  const dosed = {chlorineG:cl, acidMl:acid, tool:d.tool,
+    plannedChlorineG: pd ? toGrams(pd.chlorine, pd.chlorineUnit) : null, plannedAcidMl: pd ? toMl(pd.acid, pd.acidUnit) : null,
+    at:new Date().toISOString(), by:state.me};
+  let finished = null;
+  withRound(r => {
+    const s = r.stops.find(x => x.outlet === code); if(!s) return false;
+    const t = s.tasks.find(x => x.id === tid); if(!t || !t.startedAt || t.doneAt) return false;
+    if(t.claimedBy !== state.me) return false;
+    t.doneAt = new Date().toISOString(); t.dosed = dosed;
+    finished = {name:t.name, kind:t.kind, pool:t.pool||null, doneAt:t.doneAt};
+  }, "Couldn't save the amounts. Try again.").then(() => {
+    if(!finished) return;
+    syncTaskToOtherRounds(code, finished, {doneAt:finished.doneAt, dosed});
+    // Joins the night's water_tests record (merge, so the reading written by
+    // the water test stays), or starts one if the dosing came first.
+    persist("water_tests/"+todayKey()+"__"+poolKey+"__night",
+      {outlet:code, pool:poolKey, date:todayKey(), slot:"night", source:"app",
+       dosedChlorineG:cl, dosedAcidMl:acid, dosingTool:d.tool, dosedAt:dosed.at, dosedBy:state.me},
+      () => {}, {merge:true});
+    delete state.dm[key];
+  });
+}
+
 /* ---------- technician ---------- */
 function techView(){
   if(!state.me) return pickPerson();
@@ -2206,11 +2309,15 @@ function taskRow(s, t){
   // dosing job that hasn't been done yet shows the dose the water test
   // worked out for this pool, so the technician never has to look it up.
   const detail = (finished && t.reading) ? `<span class="wt-read">${readingSummary(t.reading)}</span>`
+               : (finished && t.dosed) ? `<span class="wt-read">${dosedSummary(t.dosed)}</span>`
                : (!finished && t.plannedDose && isDosingTask(t)) ? `<span class="wt-read">${plannedDoseSummary(t.plannedDose)}</span>`
                : "";
   // The calculator opens inline under the water-test job the moment its
   // claimer taps it -- the reading and the dose are entered right here.
-  const panel = (running && mine && isWaterTestTask(t)) ? waterTestPanel(s, t) : "";
+  // The dosing job likewise opens its measured-amounts entry.
+  const panel = (running && mine && isWaterTestTask(t)) ? waterTestPanel(s, t)
+              : (running && mine && isDosingTask(t)) ? dosingPanel(s, t)
+              : "";
 
   return `<div class="task ${running?"running":""} ${finished?"finished":""}">
     <span class="mark">${finished?"✓":(running?"▶":"")}</span>
@@ -2505,6 +2612,7 @@ function stopJobList(s){
     // A finished water test carries its reading and the dose it called for;
     // a still-open dosing job shows the dose the water test worked out.
     const detail = (t.doneAt && t.reading) ? `<div class="job-row-read">${readingSummary(t.reading)}</div>`
+                 : (t.doneAt && t.dosed) ? `<div class="job-row-read">${dosedSummary(t.dosed)}</div>`
                  : (!t.doneAt && t.plannedDose && isDosingTask(t)) ? `<div class="job-row-read">${plannedDoseSummary(t.plannedDose)}</div>`
                  : "";
     return `<div class="job-row">
@@ -3585,6 +3693,15 @@ function wire(){
   each("[data-wtsave]", b => { const [o,t] = two(b.dataset.wtsave); finishWaterTest(o,t); });
   each("[data-wtretry]", () => { dosingData.tablesErr = false; loadDosingTables(); render(); });
   each("[data-wthistretry]", b => { loadPoolHistory(b.dataset.wthistretry, true); render(); });
+  // Manual dosing entry: typed grams/ml land in state.dm on every keystroke
+  // (no re-render, so the keyboard stays put); Save reads them back out.
+  document.querySelectorAll("[data-dmin]").forEach(i => i.addEventListener("input", () => {
+    const [o,t,f] = i.dataset.dmin.split("|"); const dd = dmState(o+"|"+t); dd[f] = i.value; dd.touched = true;
+    const btn = document.querySelector(`[data-dmsave="${o}|${t}"]`);
+    if(btn){ const d = dmState(o+"|"+t); const ok = d.chlorine !== "" && !isNaN(Number(d.chlorine)) && Number(d.chlorine) >= 0; btn.disabled = !ok; btn.textContent = ok ? "Save amounts · job done" : "Enter the chlorine measured first"; }
+  }));
+  each("[data-dmset]", b => { const [o,t,f,v] = b.dataset.dmset.split("|"); dmState(o+"|"+t)[f] = v; render(); });
+  each("[data-dmsave]", b => { const [o,t] = two(b.dataset.dmsave); finishDosing(o,t); });
   // The route diagram lives in a same-origin srcdoc iframe; size it to its
   // content once it loads so the whole plan shows without an inner scrollbar.
   document.querySelectorAll("iframe[data-wtroute]").forEach(f => f.addEventListener("load", () => {
