@@ -439,6 +439,13 @@ details.panel[open] summary::after{content:"▴"}
 .wt-read{display:block;width:100%;font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.45;color:var(--ink-2);margin-top:1px}
 .wt-read b{color:var(--accent);font-weight:600}
 .job-row-read{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-2);margin-top:4px;line-height:1.45}
+/* The photos themselves, on the row -- so a supervisor checks picture against
+   number by looking, not by opening each one. A tap still opens it full size. */
+.dose-photos{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.dose-photos button{padding:0;border:1px solid var(--line);border-radius:9px;background:#000;overflow:hidden;line-height:0;cursor:zoom-in;position:relative;width:132px;height:132px;flex:none}
+.dose-photos img{width:100%;height:100%;object-fit:cover;display:block}
+.dose-photos .dp-cap{position:absolute;left:0;right:0;bottom:0;padding:3px 6px;font:600 11px/1.2 "IBM Plex Sans",sans-serif;color:#fff;background:rgba(0,0,0,.55);text-align:left}
+.dose-photos .dp-fail{width:132px;height:132px;display:grid;place-items:center;border:1px dashed var(--line);border-radius:9px;color:var(--ink-3);font-size:12px;text-align:center;padding:6px}
 .job-row-read b{color:var(--accent);font-weight:600}
 
 @media(max-width:520px){
@@ -2089,10 +2096,16 @@ function dosedSummary(d){
   const src = d.chlorineSource === "photo" ? " · read from photo"
             : d.chlorineSource === "jug-fills" ? ` · ${d.jugFills || 0} × 1 L jar${(d.jugFills||0)===1?"":"s"}${d.jugPartMl ? " + "+d.jugPartMl+" ml" : ""}`
             : (photos.length ? " · typed" : "");
-  const links = photos.filter(x => x.fileId || x.url).map((x, i) => photoBtn(x, `📷 ${photos.length > 1 ? photoName(i+1).toLowerCase() : PHOTO_SUBJECT.toLowerCase()}`, photoName(i+1)));
+  const withFile = photos.filter(x => x.fileId), legacy = photos.filter(x => !x.fileId && x.url);
+  // Old records (no fileId) keep a text link; everything newer shows the photo.
+  const links = legacy.map((x, i) => photoBtn(x, `📷 ${photos.length > 1 ? photoName(i+1).toLowerCase() : PHOTO_SUBJECT.toLowerCase()}`, photoName(i+1)));
   const pending = photos.filter(x => x.pending).length;
   const photo = (links.length ? " · " + links.join(" ") : "") + (pending ? ` · <span class="muted">📷 ${pending} upload${pending>1?"s":""} pending</span>` : "");
-  return `Dosed <b>${fmtG(d.chlorineG)} chlorine · ${fmtMl(d.acidMl)} acid</b> (${d.tool === "jug" ? "jug" : "scale"})${plan}${src}${photo}${flag ? ' <span class="dev">⚠ off plan</span>' : ""}${mis !== null ? ` <span class="dev">⚠ photo shows ${fmtG(mis)}</span>` : ""}`;
+  const strip = withFile.length ? `<div class="dose-photos">${withFile.map((x, i) => {
+    const cap = photoName(photos.indexOf(x) + 1) + (x.readG !== null && x.readG !== undefined ? " · read " + fmtG(x.readG) : "");
+    return `<button type="button" data-photoview="${esc(x.fileId)}" data-photocap="${esc(cap)}" aria-label="Open ${esc(cap)}"><img src="${driveImg(x.fileId, 400)}" alt="" loading="lazy" onerror="this.parentNode.outerHTML='<div class=&quot;dp-fail&quot;>photo not loading</div>'"><span class="dp-cap">${esc(cap)}</span></button>`;
+  }).join("")}</div>` : "";
+  return `Dosed <b>${fmtG(d.chlorineG)} chlorine · ${fmtMl(d.acidMl)} acid</b> (${d.tool === "jug" ? "jug" : "scale"})${plan}${src}${photo}${flag ? ' <span class="dev">⚠ off plan</span>' : ""}${mis !== null ? ` <span class="dev">⚠ photo shows ${fmtG(mis)}</span>` : ""}${strip}`;
 }
 function dosingPanel(s, t){
   const key = s.outlet+"|"+t.id, d = dmState(key, t), pd = t.plannedDose;
