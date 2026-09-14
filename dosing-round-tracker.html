@@ -355,6 +355,45 @@ details.panel[open] summary::after{content:"▴"}
 .issue-card-desc{margin:0;font-weight:600;font-size:16px;line-height:1.4}
 .issue-meta-row{display:flex;gap:7px;flex-wrap:wrap}
 
+/* ---- Water test & dosing: the calculator, inline under a claimed water-test job ---- */
+.wt{background:var(--surface);padding:12px;display:flex;flex-direction:column;gap:12px;border-top:1px solid var(--line-soft)}
+.wt-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.wt-title{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:15px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-2)}
+.wt-lbl{font-family:"IBM Plex Mono",monospace;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.wt-lbl .link{font-size:12.5px;text-transform:none;letter-spacing:0}
+.wt-chips{display:flex;gap:6px;flex-wrap:wrap}
+.wt-chips .tog{min-width:48px;text-align:center;font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:15px;padding:9px 10px}
+.wt-chips .tog.neg{color:var(--urgent)}
+.wt-chips .tog.neg[aria-pressed="true"]{background:var(--urgent);border-color:var(--urgent);color:#fff}
+.wt-chips .tog[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.wt-dose{background:var(--accent);color:#fff;border-radius:10px;padding:12px 14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.wt-dose .k{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.8}
+.wt-dose .v{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:32px;line-height:1.05;font-variant-numeric:tabular-nums}
+.wt-dose .foot{grid-column:1/-1;font-size:12.5px;opacity:.85}
+.wt-dose.empty{background:var(--surface-2);color:var(--ink-3);display:block;text-align:center;font-size:14px;padding:14px;border:1px dashed var(--line)}
+.wt-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.wt-field{display:flex;flex-direction:column;gap:5px}
+.wt-field input{width:100%;font:500 16px "IBM Plex Sans",sans-serif;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+.wt-field .wt-chips .tog{font-family:"IBM Plex Sans",sans-serif;font-weight:500;font-size:14px;min-width:0;flex:1}
+.wt .panel{background:var(--surface-2)}
+.wt .panel summary{font-size:14.5px;padding:10px 12px}
+.wt-ref-body{padding:0 12px 12px;font-size:14px;color:var(--ink-2)}
+.wt-tc{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.wt-tc>div{background:var(--surface);border:1px solid var(--line-soft);border-radius:8px;padding:8px 10px}
+.wt-tc b{display:block;font-family:"Barlow Condensed",sans-serif;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:3px}
+.wt-tc span{font-family:"IBM Plex Mono",monospace;font-size:13.5px;display:block;line-height:1.5}
+.wt-tc .none{color:var(--ink-3);font-style:italic}
+.wt-hist{overflow-x:auto}
+.wt-hist table{width:100%;border-collapse:collapse;font-family:"IBM Plex Mono",monospace;font-size:12.5px;white-space:nowrap;background:var(--surface)}
+.wt-hist th,.wt-hist td{padding:6px 8px;border-bottom:1px solid var(--line-soft);text-align:left}
+.wt-hist th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.wt-hist .flag{color:var(--warn);font-weight:600}
+.wt-route iframe{width:100%;border:0;display:block;border-radius:8px;background:#fff;min-height:220px}
+.wt-read{display:block;width:100%;font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.45;color:var(--ink-2);margin-top:1px}
+.wt-read b{color:var(--accent);font-weight:600}
+.job-row-read{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-2);margin-top:4px;line-height:1.45}
+.job-row-read b{color:var(--accent);font-weight:600}
+
 @media(max-width:520px){
   .brand h1{font-size:23px}
   .stop{padding-left:44px}
@@ -544,6 +583,9 @@ const state = {
   expandedStops:{},      // roundId+"__"+outlet -> true, for stops whose job list is expanded on the Routes tab.
                           // Purely a view toggle (which jobs are done/undone at that stop) -- not persisted,
                           // resets on reload same as any other UI-only state here.
+  wt:{},                  // outlet|taskId -> the in-progress water-test entry (FC/pH chips tapped, temp typed...)
+                          // for a claimed water-test job. Lives here rather than in the DOM because the
+                          // view is rebuilt on every save/tick -- a half-entered reading must survive that.
   expandedOutlets:{},     // outlet code -> true, for cards expanded on Overview's "Outlets tonight" grid
                           // (shows that outlet's job list + open issues in place). Also view-only, not persisted.
   taskSettingDay:null     // 0-6 (Sun-Sat) -- which day's per-branch job assignment is currently being viewed/edited
@@ -1311,6 +1353,17 @@ function cancelClaim(code, tid){
 // Tapping the technician's own name (shown on a running job) marks it done.
 // Only the claimer can finish their own claimed job.
 function finishTask(code, tid){
+  // A water-test job finishes through its reading panel, so the FC/pH and
+  // the dose come with it -- tapping the name button just says so. Only once
+  // the dosing table is actually here, though: if it couldn't be loaded (no
+  // signal in the plant room) or hasn't arrived yet, a plain finish is still
+  // allowed rather than trapping the technician behind a spinner.
+  const r0 = myRound(), s0 = r0 && r0.stops.find(x => x.outlet === code), t0 = s0 && s0.tasks.find(x => x.id === tid);
+  if(t0 && isWaterTestTask(t0) && t0.claimedBy === state.me && dosingData.tables){
+    const w = wtState(code+"|"+tid);
+    if(w.fc === null || w.ph === null){ flash("Enter the water test reading below first — tap FC and pH, then Save."); return; }
+    finishWaterTest(code, tid); return;
+  }
   let finished = null, stopOutlet = null, issueId = null;
   withRound(r => {
     const s = r.stops.find(x=>x.outlet===code); if(!s) return false;
@@ -1579,6 +1632,274 @@ function externalUpdate(){
   const configuring = document.querySelector("details.panel[open]") || state.role === "tasksetting";
   if(typing || adding || configuring) return;
   render();
+}
+
+/* ================= water test & dosing calculator (inside the tracker) =================
+ * The dosing calculator (chunkayseo-ui.github.io/dosing-app) is a lookup table:
+ * outlet x weekday/weekend x FC x pH -> chlorine + acid. The technician used to
+ * open it as a separate app, read the dose off it, screenshot it, and post that
+ * to Telegram. This brings the same lookup -- and the same reference panels
+ * (today's earlier readings, expected/attended, past same-weekday dosing, the
+ * dosing route) -- into the water-test job itself, so the reading, the dose and
+ * the job's Done all happen on one screen. The amounts still come from the
+ * calculator's own data.csv, so Chun Kay keeps editing dosing in one place.
+ */
+const DOSING_APP_BASE = "https://chunkayseo-ui.github.io/dosing-app/";
+const DOSING_HISTORY_API = "https://script.google.com/macros/s/AKfycbwYJLfkw5lwKnjwqmEtuRiREzbahnf2l63YhmX_7jMR9uqM9MpeqoxeVTTVw5rc76eZ6g/exec";
+// The tracker's outlet codes are uppercase; the calculator's data.csv and the
+// water-test sheet spell two of them in title case. JE has no table of its own
+// -- its four pools each have one, so a JE job's `pool` is the key there.
+const DOSING_KEY_MAP = {LENTOR:"Lentor", TENGAH:"Tengah"};
+const UNIT_LABEL = {g:"g", kg:"kg", ml:"ml", l:"L"};
+const dosingData = {tables:null, tablesP:null, tablesErr:false, hist:{}, histP:{}, routeDoc:undefined, routeP:null};
+
+function dosingKeyFor(outletCode, pool){ return pool || DOSING_KEY_MAP[outletCode] || outletCode; }
+// Which must-do job is "the water test" and which is "the dosing" is decided
+// by name, since the job names are whatever Task Setting says they are
+// ("Water Test and Night Report", "Manual Dosing (Chlorine and Acid)"...).
+// The stock default "Water test & dosing" is one combined job and counts as
+// the water test.
+const isWaterTestTask = t => /water\s*test/i.test(t.name || "");
+const isDosingTask = t => /dosing/i.test(t.name || "") && !isWaterTestTask(t);
+const autoSchedule = () => [0,6].includes(operationalNow().getDay()) ? "weekend" : "weekday";
+function fmtAmt(v, unit){ return ((v % 1 === 0) ? v.toFixed(0) : String(v)) + " " + (UNIT_LABEL[unit] || unit); }
+
+function parseCSV(text){
+  const rows = []; let row = [], field = "", q = false;
+  for(let i=0; i<text.length; i++){
+    const c = text[i];
+    if(q){ if(c === '"'){ if(text[i+1] === '"'){ field += '"'; i++; } else q = false; } else field += c; }
+    else if(c === '"') q = true;
+    else if(c === ","){ row.push(field); field = ""; }
+    else if(c === "\r"){ /* skip */ }
+    else if(c === "\n"){ row.push(field); rows.push(row); row = []; field = ""; }
+    else field += c;
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows;
+}
+// Same shape the calculator builds: {key: {name, weekday:{fc:[],ph:[],grid:{fc:[dose per ph]}}, weekend:{...}}}
+function buildDosingTables(rows){
+  const idx = {}; rows[0].forEach((h,i) => idx[h.trim()] = i);
+  const out = {};
+  for(let i=1; i<rows.length; i++){
+    const r = rows[i]; if(!r || r.length < 9 || !r[idx.outlet]) continue;
+    const key = r[idx.outlet].trim(), sched = r[idx.schedule].trim();
+    const fc = parseFloat(r[idx.fc]), ph = parseFloat(r[idx.ph]), cl = parseFloat(r[idx.chlorine]), acid = parseFloat(r[idx.acid]);
+    if([fc,ph,cl,acid].some(isNaN)) continue;
+    if(!out[key]) out[key] = {name:r[idx.name].trim()};
+    if(!out[key][sched]) out[key][sched] = {fc:[], ph:[], grid:{}};
+    const t = out[key][sched];
+    if(!t.fc.includes(fc)) t.fc.push(fc);
+    if(!t.ph.includes(ph)) t.ph.push(ph);
+    (t.grid[String(fc)] = t.grid[String(fc)] || {})[ph] = {cl, clUnit:r[idx.chlorine_unit].trim(), acid, acidUnit:r[idx.acid_unit].trim()};
+  }
+  Object.values(out).forEach(o => ["weekday","weekend"].forEach(s => {
+    const t = o[s]; if(!t) return;
+    t.fc.sort((a,b)=>a-b); t.ph.sort((a,b)=>a-b);
+    const g = {}; Object.keys(t.grid).forEach(k => { g[k] = t.ph.map(p => t.grid[k][p] || null); }); t.grid = g;
+  }));
+  return out;
+}
+// Each loader re-renders once its data lands, but only if a water-test panel
+// is actually on screen waiting for it -- nobody else cares.
+function rerenderIfPanelOpen(){ if(document.querySelector(".wt")) render(); }
+function loadDosingTables(){
+  // A failed load stays failed until the Retry button clears tablesErr --
+  // otherwise the re-render after a failure would kick off another load,
+  // whose failure re-renders again, forever (with no signal, that's a
+  // request every few hundred ms and a screen that never settles).
+  if(dosingData.tables || dosingData.tablesP || dosingData.tablesErr) return;
+  dosingData.tablesP = fetch(DOSING_APP_BASE + "data.csv?_=" + Date.now()).then(r => { if(!r.ok) throw new Error("HTTP "+r.status); return r.text(); })
+    .then(txt => { dosingData.tables = buildDosingTables(parseCSV(txt)); dosingData.tablesErr = false; })
+    .catch(() => { dosingData.tablesErr = true; })
+    .finally(() => { dosingData.tablesP = null; rerenderIfPanelOpen(); });
+}
+function loadPoolHistory(key){
+  if(dosingData.hist[key] !== undefined || dosingData.histP[key]) return;
+  dosingData.histP[key] = fetch(DOSING_HISTORY_API + "?pool=" + encodeURIComponent(key)).then(r => { if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(j => { dosingData.hist[key] = j[key] || []; })
+    .catch(() => { dosingData.hist[key] = false; })
+    .finally(() => { delete dosingData.histP[key]; rerenderIfPanelOpen(); });
+}
+function loadRouteDoc(){
+  if(dosingData.routeDoc !== undefined || dosingData.routeP) return;
+  dosingData.routeP = fetch(DOSING_APP_BASE + "dosing-route.html").then(r => { if(!r.ok) throw new Error("HTTP "+r.status); return r.text(); })
+    .then(txt => { dosingData.routeDoc = new DOMParser().parseFromString(txt, "text/html"); })
+    .catch(() => { dosingData.routeDoc = null; })
+    .finally(() => { dosingData.routeP = null; rerenderIfPanelOpen(); });
+}
+function dosingTable(key, schedule){
+  const o = dosingData.tables && dosingData.tables[key]; if(!o) return null;
+  return o[schedule] || o.weekday || o.weekend || null;
+}
+function doseFor(key, schedule, fc, ph){
+  const t = dosingTable(key, schedule); if(!t || fc === null || ph === null) return null;
+  const row = t.grid[String(fc)]; const i = t.ph.indexOf(ph);
+  return (row && i >= 0 && row[i]) ? row[i] : null;
+}
+function wtState(key){
+  if(!state.wt[key]) state.wt[key] = {schedule:autoSchedule(), fc:null, ph:null, showNeg:false, temp:"", clarity:"clear", chlorinator:"on", pump:"on", attended:""};
+  return state.wt[key];
+}
+function readingSummary(rd){
+  const bits = [`FC ${rd.fc}`, `pH ${Number(rd.ph).toFixed(1)}`];
+  if(rd.temp !== null && rd.temp !== undefined) bits.push(`${rd.temp}°C`);
+  return `${bits.join(" · ")} → <b>${fmtAmt(rd.chlorine, rd.chlorineUnit)} chlorine · ${fmtAmt(rd.acid, rd.acidUnit)} acid</b>`;
+}
+function plannedDoseSummary(pd){
+  return `Dose tonight: <b>${fmtAmt(pd.chlorine, pd.chlorineUnit)} chlorine · ${fmtAmt(pd.acid, pd.acidUnit)} acid</b> (from FC ${pd.fc} · pH ${Number(pd.ph).toFixed(1)})`;
+}
+
+// --- the reference panels, same content the calculator shows under its readout ---
+function wtTodayHtml(key){
+  const recs = dosingData.hist[key];
+  if(recs === undefined){ loadPoolHistory(key); return '<div class="muted">Loading today\'s readings…</div>'; }
+  if(recs === false) return '<div class="muted">Couldn\'t load today\'s readings right now.</div>';
+  const rec = recs.find(r => r.date === todayKey());
+  if(!rec) return `<div class="muted">No morning or afternoon reading logged yet today for ${esc(key)}.</div>`;
+  const val = (v, suf="") => (v === null || v === undefined) ? '<span class="none">not logged</span>' : `<span>${esc(String(v))}${suf}</span>`;
+  const block = (label, fc, ph, temp) => `<div><b>${label}</b>FC ${val(fc)}pH ${val(ph === null || ph === undefined ? null : Number(ph).toFixed(1))}Temp ${val(temp, "°C")}</div>`;
+  return `<div class="wt-tc">
+    ${block("Morning", rec.fc.morning, rec.ph.morning, rec.temp ? rec.temp.morning : null)}
+    ${block("Afternoon", rec.fc.afternoon, rec.ph.afternoon, rec.temp ? rec.temp.afternoon : null)}
+    <div><b>Expected (7am)</b>${val(rec.expected7am)}</div>
+    <div><b>Attended (8pm)</b>${val(rec.attended8pm)}</div>
+  </div>`;
+}
+function wtHistoryHtml(key){
+  const recs = dosingData.hist[key];
+  if(recs === undefined){ loadPoolHistory(key); return '<div class="muted">Loading history…</div>'; }
+  if(recs === false) return '<div class="muted">Couldn\'t load history right now.</div>';
+  const dow = operationalNow().getDay();
+  const rows = recs.filter(r => new Date(r.date+"T00:00:00").getDay() === dow).slice(0, 8);
+  if(!rows.length) return `<div class="muted">No past ${DAYNAME_FULL[dow]} records yet for ${esc(key)}.</div>`;
+  const f = v => (v === null || v === undefined) ? "–" : esc(String(v));
+  const fp = v => (v === null || v === undefined) ? "–" : Number(v).toFixed(1);
+  return `<div class="wt-hist"><table>
+    <thead><tr><th>Date</th><th>FC AM</th><th>FC PM</th><th>FC Night</th><th>pH Night</th><th>Chlorine</th><th>Acid</th><th>Attended</th></tr></thead>
+    <tbody>${rows.map(r => {
+      const d = new Date(r.date+"T00:00:00");
+      const drop = r.fc.night !== null && r.fc.afternoon !== null && r.fc.night > r.fc.afternoon;
+      return `<tr><td>${d.getDate()} ${MONTH_ABBR[d.getMonth()]}</td><td>${f(r.fc.morning)}</td><td>${f(r.fc.afternoon)}</td>
+        <td>${drop ? `<span class="flag" title="Night FC higher than afternoon — worth a retest">${f(r.fc.night)} ⚠</span>` : f(r.fc.night)}</td>
+        <td>${fp(r.ph.night)}</td><td>${f(r.dosing.chlorine)}</td><td>${f(r.dosing.acid)}</td><td>${f(r.attended)}</td></tr>`;
+    }).join("")}</tbody></table></div>
+    <div class="muted" style="font-size:12px;margin-top:6px">⚠ night FC above the afternoon reading — worth a retest before dosing off it.</div>`;
+}
+function wtRouteHtml(code){
+  const doc = dosingData.routeDoc;
+  if(doc === undefined){ loadRouteDoc(); return '<div class="muted">Loading dosing route…</div>'; }
+  if(doc === null) return `<div class="muted">Couldn't load the route. <a class="link" href="${DOSING_APP_BASE}dosing-route.html" target="_blank" rel="noopener">Open the route page</a></div>`;
+  let card = null;
+  doc.querySelectorAll(".card").forEach(c => { const el = c.querySelector(".card-head .code"); if(!card && el && el.textContent.trim().toUpperCase() === code.toUpperCase()) card = c.outerHTML; });
+  if(!card) return `<div class="muted">No dosing route on file yet for ${esc(code)}.</div>`;
+  const css = [...doc.querySelectorAll("style")].map(s => s.textContent).join("\n");
+  const srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}
+    body{padding:0;margin:0;background:transparent}.card{margin:0}.plan{overflow-x:auto;-webkit-overflow-scrolling:touch}.plan svg{width:170%;max-width:none}</style></head>
+    <body><div style="font:11px 'IBM Plex Sans',sans-serif;color:#7b8a91;text-align:center;padding:6px 0 2px">Swipe left/right on the diagram to see the full pool ↔</div>${card}</body></html>`;
+  return `<div class="wt-route"><iframe title="Dosing route for ${esc(code)}" scrolling="no" data-wtroute srcdoc="${esc(srcdoc)}"></iframe>
+    <a class="link" href="${DOSING_APP_BASE}dosing-route.html" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px">Open full-size route</a></div>`;
+}
+const DAYNAME_FULL = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
+// The panel itself: rendered right under a water-test job the current
+// technician has claimed and not yet finished.
+function waterTestPanel(s, t){
+  const key = s.outlet+"|"+t.id, w = wtState(key), poolKey = dosingKeyFor(s.outlet, t.pool);
+  const routeCode = (t.pool || s.outlet).toUpperCase();
+  if(!dosingData.tables){
+    loadDosingTables();
+    return `<div class="wt"><div class="wt-head"><span class="wt-title">Water test · ${esc(poolKey)}</span></div>
+      <div class="wt-dose empty">${dosingData.tablesErr ? "Couldn't load the dosing table — check your signal, then tap to retry." : "Loading dosing table…"}</div>
+      ${dosingData.tablesErr ? `<button class="btn" data-wtretry>Retry</button>` : ""}</div>`;
+  }
+  const table = dosingTable(poolKey, w.schedule);
+  if(!table) return `<div class="wt"><div class="wt-head"><span class="wt-title">Water test · ${esc(poolKey)}</span></div>
+    <div class="wt-dose empty">No dosing table for ${esc(poolKey)} in the calculator's data.csv.</div></div>`;
+  const o = dosingData.tables[poolKey];
+  const hasNeg = table.fc.some(v => v < 0);
+  const fcChips = table.fc.filter(v => v >= 0 || w.showNeg || v === w.fc).map(v =>
+    `<button class="tog ${v<0?"neg":""}" aria-pressed="${w.fc===v}" data-wtfc="${key}|${v}">${v}</button>`).join("");
+  const phChips = table.ph.map(v => `<button class="tog" aria-pressed="${w.ph===v}" data-wtph="${key}|${v}">${v.toFixed(1)}</button>`).join("");
+  const dose = doseFor(poolKey, w.schedule, w.fc, w.ph);
+  const doseHtml = dose
+    ? `<div class="wt-dose"><div><div class="k">Chlorine</div><div class="v">${fmtAmt(dose.cl, dose.clUnit)}</div></div>
+       <div><div class="k">Acid</div><div class="v">${fmtAmt(dose.acid, dose.acidUnit)}</div></div>
+       <div class="foot">${w.schedule==="weekday"?"Weekday (Mon–Fri)":"Weekend"} dosing · FC ${w.fc} · pH ${w.ph.toFixed(1)}</div></div>`
+    : `<div class="wt-dose empty">Tap FC and pH to see tonight's dose</div>`;
+  const onoff = (field, val) => `<div class="wt-chips">
+      <button class="tog" aria-pressed="${val==="on"}" data-wtset="${key}|${field}|on">ON</button>
+      <button class="tog" aria-pressed="${val==="off"}" data-wtset="${key}|${field}|off">OFF</button></div>`;
+  const pOpen = k => state.panelsOpen[k] ? "open" : "";
+  const kToday = "wt-today-"+key, kHist = "wt-hist-"+key, kRoute = "wt-route-"+key;
+  return `<div class="wt" data-wtpanel="${key}">
+    <div class="wt-head">
+      <span class="wt-title">Water test · ${esc(poolKey)}</span>
+      <div class="seg" role="group" aria-label="Dosing schedule">
+        ${o.weekday ? `<button aria-pressed="${w.schedule==="weekday"}" data-wtsched="${key}|weekday">Weekday</button>` : ""}
+        ${o.weekend ? `<button aria-pressed="${w.schedule==="weekend"}" data-wtsched="${key}|weekend">Weekend</button>` : ""}
+      </div>
+    </div>
+    <div>
+      <div class="wt-lbl"><span>Free chlorine</span>${hasNeg ? `<button class="link" data-wtneg="${key}">${w.showNeg ? "Hide below 0" : "Show below 0"}</button>` : ""}</div>
+      <div class="wt-chips">${fcChips}</div>
+    </div>
+    <div>
+      <div class="wt-lbl"><span>pH</span></div>
+      <div class="wt-chips">${phChips}</div>
+    </div>
+    ${doseHtml}
+    <div class="wt-grid">
+      <label class="wt-field"><span class="wt-lbl">Pool temperature °C</span><input type="number" inputmode="decimal" step="0.1" data-wtin="${key}|temp" value="${esc(w.temp)}" placeholder="e.g. 30.5"></label>
+      <label class="wt-field"><span class="wt-lbl">Attended (8pm)</span><input type="number" inputmode="numeric" data-wtin="${key}|attended" value="${esc(w.attended)}" placeholder="count"></label>
+      <div class="wt-field"><span class="wt-lbl">Water clarity</span><div class="wt-chips">
+        <button class="tog" aria-pressed="${w.clarity==="clear"}" data-wtset="${key}|clarity|clear">Clear</button>
+        <button class="tog" aria-pressed="${w.clarity==="cloudy"}" data-wtset="${key}|clarity|cloudy">Cloudy</button></div></div>
+      <div class="wt-field"><span class="wt-lbl">Salt chlorinator</span>${onoff("chlorinator", w.chlorinator)}</div>
+      <div class="wt-field"><span class="wt-lbl">Circulation pump</span>${onoff("pump", w.pump)}</div>
+    </div>
+    <details class="panel" data-panel="${kToday}" ${pOpen(kToday)}><summary>Today's earlier readings</summary><div class="wt-ref-body">${state.panelsOpen[kToday] ? wtTodayHtml(poolKey) : ""}</div></details>
+    <details class="panel" data-panel="${kHist}" ${pOpen(kHist)}><summary>Past ${DAYNAME_FULL[operationalNow().getDay()]}s</summary><div class="wt-ref-body">${state.panelsOpen[kHist] ? wtHistoryHtml(poolKey) : ""}</div></details>
+    <details class="panel" data-panel="${kRoute}" ${pOpen(kRoute)}><summary>Dosing route</summary><div class="wt-ref-body">${state.panelsOpen[kRoute] ? wtRouteHtml(routeCode) : ""}</div></details>
+    <button class="btn primary big" data-wtsave="${key}" ${dose ? "" : "disabled"}>${dose ? "Save reading · job done" : "Tap FC and pH first"}</button>
+  </div>`;
+}
+
+// Finishing a water-test job goes through here rather than finishTask, so the
+// reading and the looked-up dose travel with the Done: stamped on the job
+// (and mirrored to a teammate's copy), pre-filled onto the same pool's dosing
+// job, and written to water_tests as the tracker's own record of the test.
+function finishWaterTest(code, tid){
+  const r0 = myRound(); if(!r0) return;
+  const s0 = r0.stops.find(x => x.outlet === code); const t0 = s0 && s0.tasks.find(x => x.id === tid); if(!t0) return;
+  const key = code+"|"+tid, w = wtState(key), poolKey = dosingKeyFor(code, t0.pool);
+  const dose = doseFor(poolKey, w.schedule, w.fc, w.ph);
+  if(!dose){ flash("Tap the FC and pH readings first."); return; }
+  const num = v => (v === "" || v === null || v === undefined || isNaN(Number(v))) ? null : Number(v);
+  const reading = {pool:poolKey, schedule:w.schedule, fc:w.fc, ph:w.ph, temp:num(w.temp), clarity:w.clarity,
+    chlorinator:w.chlorinator, pump:w.pump, attended:num(w.attended),
+    chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit,
+    takenAt:new Date().toISOString(), takenBy:state.me};
+  let finished = null, dosingSync = null;
+  withRound(r => {
+    const s = r.stops.find(x => x.outlet === code); if(!s) return false;
+    const t = s.tasks.find(x => x.id === tid); if(!t || !t.startedAt || t.doneAt) return false;
+    if(t.claimedBy !== state.me) return false;
+    t.doneAt = new Date().toISOString(); t.reading = reading;
+    finished = {name:t.name, kind:t.kind, pool:t.pool||null, doneAt:t.doneAt};
+    const d = s.tasks.find(x => isDosingTask(x) && (x.pool||null) === (t.pool||null));
+    if(d){
+      d.plannedDose = {chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit, fc:w.fc, ph:w.ph};
+      dosingSync = {match:{name:d.name, kind:d.kind, pool:d.pool||null}, patch:{plannedDose:d.plannedDose}};
+    }
+  }, "Couldn't save the reading. Try again.").then(() => {
+    if(!finished) return;
+    syncTaskToOtherRounds(code, finished, {doneAt:finished.doneAt, reading});
+    if(dosingSync) syncTaskToOtherRounds(code, dosingSync.match, dosingSync.patch);
+    persist("water_tests/"+todayKey()+"__"+poolKey+"__night", Object.assign({outlet:code, date:todayKey(), slot:"night", source:"app"}, reading), () => {});
+    delete state.wt[key];
+  });
 }
 
 /* ---------- technician ---------- */
@@ -1866,15 +2187,26 @@ function taskRow(s, t){
   const del = (!t.startedAt && t.kind==="adhoc" && !s.departAt)
     ? `<button class="link" data-rmtask="${key}" aria-label="Remove ${esc(t.name)}">remove</button>` : "";
 
+  // A finished water test shows what was read and what it called for; a
+  // dosing job that hasn't been done yet shows the dose the water test
+  // worked out for this pool, so the technician never has to look it up.
+  const detail = (finished && t.reading) ? `<span class="wt-read">${readingSummary(t.reading)}</span>`
+               : (!finished && t.plannedDose && isDosingTask(t)) ? `<span class="wt-read">${plannedDoseSummary(t.plannedDose)}</span>`
+               : "";
+  // The calculator opens inline under the water-test job the moment its
+  // claimer taps it -- the reading and the dose are entered right here.
+  const panel = (running && mine && isWaterTestTask(t)) ? waterTestPanel(s, t) : "";
+
   return `<div class="task ${running?"running":""} ${finished?"finished":""}">
     <span class="mark">${finished?"✓":(running?"▶":"")}</span>
     <span class="task-main">
       <span class="task-name">${esc(t.name)}</span>
       <span class="task-meta">${status}${tag}${del}</span>
+      ${detail}
       ${conflictNote}
     </span>
     ${time}${act}
-  </div>`;
+  </div>${panel}`;
 }
 
 function priorityTag(p){
@@ -2155,9 +2487,14 @@ function stopJobList(s){
               : "";
     // Name gets its own line, tags/status/claimer sit together below it --
     // keeps the job title readable instead of wrapping mid-word around tags.
+    // A finished water test carries its reading and the dose it called for;
+    // a still-open dosing job shows the dose the water test worked out.
+    const detail = (t.doneAt && t.reading) ? `<div class="job-row-read">${readingSummary(t.reading)}</div>`
+                 : (!t.doneAt && t.plannedDose && isDosingTask(t)) ? `<div class="job-row-read">${plannedDoseSummary(t.plannedDose)}</div>`
+                 : "";
     return `<div class="job-row">
       <div class="job-row-name">${t.pool?`<span class="tag pool">${esc(t.pool)}</span> `:""}${esc(t.name)}</div>
-      <div class="job-row-tags">${kindTag}${who}${tStatus}</div>
+      <div class="job-row-tags">${kindTag}${who}${tStatus}</div>${detail}
     </div>`;
   }).join("")}</div>`;
 }
@@ -3115,6 +3452,17 @@ function wire(){
   const on = (sel, fn, ev) => { const e = $(sel); if(e) e.addEventListener(ev||"click", fn); };
   const each = (sel, fn, ev) => document.querySelectorAll(sel).forEach(el => el.addEventListener(ev||"click", () => fn(el)));
 
+  // The water-test panel's reference sections (today's readings, history,
+  // route) only render their body once opened, so a real open/close needs a
+  // redraw. Guarded on an actual state change: a freshly rendered <details
+  // open> can fire toggle on insertion, and re-rendering on that would loop.
+  // Registered before the generic remember-open listener below so the
+  // comparison sees the previous value.
+  document.querySelectorAll(".wt details.panel[data-panel]").forEach(d =>
+    d.addEventListener("toggle", () => {
+      if(!!state.panelsOpen[d.dataset.panel] === d.open) return;
+      state.panelsOpen[d.dataset.panel] = d.open; render();
+    }));
   // Remember open/closed per panel across redraws — the view is rebuilt on every
   // save and every incoming update, which would otherwise slam an open panel shut.
   document.querySelectorAll("details.panel[data-panel]").forEach(d =>
@@ -3211,6 +3559,29 @@ function wire(){
   if(nt) nt.addEventListener("keydown", e => {
     if(e.key === "Enter"){ const b = document.querySelector("[data-addtask]"); if(b) addTask(b.dataset.addtask, nt.value); }
   });
+
+  // Water test panel: every chip tap lands in state.wt (never only in the
+  // DOM), then re-renders -- the dose readout and the Save button follow.
+  each("[data-wtsched]", b => { const [o,t,v] = b.dataset.wtsched.split("|"); const w = wtState(o+"|"+t); w.schedule = v; w.fc = null; w.ph = null; render(); });
+  each("[data-wtfc]",  b => { const [o,t,v] = b.dataset.wtfc.split("|"); wtState(o+"|"+t).fc = parseFloat(v); render(); });
+  each("[data-wtph]",  b => { const [o,t,v] = b.dataset.wtph.split("|"); wtState(o+"|"+t).ph = parseFloat(v); render(); });
+  each("[data-wtneg]", b => { const w = wtState(b.dataset.wtneg); w.showNeg = !w.showNeg; render(); });
+  each("[data-wtset]", b => { const [o,t,f,v] = b.dataset.wtset.split("|"); wtState(o+"|"+t)[f] = v; render(); });
+  each("[data-wtsave]", b => { const [o,t] = two(b.dataset.wtsave); finishWaterTest(o,t); });
+  each("[data-wtretry]", () => { dosingData.tablesErr = false; loadDosingTables(); render(); });
+  // Typed fields save on every keystroke without a re-render, so the keyboard
+  // stays put; the value is read back out of state.wt at Save time.
+  document.querySelectorAll("[data-wtin]").forEach(i => i.addEventListener("input", () => {
+    const [o,t,f] = i.dataset.wtin.split("|"); wtState(o+"|"+t)[f] = i.value;
+  }));
+  // The route diagram lives in a same-origin srcdoc iframe; size it to its
+  // content once it loads so the whole plan shows without an inner scrollbar.
+  document.querySelectorAll("iframe[data-wtroute]").forEach(f => f.addEventListener("load", () => {
+    try{
+      const doc = f.contentDocument; f.style.height = (doc.body.scrollHeight + 16) + "px";
+      const plan = doc.querySelector(".plan"); if(plan) plan.scrollLeft = (plan.scrollWidth - plan.clientWidth) / 2;
+    }catch(e){}
+  }));
 
   each("[data-tbgroup]", b => { state.timeByGroup = b.dataset.tbgroup; render(); });
 
