@@ -1715,11 +1715,23 @@ function loadDosingTables(){
     .catch(() => { dosingData.tablesErr = true; })
     .finally(() => { dosingData.tablesP = null; rerenderIfPanelOpen(); });
 }
-function loadPoolHistory(key){
+// The sheet API is an Apps Script that scans a sheet on a cold call -- it can
+// take 10-20 s and occasionally fails outright the first time, then answers
+// fine a moment later. So a failure isn't final: it retries itself a couple
+// of times with a growing pause, and the panel offers a manual Retry too.
+const histAttempts = {};
+function loadPoolHistory(key, force){
+  if(force){ delete dosingData.hist[key]; histAttempts[key] = 0; }
   if(dosingData.hist[key] !== undefined || dosingData.histP[key]) return;
+  histAttempts[key] = (histAttempts[key] || 0) + 1;
   dosingData.histP[key] = fetch(DOSING_HISTORY_API + "?pool=" + encodeURIComponent(key)).then(r => { if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
-    .then(j => { dosingData.hist[key] = j[key] || []; })
-    .catch(() => { dosingData.hist[key] = false; })
+    .then(j => { dosingData.hist[key] = j[key] || []; histAttempts[key] = 0; })
+    .catch(() => {
+      dosingData.hist[key] = false;
+      if(histAttempts[key] < 3) setTimeout(() => {
+        if(dosingData.hist[key] === false){ delete dosingData.hist[key]; rerenderIfPanelOpen(); }
+      }, 5000 * histAttempts[key]);
+    })
     .finally(() => { delete dosingData.histP[key]; rerenderIfPanelOpen(); });
 }
 function loadRouteDoc(){
@@ -1754,8 +1766,8 @@ function plannedDoseSummary(pd){
 // --- the reference panels, same content the calculator shows under its readout ---
 function wtTodayHtml(key){
   const recs = dosingData.hist[key];
-  if(recs === undefined){ loadPoolHistory(key); return '<div class="muted">Loading today\'s readings…</div>'; }
-  if(recs === false) return '<div class="muted">Couldn\'t load today\'s readings right now.</div>';
+  if(recs === undefined){ loadPoolHistory(key); return '<div class="muted">Loading today\'s readings… (the sheet can take 10–20 s)</div>'; }
+  if(recs === false) return `<div class="muted">Couldn't load today's readings right now. <button class="link" data-wthistretry="${esc(key)}">Retry</button></div>`;
   const rec = recs.find(r => r.date === todayKey());
   if(!rec) return `<div class="muted">No morning or afternoon reading logged yet today for ${esc(key)}.</div>`;
   const val = (v, suf="") => (v === null || v === undefined) ? '<span class="none">not logged</span>' : `<span>${esc(String(v))}${suf}</span>`;
@@ -1769,8 +1781,8 @@ function wtTodayHtml(key){
 }
 function wtHistoryHtml(key){
   const recs = dosingData.hist[key];
-  if(recs === undefined){ loadPoolHistory(key); return '<div class="muted">Loading history…</div>'; }
-  if(recs === false) return '<div class="muted">Couldn\'t load history right now.</div>';
+  if(recs === undefined){ loadPoolHistory(key); return '<div class="muted">Loading history… (the sheet can take 10–20 s)</div>'; }
+  if(recs === false) return `<div class="muted">Couldn't load history right now. <button class="link" data-wthistretry="${esc(key)}">Retry</button></div>`;
   const dow = operationalNow().getDay();
   const rows = recs.filter(r => new Date(r.date+"T00:00:00").getDay() === dow).slice(0, 8);
   if(!rows.length) return `<div class="muted">No past ${DAYNAME_FULL[dow]} records yet for ${esc(key)}.</div>`;
@@ -3569,6 +3581,7 @@ function wire(){
   each("[data-wtset]", b => { const [o,t,f,v] = b.dataset.wtset.split("|"); wtState(o+"|"+t)[f] = v; render(); });
   each("[data-wtsave]", b => { const [o,t] = two(b.dataset.wtsave); finishWaterTest(o,t); });
   each("[data-wtretry]", () => { dosingData.tablesErr = false; loadDosingTables(); render(); });
+  each("[data-wthistretry]", b => { loadPoolHistory(b.dataset.wthistretry, true); render(); });
   // Typed fields save on every keystroke without a re-render, so the keyboard
   // stays put; the value is read back out of state.wt at Save time.
   document.querySelectorAll("[data-wtin]").forEach(i => i.addEventListener("input", () => {
