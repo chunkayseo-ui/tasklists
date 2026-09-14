@@ -373,7 +373,6 @@ details.panel[open] summary::after{content:"▴"}
 .wt-dose.empty{background:var(--surface-2);color:var(--ink-3);display:block;text-align:center;font-size:14px;padding:14px;border:1px dashed var(--line)}
 .wt-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .wt-field{display:flex;flex-direction:column;gap:5px}
-.wt-field input{width:100%;font:500 16px "IBM Plex Sans",sans-serif;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
 .wt-field .wt-chips .tog{font-family:"IBM Plex Sans",sans-serif;font-weight:500;font-size:14px;min-width:0;flex:1}
 .wt .panel{background:var(--surface-2)}
 .wt .panel summary{font-size:14.5px;padding:10px 12px}
@@ -1751,12 +1750,12 @@ function doseFor(key, schedule, fc, ph){
   return (row && i >= 0 && row[i]) ? row[i] : null;
 }
 function wtState(key){
-  if(!state.wt[key]) state.wt[key] = {schedule:autoSchedule(), fc:null, ph:null, showNeg:false, temp:"", clarity:"clear", chlorinator:"on", pump:"on", attended:""};
+  if(!state.wt[key]) state.wt[key] = {schedule:autoSchedule(), fc:null, ph:null, showNeg:false, chlorinator:"on"};
   return state.wt[key];
 }
 function readingSummary(rd){
   const bits = [`FC ${rd.fc}`, `pH ${Number(rd.ph).toFixed(1)}`];
-  if(rd.temp !== null && rd.temp !== undefined) bits.push(`${rd.temp}°C`);
+  if(rd.chlorinator) bits.push(`chlorinator ${rd.chlorinator.toUpperCase()}`);
   return `${bits.join(" · ")} → <b>${fmtAmt(rd.chlorine, rd.chlorineUnit)} chlorine · ${fmtAmt(rd.acid, rd.acidUnit)} acid</b>`;
 }
 function plannedDoseSummary(pd){
@@ -1863,13 +1862,7 @@ function waterTestPanel(s, t){
     </div>
     ${doseHtml}
     <div class="wt-grid">
-      <label class="wt-field"><span class="wt-lbl">Pool temperature °C</span><input type="number" inputmode="decimal" step="0.1" data-wtin="${key}|temp" value="${esc(w.temp)}" placeholder="e.g. 30.5"></label>
-      <label class="wt-field"><span class="wt-lbl">Attended (8pm)</span><input type="number" inputmode="numeric" data-wtin="${key}|attended" value="${esc(w.attended)}" placeholder="count"></label>
-      <div class="wt-field"><span class="wt-lbl">Water clarity</span><div class="wt-chips">
-        <button class="tog" aria-pressed="${w.clarity==="clear"}" data-wtset="${key}|clarity|clear">Clear</button>
-        <button class="tog" aria-pressed="${w.clarity==="cloudy"}" data-wtset="${key}|clarity|cloudy">Cloudy</button></div></div>
       <div class="wt-field"><span class="wt-lbl">Salt chlorinator</span>${onoff("chlorinator", w.chlorinator)}</div>
-      <div class="wt-field"><span class="wt-lbl">Circulation pump</span>${onoff("pump", w.pump)}</div>
     </div>
     <details class="panel" data-panel="${kToday}" ${pOpen(kToday)}><summary>Today's earlier readings</summary><div class="wt-ref-body">${state.panelsOpen[kToday] ? wtTodayHtml(poolKey) : ""}</div></details>
     <details class="panel" data-panel="${kHist}" ${pOpen(kHist)}><summary>Past ${DAYNAME_FULL[operationalNow().getDay()]}s</summary><div class="wt-ref-body">${state.panelsOpen[kHist] ? wtHistoryHtml(poolKey) : ""}</div></details>
@@ -1888,9 +1881,10 @@ function finishWaterTest(code, tid){
   const key = code+"|"+tid, w = wtState(key), poolKey = dosingKeyFor(code, t0.pool);
   const dose = doseFor(poolKey, w.schedule, w.fc, w.ph);
   if(!dose){ flash("Tap the FC and pH readings first."); return; }
-  const num = v => (v === "" || v === null || v === undefined || isNaN(Number(v))) ? null : Number(v);
-  const reading = {pool:poolKey, schedule:w.schedule, fc:w.fc, ph:w.ph, temp:num(w.temp), clarity:w.clarity,
-    chlorinator:w.chlorinator, pump:w.pump, attended:num(w.attended),
+  // Just what confirms the dose: the reading, the chlorinator state, the
+  // looked-up amounts. (Temperature, clarity, pump and attendance were here
+  // at first; Chun Kay dropped them -- not needed to confirm the result.)
+  const reading = {pool:poolKey, schedule:w.schedule, fc:w.fc, ph:w.ph, chlorinator:w.chlorinator,
     chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit,
     takenAt:new Date().toISOString(), takenBy:state.me};
   let finished = null, dosingSync = null;
@@ -3582,11 +3576,6 @@ function wire(){
   each("[data-wtsave]", b => { const [o,t] = two(b.dataset.wtsave); finishWaterTest(o,t); });
   each("[data-wtretry]", () => { dosingData.tablesErr = false; loadDosingTables(); render(); });
   each("[data-wthistretry]", b => { loadPoolHistory(b.dataset.wthistretry, true); render(); });
-  // Typed fields save on every keystroke without a re-render, so the keyboard
-  // stays put; the value is read back out of state.wt at Save time.
-  document.querySelectorAll("[data-wtin]").forEach(i => i.addEventListener("input", () => {
-    const [o,t,f] = i.dataset.wtin.split("|"); wtState(o+"|"+t)[f] = i.value;
-  }));
   // The route diagram lives in a same-origin srcdoc iframe; size it to its
   // content once it loads so the whole plan shows without an inner scrollbar.
   document.querySelectorAll("iframe[data-wtroute]").forEach(f => f.addEventListener("load", () => {
