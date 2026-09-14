@@ -2067,8 +2067,23 @@ document.addEventListener("click", e => {
   if(lb && lb.classList.contains("open") && (e.target.closest(".lb-close") || e.target === lb || e.target.classList.contains("lb-body"))) closePhoto();
 });
 document.addEventListener("keydown", e => { if(e.key === "Escape") closePhoto(); });
+// The point of reading the display is not to save typing -- it is a second
+// witness. A technician who types the planned figure without weighing it leaves
+// no trace at all today; with a reading, the photo and the entry disagree, and
+// that disagreement is the thing worth a supervisor's attention. Small gaps are
+// normal (the display settles, a little more is added after the photo), so this
+// only speaks up when the two genuinely do not match.
+const READ_GAP_G = 25, READ_GAP_PCT = 0.05;
+function readMismatch(d){
+  if(d.tool === "jug") return null;                       // jug fills are counted, never read
+  const read = d.readG, got = d.chlorineG;
+  if(read === null || read === undefined || got === null || got === undefined) return null;
+  const gap = Math.abs(got - read);
+  return gap > Math.max(READ_GAP_G, read * READ_GAP_PCT) ? read : null;
+}
 function dosedSummary(d){
   const flag = offPlan(d.chlorineG, d.plannedChlorineG) || offPlan(d.acidMl, d.plannedAcidMl);
+  const mis = readMismatch(d);
   const plan = (d.plannedChlorineG !== null && d.plannedChlorineG !== undefined) ? ` · planned ${fmtG(d.plannedChlorineG)} / ${fmtMl(d.plannedAcidMl)}` : "";
   const photos = d.photos || (d.photo ? [d.photo] : []);
   const src = d.chlorineSource === "photo" ? " · read from photo"
@@ -2077,7 +2092,7 @@ function dosedSummary(d){
   const links = photos.filter(x => x.fileId || x.url).map((x, i) => photoBtn(x, `📷 ${photos.length > 1 ? photoName(i+1).toLowerCase() : PHOTO_SUBJECT.toLowerCase()}`, photoName(i+1)));
   const pending = photos.filter(x => x.pending).length;
   const photo = (links.length ? " · " + links.join(" ") : "") + (pending ? ` · <span class="muted">📷 ${pending} upload${pending>1?"s":""} pending</span>` : "");
-  return `Dosed <b>${fmtG(d.chlorineG)} chlorine · ${fmtMl(d.acidMl)} acid</b> (${d.tool === "jug" ? "jug" : "scale"})${plan}${src}${photo}${flag ? ' <span class="dev">⚠ off plan</span>' : ""}`;
+  return `Dosed <b>${fmtG(d.chlorineG)} chlorine · ${fmtMl(d.acidMl)} acid</b> (${d.tool === "jug" ? "jug" : "scale"})${plan}${src}${photo}${flag ? ' <span class="dev">⚠ off plan</span>' : ""}${mis !== null ? ` <span class="dev">⚠ photo shows ${fmtG(mis)}</span>` : ""}`;
 }
 function dosingPanel(s, t){
   const key = s.outlet+"|"+t.id, d = dmState(key, t), pd = t.plannedDose;
@@ -2373,9 +2388,14 @@ function photoReadings(d){
 function applyReading(d){
   if(d.tool === "jug") return;   // a jug total comes from the fills, never a photo
   const reads = photoReadings(d);
-  if(!reads.length || d.touched) return;
+  if(!reads.length) return;
   const total = reads.reduce((a,b) => a+b, 0);
-  d.chlorine = String(total); d.chlorineSource = "photo"; d.readG = total;
+  // What the photo said is kept whatever happens, so a number typed BEFORE the
+  // photo arrived can still be compared against it -- otherwise typing first
+  // would quietly sidestep the check.
+  d.readG = total;
+  if(d.touched) return;          // their own number stands; only the pre-fill is skipped
+  d.chlorine = String(total); d.chlorineSource = "photo";
   d.readConfidence = (d.photos || []).some(ph => ph.reading && ph.reading.confidence === "low") ? "low" : "high";
 }
 async function onDosingPhotoPicked(key, file){
