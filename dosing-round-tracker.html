@@ -2010,8 +2010,16 @@ const fmtG = g => (g >= 1000 && g % 100 === 0) ? (g/1000).toFixed(g % 1000 === 0
 const fmtMl = ml => (ml >= 1000 && ml % 100 === 0) ? (ml/1000).toFixed(ml % 1000 === 0 ? 0 : 1)+" L" : ml+" ml";
 // More than 10% off the plan (or anything at all when the plan was zero).
 const offPlan = (dosed, planned) => (planned === null || planned === undefined) ? false : planned > 0 ? Math.abs(dosed-planned)/planned > 0.1 : dosed > 0;
+// Which tool the entry opens on. Most outlets measure with the jug today, so
+// that is the starting point -- but an outlet whose last dose was weighed opens
+// on the scale, so the ones that have a working scale aren't tapping across
+// every night. (Per device: it remembers what this phone last did there.)
+const TOOL_MEM_KEY = "drt.tool";
+function toolMem(){ try{ return JSON.parse(localStorage.getItem(TOOL_MEM_KEY) || "{}") || {}; }catch(e){ return {}; } }
+function rememberTool(outlet, tool){ try{ const m = toolMem(); m[outlet] = tool; localStorage.setItem(TOOL_MEM_KEY, JSON.stringify(m)); }catch(e){} }
+function defaultTool(outlet){ return toolMem()[outlet] === "scale" ? "scale" : "jug"; }
 function dmState(key, t){
-  if(!state.dm[key]) state.dm[key] = {chlorine:"", acid:"", tool:"scale", seeded:false, touched:false, jugFills:0, jugPart:""};
+  if(!state.dm[key]) state.dm[key] = {chlorine:"", acid:"", tool: defaultTool(String(key).split("|")[0]), seeded:false, touched:false, jugFills:0, jugPart:""};
   const d = state.dm[key], pd = t && t.plannedDose;
   // Pre-fill from the water test's plan -- including when the plan only
   // arrives after this job was already claimed -- unless the technician has
@@ -2163,6 +2171,7 @@ function finishDosing(code, tid){
     jugFills: d.tool === "jug" ? (Number(d.jugFills) || 0) : null,
     jugPartMl: d.tool === "jug" ? ((d.jugPart === "" || isNaN(Number(d.jugPart))) ? 0 : Number(d.jugPart)) : null,
     at:new Date().toISOString(), by:state.me};
+  rememberTool(code, d.tool);
   const queued = [];
   if(relayCfg()){
     dosed.photos = photos.map(ph => {
