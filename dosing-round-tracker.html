@@ -384,6 +384,18 @@ details.panel[open] summary::after{content:"▴"}
 .wt-field .num span{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--ink-3);padding:0 10px;border-left:1px solid var(--line-soft)}
 .wt-field .plan{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-3)}
 .dev{color:var(--warn);font-weight:600}
+.wt-photo{display:flex;gap:12px;align-items:center;border:1px dashed var(--line);border-radius:9px;padding:10px 12px;background:var(--surface-2)}
+.wt-photo.has{border-style:solid;background:var(--surface)}
+.wt-photo img{width:72px;height:72px;object-fit:cover;border-radius:7px;flex:none;background:#000}
+.wt-photo .ph-empty{width:72px;height:72px;border-radius:7px;flex:none;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;font-size:26px;color:var(--ink-3)}
+.wt-photo .ph-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.wt-photo .ph-status{font-size:13.5px;color:var(--ink-2);line-height:1.4}
+.wt-photo .ph-status.ok{color:var(--ok);font-weight:600}
+.wt-photo .ph-status.err{color:var(--warn);font-weight:600}
+.wt-photo .ph-actions{display:flex;gap:8px;flex-wrap:wrap}
+.wt-src{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-3)}
+.wt-src.photo{color:var(--ok)}
+.job-row-read a{color:var(--accent)}
 .wt .panel{background:var(--surface-2)}
 .wt .panel summary{font-size:14.5px;padding:10px 12px}
 .wt-ref-body{padding:0 12px 12px;font-size:14px;color:var(--ink-2)}
@@ -726,7 +738,8 @@ async function initDb(){
         required: (d && Array.isArray(d.required)) ? d.required : clone(DEFAULT_TASKS.required),
         optional: (d && Array.isArray(d.optional)) ? d.optional : clone(DEFAULT_TASKS.optional),
         assigned: normalizeAssigned((d && d.assigned && typeof d.assigned === "object") ? d.assigned : {}),
-        extra: (d && d.extra && typeof d.extra === "object") ? d.extra : {}
+        extra: (d && d.extra && typeof d.extra === "object") ? d.extra : {},
+        photo: (d && d.photo && typeof d.photo === "object") ? d.photo : {}
       };
       const pruned = pruneExpiredExtras(state.cfg.extra);
       state.cfg.extra = pruned.extra;
@@ -1966,7 +1979,9 @@ function dmState(key, t){
 function dosedSummary(d){
   const flag = offPlan(d.chlorineG, d.plannedChlorineG) || offPlan(d.acidMl, d.plannedAcidMl);
   const plan = (d.plannedChlorineG !== null && d.plannedChlorineG !== undefined) ? ` · planned ${fmtG(d.plannedChlorineG)} / ${fmtMl(d.plannedAcidMl)}` : "";
-  return `Dosed <b>${fmtG(d.chlorineG)} chlorine · ${fmtMl(d.acidMl)} acid</b> (${d.tool === "jug" ? "jug" : "scale"})${plan}${flag ? ' <span class="dev">⚠ off plan</span>' : ""}`;
+  const src = d.chlorineSource === "photo" ? " · read from photo" : (d.photo ? " · typed" : "");
+  const photo = d.photo && d.photo.url ? ` · <a href="${esc(d.photo.url)}" target="_blank" rel="noopener">📷 photo</a>` : (d.photo && d.photo.pending ? ' · <span class="muted">📷 upload pending</span>' : "");
+  return `Dosed <b>${fmtG(d.chlorineG)} chlorine · ${fmtMl(d.acidMl)} acid</b> (${d.tool === "jug" ? "jug" : "scale"})${plan}${src}${photo}${flag ? ' <span class="dev">⚠ off plan</span>' : ""}`;
 }
 function dosingPanel(s, t){
   const key = s.outlet+"|"+t.id, d = dmState(key, t), pd = t.plannedDose;
@@ -1981,14 +1996,28 @@ function dosingPanel(s, t){
     <div class="wt-head"><span class="wt-title">Manual dosing · ${esc(poolKey)}</span></div>
     ${planHtml}
     <div class="wt-grid">
-      <label class="wt-field"><span class="wt-lbl">Chlorine measured</span><span class="num"><input type="number" inputmode="numeric" min="0" step="1" data-dmin="${key}|chlorine" value="${esc(d.chlorine)}" placeholder="0"><span>g</span></span>${pd ? `<span class="plan">1 ml = 1 g if using the jug</span>` : ""}</label>
+      <label class="wt-field"><span class="wt-lbl">Chlorine measured</span><span class="num"><input type="number" inputmode="numeric" min="0" step="1" data-dmin="${key}|chlorine" value="${esc(d.chlorine)}" placeholder="0"><span>g</span></span>${d.chlorineSource === "photo" && !d.touched ? `<span class="wt-src photo">read from the photo</span>` : pd ? `<span class="plan">1 ml = 1 g if using the jug</span>` : ""}</label>
       <label class="wt-field"><span class="wt-lbl">Acid measured</span><span class="num"><input type="number" inputmode="numeric" min="0" step="1" data-dmin="${key}|acid" value="${esc(d.acid)}" placeholder="0"><span>ml</span></span></label>
       <div class="wt-field" style="grid-column:1/-1"><span class="wt-lbl">Measured with</span><div class="wt-chips">
         <button class="tog" aria-pressed="${d.tool==="scale"}" data-dmset="${key}|tool|scale">Digital scale</button>
         <button class="tog" aria-pressed="${d.tool==="jug"}" data-dmset="${key}|tool|jug">Measuring jug</button></div></div>
     </div>
-    <button class="btn primary big" data-dmsave="${key}" ${ok ? "" : "disabled"}>${ok ? "Save amounts · job done" : "Enter the chlorine measured first"}</button>
+    ${dosingPhotoHtml(key, d)}
+    <button class="btn primary big" data-dmsave="${key}" ${dmSaveState(d).ok ? "" : "disabled"}>${dmSaveState(d).label}</button>
   </div>`;
+}
+// What the Save button should say/do given the amount and (if a relay is
+// configured) the photo: needs both; a photo that failed to upload can still
+// be saved now and uploaded later from the queue.
+function dmSaveState(d){
+  const amountOk = d.chlorine !== "" && !isNaN(Number(d.chlorine)) && Number(d.chlorine) >= 0 && (d.acid === "" || (!isNaN(Number(d.acid)) && Number(d.acid) >= 0));
+  if(!amountOk) return {ok:false, label:"Enter the chlorine measured first"};
+  if(!relayCfg()) return {ok:true, label:"Save amounts · job done"};
+  const st = (d.photo || {}).status;
+  if(st === "done") return {ok:true, label:"Save amounts · job done"};
+  if(st === "failed") return {ok:true, label:"Save now · photo uploads later", queue:true};
+  if(st === "preparing" || st === "uploading") return {ok:false, label:"Wait for the photo…"};
+  return {ok:false, label:"Take the photo first"};
 }
 function finishDosing(code, tid){
   const r0 = myRound(); if(!r0) return;
@@ -1997,9 +2026,17 @@ function finishDosing(code, tid){
   const cl = Number(d.chlorine), acid = d.acid === "" ? 0 : Number(d.acid);
   if(d.chlorine === "" || isNaN(cl) || cl < 0 || isNaN(acid) || acid < 0){ flash("Enter the chlorine measured (in grams) first."); return; }
   const pd = t0.plannedDose;
+  const sst = dmSaveState(d);
+  if(!sst.ok){ flash(sst.label === "Take the photo first" ? "Take the photo of the scale first." : sst.label); return; }
+  const ph = d.photo || {};
   const dosed = {chlorineG:cl, acidMl:acid, tool:d.tool,
     plannedChlorineG: pd ? toGrams(pd.chlorine, pd.chlorineUnit) : null, plannedAcidMl: pd ? toMl(pd.acid, pd.acidUnit) : null,
+    chlorineSource: (d.chlorineSource === "photo" && !d.touched && String(d.readG) === String(cl)) ? "photo" : "typed",
+    readG: (d.readG !== undefined && d.readG !== null) ? d.readG : null,
     at:new Date().toISOString(), by:state.me};
+  if(relayCfg()){
+    dosed.photo = ph.status === "done" ? {fileId:ph.fileId, url:ph.url, thumb:ph.thumb || null} : {pending:true};
+  }
   let finished = null;
   withRound(r => {
     const s = r.stops.find(x => x.outlet === code); if(!s) return false;
@@ -2012,12 +2049,160 @@ function finishDosing(code, tid){
     syncTaskToOtherRounds(code, finished, {doneAt:finished.doneAt, dosed});
     // Joins the night's water_tests record (merge, so the reading written by
     // the water test stays), or starts one if the dosing came first.
-    persist("water_tests/"+todayKey()+"__"+poolKey+"__night",
-      {outlet:code, pool:poolKey, date:todayKey(), slot:"night", source:"app",
-       dosedChlorineG:cl, dosedAcidMl:acid, dosingTool:d.tool, dosedAt:dosed.at, dosedBy:state.me},
-      () => {}, {merge:true});
+    const wt = {outlet:code, pool:poolKey, date:todayKey(), slot:"night", source:"app",
+       dosedChlorineG:cl, dosedAcidMl:acid, dosingTool:d.tool, dosedAt:dosed.at, dosedBy:state.me, chlorineSource:dosed.chlorineSource};
+    if(dosed.photo && dosed.photo.url){ wt.dosingPhotoUrl = dosed.photo.url; wt.dosingPhotoFileId = dosed.photo.fileId; }
+    persist("water_tests/"+todayKey()+"__"+poolKey+"__night", wt, () => {}, {merge:true});
+    if(dosed.photo && dosed.photo.pending && ph.base64){
+      photoQ.add({id:uid(), roundId:myId(), outlet:code, taskId:tid, poolKey, date:todayKey(),
+        payload:{kind:"dosing-photo", outlet:code, pool:poolKey, job:t0.name, person:state.me, takenAt:ph.takenAt, date:todayKey(), tool:d.tool, wantReading:false, imageBase64:ph.base64}});
+    }
     delete state.dm[key];
   });
+}
+
+/* ---------- photo proof: the scale photo on Manual Dosing ----------
+ * Camera-only capture (no gallery), stamped with outlet/pool/job/person/time
+ * inside the image, uploaded through the Apps Script relay to Drive, and --
+ * for a digital scale -- the number on the display is read by a vision
+ * model and pre-filled, so the technician confirms rather than types. The
+ * relay address and a shared key live in the Task Setting config; with no
+ * relay configured the job behaves as before (typed amount, no photo).
+ */
+const PHOTO_MAX_AGE_MS = 10*60*1000;   // a "fresh" photo is one taken in the last 10 minutes
+const PHOTO_MAX_PX = 1280;
+const relayCfg = () => (state.cfg.photo && state.cfg.photo.relayUrl) ? state.cfg.photo : null;
+
+async function loadPhoto(file){
+  try{ return await createImageBitmap(file, {imageOrientation:"from-image"}); }
+  catch(e){
+    return await new Promise((res, rej) => { const img = new Image(); img.onload = () => res(img); img.onerror = rej; img.src = URL.createObjectURL(file); });
+  }
+}
+// Downscale, then burn the stamp into the pixels -- a photo that leaves the
+// phone already says where, what, who and when, so it can't be passed off as
+// another night's.
+async function preparePhoto(file, lines){
+  const img = await loadPhoto(file);
+  const iw = img.width, ih = img.height, sc = Math.min(1, PHOTO_MAX_PX / Math.max(iw, ih));
+  const W = Math.round(iw*sc), H = Math.round(ih*sc);
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d"); g.drawImage(img, 0, 0, W, H);
+  const fs = Math.max(14, Math.round(W/40)), pad = Math.round(fs*0.6), bandH = pad*2 + lines.length*Math.round(fs*1.3);
+  g.fillStyle = "rgba(0,0,0,0.55)"; g.fillRect(0, H-bandH, W, bandH);
+  g.fillStyle = "#fff"; g.font = `600 ${fs}px "IBM Plex Mono", monospace`; g.textBaseline = "top";
+  lines.forEach((ln, i) => g.fillText(ln, pad, H-bandH+pad+i*Math.round(fs*1.3)));
+  const dataUrl = c.toDataURL("image/jpeg", 0.82);
+  return {dataUrl, base64: dataUrl.split(",")[1], width:W, height:H};
+}
+async function relayUpload(payload){
+  const rc = relayCfg(); if(!rc) throw new Error("no relay");
+  // text/plain keeps the browser from sending a CORS preflight, which an
+  // Apps Script web app can't answer; the script parses the JSON itself.
+  const res = await fetch(rc.relayUrl, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify(Object.assign({key: rc.key || ""}, payload))});
+  if(!res.ok) throw new Error("HTTP "+res.status);
+  const j = await res.json();
+  if(!j || !j.ok) throw new Error((j && j.error) || "relay error");
+  return j;
+}
+function photoStampLines(code, poolKey, jobName){
+  const n = new Date();
+  return [`${code}${poolKey !== code ? " · "+poolKey : ""} · ${jobName}`, `${state.me || "?"} · ${n.getDate()} ${MONTH_ABBR[n.getMonth()]} ${n.getFullYear()} ${pad(n.getHours())}:${pad(n.getMinutes())}`];
+}
+// Applies a successful upload's reading to the entry: pre-fills the grams
+// unless the technician already typed their own number.
+function applyReading(d, reading){
+  if(!reading || reading.status !== "ok" || reading.grams === null || reading.grams === undefined) return;
+  if(d.touched) return;
+  d.chlorine = String(Math.round(reading.grams)); d.chlorineSource = "photo"; d.readG = Math.round(reading.grams); d.readConfidence = reading.confidence || null;
+}
+async function onDosingPhotoPicked(key, file){
+  const [code, tid] = key.split("|");
+  const r = myRound(); const s = r && r.stops.find(x => x.outlet === code); const t = s && s.tasks.find(x => x.id === tid);
+  if(!t) return;
+  const d = dmState(key, t), poolKey = dosingKeyFor(code, t.pool);
+  // Camera-only is enforced by the input itself; this is the belt to that
+  // brace -- a file that isn't from the last few minutes is not tonight's.
+  if(file.lastModified && Date.now() - file.lastModified > PHOTO_MAX_AGE_MS){
+    flash("That photo isn't from just now — take a fresh one of the scale."); return;
+  }
+  d.photo = {status:"preparing"}; render();
+  let prepared;
+  try{ prepared = await preparePhoto(file, photoStampLines(code, poolKey, t.name)); }
+  catch(e){ d.photo = {status:"failed", error:"Couldn't read that image. Try again."}; render(); return; }
+  d.photo = {status:"uploading", dataUrl: prepared.dataUrl, base64: prepared.base64, takenAt: new Date().toISOString()}; render();
+  await uploadDosingPhoto(key, d, {code, poolKey, jobName:t.name, tool:d.tool});
+}
+async function uploadDosingPhoto(key, d, meta){
+  try{
+    const j = await relayUpload({kind:"dosing-photo", outlet:meta.code, pool:meta.poolKey, job:meta.jobName, person:state.me, takenAt:d.photo.takenAt,
+      date: todayKey(), tool: meta.tool, wantReading: meta.tool !== "jug", imageBase64: d.photo.base64});
+    d.photo = Object.assign(d.photo, {status:"done", fileId:j.fileId, url:j.url, thumb:j.thumb || null, reading:j.reading || null});
+    applyReading(d, j.reading);
+    if(j.reading && j.reading.status === "ok" && !d.touched) flash(`Read ${Math.round(j.reading.grams)} g off the scale — check it, then Save.`);
+  }catch(e){
+    d.photo.status = "failed"; d.photo.error = "Upload didn't go through (signal?). Retry, or save now and it uploads later.";
+  }
+  render();
+}
+// Photos that couldn't upload on site wait here and go up when there's
+// signal, then attach themselves to the job they belong to.
+const photoQ = {
+  read(){ try{ return JSON.parse(localStorage.getItem("drt.photoq") || "[]"); }catch(e){ return []; } },
+  write(q){ try{ localStorage.setItem("drt.photoq", JSON.stringify(q)); }catch(e){} },
+  add(item){ const q = this.read(); q.push(item); this.write(q); }
+};
+let photoFlushing = false;
+async function flushPhotoQueue(){
+  if(photoFlushing || !relayCfg()) return;
+  const q = photoQ.read(); if(!q.length) return;
+  photoFlushing = true;
+  try{
+    for(const item of q.slice()){
+      try{
+        const j = await relayUpload(item.payload);
+        const rest = photoQ.read().filter(x => x.id !== item.id); photoQ.write(rest);
+        attachQueuedPhoto(item, j);
+      }catch(e){ /* still no luck -- next pass */ }
+    }
+  } finally { photoFlushing = false; }
+}
+function attachQueuedPhoto(item, j){
+  const r = state.rounds[item.roundId]; if(!r) return;
+  const rr = clone(r); const s = rr.stops.find(x => x.outlet === item.outlet); const t = s && s.tasks.find(x => x.id === item.taskId);
+  if(!t || !t.dosed) return;
+  t.dosed.photo = {fileId:j.fileId, url:j.url, thumb:j.thumb || null};
+  saveRound(rr);
+  syncTaskToOtherRounds(item.outlet, {name:t.name, kind:t.kind, pool:t.pool||null}, {dosed:t.dosed});
+  persist("water_tests/"+item.date+"__"+item.poolKey+"__night", {dosingPhotoUrl:j.url, dosingPhotoFileId:j.fileId}, () => {}, {merge:true});
+}
+setInterval(flushPhotoQueue, 30000);
+setTimeout(flushPhotoQueue, 6000);
+
+function dosingPhotoHtml(key, d){
+  if(!relayCfg()) return "";
+  const ph = d.photo || {status:"none"};
+  const tool = d.tool === "jug" ? "jug" : "scale";
+  const thumb = ph.dataUrl ? `<img src="${ph.dataUrl}" alt="Photo of the ${tool}">` : `<div class="ph-empty" aria-hidden="true">📷</div>`;
+  let status = "", actions = "";
+  if(ph.status === "none" || !ph.status){
+    status = `<span class="ph-status">Photo of the ${tool} showing the amount — required before Save.</span>`;
+    actions = `<button class="btn sm primary" type="button" data-dmphotobtn="${key}">Take photo</button>`;
+  } else if(ph.status === "preparing"){ status = `<span class="ph-status">Preparing…</span>`; }
+  else if(ph.status === "uploading"){ status = `<span class="ph-status">Uploading${tool === "scale" ? " and reading the display" : ""}…</span>`; }
+  else if(ph.status === "done"){
+    const rd = ph.reading;
+    const readMsg = tool === "jug" ? "Photo saved. Type the amount from the jug."
+      : (rd && rd.status === "ok") ? `Read <b>${Math.round(rd.grams)} g</b> off the scale${rd.confidence === "low" ? " (not 100% sure — check it)" : ""}.`
+      : "Photo saved, but the display couldn't be read — type the amount.";
+    status = `<span class="ph-status ok">${readMsg}</span>`;
+    actions = `<button class="btn sm" type="button" data-dmphotobtn="${key}">Retake</button>`;
+  } else if(ph.status === "failed"){
+    status = `<span class="ph-status err">${esc(ph.error || "Upload failed.")}</span>`;
+    actions = `<button class="btn sm" type="button" data-dmphotoretry="${key}">Retry upload</button><button class="btn sm" type="button" data-dmphotobtn="${key}">Retake</button>`;
+  }
+  return `<div class="wt-photo ${ph.dataUrl ? "has" : ""}">${thumb}<div class="ph-main">${status}<div class="ph-actions">${actions}</div></div>
+    <input type="file" accept="image/*" capture="environment" hidden data-dmphoto="${key}"></div>`;
 }
 
 /* ---------- technician ---------- */
@@ -3531,6 +3716,19 @@ function taskSettingView(){
     ${daySeg}
     <p class="note" style="margin:6px 0 0">Editing <strong>${DAYNAME[day]}</strong>${day===today?" (tonight)":""}. <span class="mono muted">•</span> marks tonight.</p>
     ${assign}
+  </div>
+
+  <div class="stack" style="gap:9px">
+    <h2 class="sec">Photo proof — scale photo on Manual Dosing</h2>
+    <p class="note" style="margin:0 0 8px">When a relay address is set here, the Manual Dosing job requires a photo of the scale (camera only, no gallery) before it can be saved. The photo is stamped with outlet, pool, technician and time, stored in Drive by the Apps Script relay, and for a digital scale the number on the display is read and pre-filled. Leave the address empty to switch this off.</p>
+    <div class="stack" style="gap:8px">
+      <input type="text" id="photo-relay-url" placeholder="Apps Script web app URL (https://script.google.com/macros/s/…/exec)" value="${esc((state.cfg.photo||{}).relayUrl||"")}" autocomplete="off">
+      <div class="row-2"><input type="text" id="photo-relay-key" placeholder="Shared key (same as RELAY_KEY in the script)" value="${esc((state.cfg.photo||{}).key||"")}" autocomplete="off"><button class="btn primary sm" id="photo-relay-save">Save</button></div>
+      <p class="note" style="margin:0">${relayCfg() ? "Photo proof is <strong>on</strong>." : "Photo proof is <strong>off</strong> — Manual Dosing takes a typed amount only."}</p>
+    </div>
+  </div>
+
+  <div class="stack" style="gap:9px">
     <p class="note" style="margin:10px 0 0">A change to ${day===today?"tonight's":"another day's"} assignment reaches an outlet's round straight away only if it's still open ${day===today?"tonight":"the next time "+DAYNAME[day]+" comes around"}. <strong>One-time</strong> jobs drop off on their own after the day they were added, so a last-minute fix never needs to be removed by hand. A job the technician has already claimed is never pulled out from under them by any of these changes.</p>
   </div>`;
 }
@@ -3698,10 +3896,19 @@ function wire(){
   document.querySelectorAll("[data-dmin]").forEach(i => i.addEventListener("input", () => {
     const [o,t,f] = i.dataset.dmin.split("|"); const dd = dmState(o+"|"+t); dd[f] = i.value; dd.touched = true;
     const btn = document.querySelector(`[data-dmsave="${o}|${t}"]`);
-    if(btn){ const d = dmState(o+"|"+t); const ok = d.chlorine !== "" && !isNaN(Number(d.chlorine)) && Number(d.chlorine) >= 0; btn.disabled = !ok; btn.textContent = ok ? "Save amounts · job done" : "Enter the chlorine measured first"; }
+    if(btn){ const st = dmSaveState(dmState(o+"|"+t)); btn.disabled = !st.ok; btn.textContent = st.label; }
   }));
   each("[data-dmset]", b => { const [o,t,f,v] = b.dataset.dmset.split("|"); dmState(o+"|"+t)[f] = v; render(); });
   each("[data-dmsave]", b => { const [o,t] = two(b.dataset.dmsave); finishDosing(o,t); });
+  each("[data-dmphotobtn]", b => { const i = document.querySelector(`[data-dmphoto="${b.dataset.dmphotobtn}"]`); if(i){ i.value = ""; i.click(); } });
+  document.querySelectorAll("[data-dmphoto]").forEach(i => i.addEventListener("change", () => { const f = i.files && i.files[0]; if(f) onDosingPhotoPicked(i.dataset.dmphoto, f); }));
+  each("[data-dmphotoretry]", b => {
+    const key = b.dataset.dmphotoretry, [o,t] = two(key); const r = myRound(); const s = r && r.stops.find(x=>x.outlet===o); const tk = s && s.tasks.find(x=>x.id===t);
+    const d = dmState(key, tk); if(!d.photo || !d.photo.base64) return;
+    d.photo.status = "uploading"; render(); uploadDosingPhoto(key, d, {code:o, poolKey:dosingKeyFor(o, tk && tk.pool), jobName:tk ? tk.name : "", tool:d.tool});
+  });
+  // Task Setting: where the photo relay lives.
+  on("#photo-relay-save", () => { const c = cfg(); c.photo = {relayUrl: ($("#photo-relay-url").value || "").trim(), key: ($("#photo-relay-key").value || "").trim()}; saveCfg(c); flash(c.photo.relayUrl ? "Photo relay saved — the scale photo is now required on Manual Dosing." : "Photo relay cleared — Manual Dosing is back to typed amounts."); });
   // The route diagram lives in a same-origin srcdoc iframe; size it to its
   // content once it loads so the whole plan shows without an inner scrollbar.
   document.querySelectorAll("iframe[data-wtroute]").forEach(f => f.addEventListener("load", () => {
