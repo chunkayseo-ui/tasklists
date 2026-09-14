@@ -2336,6 +2336,11 @@ function readerNote(rd){
     // The model answered but the answer was unusable (cut off, not JSON). Not
     // the photo, not the key -- a relay problem for Chun Kay, not the technician.
     if(/MAX_TOKENS|not JSON|Unexpected end of JSON|with nothing written/i.test(detail)) return "The reader's answer came back garbled — type the amount.";
+    // "Isn't set up" only when it really is the key or its permissions. A bare
+    // 400 is the relay asking the model in a way it didn't accept -- a relay
+    // problem, not something a supervisor can fix in Task Setting.
+    if(/API key|PERMISSION_DENIED|HTTP 40[13]/i.test(detail)) return "The scale reader isn't set up — nothing wrong with the photo.";
+    if(/HTTP 400/i.test(detail)) return "The reader rejected the request — type the amount.";
     return "The scale reader isn't set up — nothing wrong with the photo.";
   }
   return "No reading came back.";
