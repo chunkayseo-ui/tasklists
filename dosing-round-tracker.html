@@ -2324,9 +2324,17 @@ function relayErrorText(raw){
 // the technician's problem to fix (retake it); a reader that never ran is not,
 // and telling them to retake a perfectly good photo just wastes their night.
 function readerNote(rd){
-  const st = rd && rd.status;
+  const st = rd && rd.status, detail = String((rd && rd.detail) || "");
   if(st === "unreadable") return "Couldn't make out the display — check the photo shows it clearly.";
-  if(st === "no-key" || st === "error") return "The scale reader isn't running — nothing wrong with the photo.";
+  if(st === "no-key") return "The scale reader isn't set up — nothing wrong with the photo.";
+  if(st === "error"){
+    // A reader that is switched off stays off; a reader Google refused for a
+    // moment will work on the next photo. Telling a technician "isn't set up"
+    // for a passing blip sends them looking for something that isn't broken.
+    if(/spending cap/i.test(detail)) return "The reader has hit its monthly spending cap.";
+    if(/HTTP (429|5\d\d)|timed? ?out|timeout/i.test(detail)) return "Couldn't get a reading just now — type the amount.";
+    return "The scale reader isn't set up — nothing wrong with the photo.";
+  }
   return "No reading came back.";
 }
 // A self-check for the whole photo chain, so "why isn't it reading?" is a
