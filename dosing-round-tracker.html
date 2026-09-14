@@ -2231,6 +2231,13 @@ function finishDosing(code, tid){
 const PHOTO_MAX_AGE_MS = 10*60*1000;   // a "fresh" photo is one taken in the last 10 minutes
 const PHOTO_MAX_PX = 1280;
 const relayCfg = () => (state.cfg.photo && state.cfg.photo.relayUrl) ? state.cfg.photo : null;
+// Reading the number off the display is a separate switch from photo proof,
+// and OFF unless a supervisor turns it on. The photos -- camera-only, stamped,
+// stored, one per jar -- are the SOP and never needed a model. The reader is
+// the only part that came and went all evening, and a check that works some
+// nights is not a check. When it is off nothing is asked of any model: no
+// cost, nothing to fail, amounts typed as before.
+const readerOn = () => !!(relayCfg() && state.cfg.photo.read);
 
 async function loadPhoto(file){
   try{ return await createImageBitmap(file, {imageOrientation:"from-image"}); }
@@ -2373,7 +2380,7 @@ async function testRelay(realFile){
   let j;
   try{
     j = await relayUpload({kind:"relay-test", outlet:"TEST", pool:"TEST", job:"Photo proof test", person: state.me || "supervisor",
-      date: todayKey(), tool:"scale", wantReading:true, imageBase64: image, photoNo:1});
+      date: todayKey(), tool:"scale", wantReading: readerOn(), imageBase64: image, photoNo:1});
   }catch(e){
     box.innerHTML = testLine(false, (e && e.relay) ? String(e.message) : "Couldn't reach the relay at all — check the address, and the signal.")
       + `<p class="note" style="margin:0">Nothing was saved.</p>`;
@@ -2381,7 +2388,9 @@ async function testRelay(realFile){
   }
   const rd = j.reading || {};
   let html = testLine(true, "Relay reached and the key accepted.") + testLine(true, "Photo saved to Drive.");
-  if(rd.status === "ok"){
+  if(!readerOn()){
+    html += `<p class="note" style="margin:0">The display reader is off, so no number was asked for. Tick the box above and Save to test it.</p>`;
+  } else if(rd.status === "ok"){
     if(expect === null) html += testLine(true, "Read " + Math.round(rd.grams) + " g off your photo (" + (rd.confidence === "high" ? "confident" : "not fully sure") + ") — check that against the display.");
     else {
       const right = Math.round(rd.grams) === expect;
@@ -2449,7 +2458,7 @@ async function onDosingPhotoPicked(key, file){
 async function uploadDosingPhoto(key, d, ph, meta){
   try{
     const j = await relayUpload({kind:"chlorine", outlet:meta.code, pool:meta.poolKey, job:meta.jobName, person:state.me, takenAt:ph.takenAt,
-      date: todayKey(), tool: meta.tool, wantReading: meta.tool !== "jug", imageBase64: ph.base64, photoNo: ph.n});
+      date: todayKey(), tool: meta.tool, wantReading: meta.tool !== "jug" && readerOn(), imageBase64: ph.base64, photoNo: ph.n});
     Object.assign(ph, {status:"done", fileId:j.fileId, url:j.url, thumb:j.thumb || null, reading:j.reading || null});
     applyReading(d);
     const reads = photoReadings(d);
@@ -2519,10 +2528,10 @@ function dosingPhotoHtml(key, d){
     const thumb = openable ? `<button class="ph-openbtn" type="button" data-photoview="${esc(ph.fileId)}" data-photocap="${photoName(ph.n)}" aria-label="Open ${photoName(ph.n)}">${img}</button>` : img;
     let status = "", actions = "";
     if(ph.status === "preparing") status = `<span class="ph-status">${photoName(ph.n)} · preparing…</span>`;
-    else if(ph.status === "uploading") status = `<span class="ph-status">${photoName(ph.n)} · uploading${tool === "scale" ? " and reading the display" : ""}…</span>`;
+    else if(ph.status === "uploading") status = `<span class="ph-status">${photoName(ph.n)} · uploading${tool === "scale" && readerOn() ? " and reading the display" : ""}…</span>`;
     else if(ph.status === "done"){
       const rd = ph.reading;
-      const msg = tool === "jug" ? `${photoName(ph.n)} saved.`
+      const msg = (tool === "jug" || !readerOn()) ? `${photoName(ph.n)} saved.`
         : (rd && rd.status === "ok") ? `${photoName(ph.n)} · read <b>${Math.round(rd.grams)} g</b>${rd.confidence === "low" ? " (not 100% sure — check it)" : ""}`
         : `${photoName(ph.n)} saved. ${readerNote(rd)}`;
       status = `<span class="ph-status ok">${msg}</span>`;
@@ -2538,7 +2547,7 @@ function dosingPhotoHtml(key, d){
   const want = jugPhotosExpected(d);
   const hint = tool === "jug"
     ? `<span class="wt-src">${photos.length} photo${photos.length===1?"":"s"} for ${want} fill${want===1?"":"s"}.${photos.length < want ? " Take one for each." : ""}</span>`
-    : (reads.length === 0 && photos.some(p=>p.status==="done")
+    : (readerOn() && reads.length === 0 && photos.some(p=>p.status==="done")
         ? `<span class="wt-src">${readerNote((photos.filter(p=>p.status==="done").pop()||{}).reading)} Type the amount.</span>` : "");
   return `<div class="stack" style="gap:8px">${rows}${total}${hint}
     <button class="btn sm" type="button" data-dmphotobtn="${key}">+ Add another photo</button>${input}</div>`;
@@ -4063,7 +4072,8 @@ function taskSettingView(){
     <div class="stack" style="gap:8px">
       <input type="text" id="photo-relay-url" placeholder="Apps Script web app URL (https://script.google.com/macros/s/…/exec)" value="${esc((state.cfg.photo||{}).relayUrl||"")}" autocomplete="off">
       <div class="row-2"><input type="text" id="photo-relay-key" placeholder="Shared key (same as RELAY_KEY in the script)" value="${esc((state.cfg.photo||{}).key||"")}" autocomplete="off"><button class="btn primary sm" id="photo-relay-save">Save</button></div>
-      <p class="note" style="margin:0">${relayCfg() ? "Photo proof is <strong>on</strong>." : "Photo proof is <strong>off</strong> — Manual Dosing takes a typed amount only."}</p>
+      <label class="note" style="margin:0;display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="photo-relay-read" ${(state.cfg.photo||{}).read ? "checked" : ""} style="margin-top:3px"><span><strong>Also read the number off the scale display</strong> (AI). Off: photos are stored and the amount is typed, nothing is asked of any model. On: the number is pre-filled and a dose that disagrees with its photo is flagged. Saved with the Save button.</span></label>
+      <p class="note" style="margin:0">${relayCfg() ? "Photo proof is <strong>on</strong>" + (readerOn() ? " and the display reader is <strong>on</strong>." : "; the display reader is <strong>off</strong> — amounts are typed.") : "Photo proof is <strong>off</strong> — Manual Dosing takes a typed amount only."}</p>
       ${relayCfg() ? `<div class="row-2"><button class="btn sm" id="photo-relay-test">Test it now</button><span class="note" style="margin:0">Sends a drawn picture of the number 397 and reports each step — no need to be at a pump room.</span></div>
       <div class="row-2"><button class="btn sm" id="photo-relay-testphoto">Test with a real photo</button><span class="note" style="margin:0">Pick any scale photo from the gallery. The drawn picture is easy; this is what the reader actually faces.</span></div>
       <input type="file" accept="image/*" hidden id="photo-relay-testfile">
@@ -4267,7 +4277,7 @@ function wire(){
   on("#photo-relay-test", () => testRelay());
   on("#photo-relay-testphoto", () => { const i = $("#photo-relay-testfile"); if(i){ i.value = ""; i.click(); } });
   const tf = $("#photo-relay-testfile"); if(tf) tf.addEventListener("change", () => { const f = tf.files && tf.files[0]; if(f) testRelay(f); });
-  on("#photo-relay-save", () => { const c = cfg(); c.photo = {relayUrl: ($("#photo-relay-url").value || "").trim(), key: ($("#photo-relay-key").value || "").trim()}; saveCfg(c); flash(c.photo.relayUrl ? "Photo relay saved — the scale photo is now required on Manual Dosing." : "Photo relay cleared — Manual Dosing is back to typed amounts."); });
+  on("#photo-relay-save", () => { const c = cfg(); const rd = $("#photo-relay-read"); c.photo = {relayUrl: ($("#photo-relay-url").value || "").trim(), key: ($("#photo-relay-key").value || "").trim(), read: !!(rd && rd.checked)}; saveCfg(c); flash(c.photo.relayUrl ? "Photo relay saved — the scale photo is now required on Manual Dosing" + (c.photo.read ? ", and the display is read." : "; amounts are typed.") : "Photo relay cleared — Manual Dosing is back to typed amounts."); });
   // The route diagram lives in a same-origin srcdoc iframe; size it to its
   // content once it loads so the whole plan shows without an inner scrollbar.
   document.querySelectorAll("iframe[data-wtroute]").forEach(f => f.addEventListener("load", () => {
