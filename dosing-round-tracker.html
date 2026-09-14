@@ -1122,7 +1122,7 @@ async function syncExtraToLiveRounds(outlet, job, action){
     let changed = false;
     if(action === "add"){
       if(!s.tasks.some(matches)){
-        s.tasks.push(Object.assign({id:uid(), name:job.name, kind:job.kind, startedAt:null, doneAt:null, claimedBy:null, addedBy:job.addedBy||null}, job.pool ? {pool:job.pool} : {}));
+        s.tasks.push(Object.assign({id:uid(), name:job.name, kind:job.kind, startedAt:null, doneAt:null, claimedBy:null, addedBy:job.addedBy||null}, job.pool ? {pool:job.pool} : {}, job.photos ? {photos:job.photos} : {}));
         changed = true;
       }
     } else {
@@ -1490,18 +1490,19 @@ function undoTask(code, tid){
 // Reuses syncExtraToLiveRounds, which already does exactly this: push into
 // any other round already open for this outlet today that hasn't departed,
 // matched by name+kind so it's never duplicated.
-function addTask(code, name){
+function addTask(code, name, photos){
   const n = (name||"").trim(); if(!n) return;
   state.adding = null;
+  const pics = (photos || []).filter(x => x && x.fileId);
   // Who typed this in matters even before anyone claims it -- a supervisor
   // (or a teammate sharing the outlet) seeing an unclaimed ad-hoc job has no
   // other way to ask "what's this for?" until it's shown on-screen.
   const addedBy = state.me || null;
   withRound(r => {
     const s = r.stops.find(x=>x.outlet===code); if(!s) return false;
-    s.tasks.push({id:uid(), name:n, kind:"adhoc", startedAt:null, doneAt:null, claimedBy:null, addedBy});
+    s.tasks.push(Object.assign({id:uid(), name:n, kind:"adhoc", startedAt:null, doneAt:null, claimedBy:null, addedBy}, pics.length ? {photos:pics} : {}));
   }, "Couldn't add that job. Try again.").then(() => {
-    syncExtraToLiveRounds(code, {name:n, kind:"adhoc", addedBy}, "add");
+    syncExtraToLiveRounds(code, Object.assign({name:n, kind:"adhoc", addedBy}, pics.length ? {photos:pics} : {}), "add");
   });
 }
 function removeTask(code, tid){
@@ -1547,7 +1548,7 @@ function openIssuesFor(outlet){
 // job that happens to share the same wording.
 function issueTasksFor(outlet){
   return openIssuesFor(outlet).filter(i => i.convertedToTask)
-    .map(i => ({id:uid(), name:i.description, kind:"issue", issueId:i.id, startedAt:null, doneAt:null, claimedBy:null, addedBy:i.raisedBy||null}));
+    .map(i => Object.assign({id:uid(), name:i.description, kind:"issue", issueId:i.id, startedAt:null, doneAt:null, claimedBy:null, addedBy:i.raisedBy||null}, i.photos && i.photos.length ? {photos:i.photos} : {}));
 }
 
 // Who to credit an unclaimed job to. Reads the task's own `addedBy` first
@@ -1571,11 +1572,12 @@ function addedByOf(t){
 // assigning a non-urgent task to an outlet before anyone's even reported it
 // (see addIssueBlock, on Overview). Either way it starts life as "open" --
 // unplanned, just on the board -- until a supervisor commits to a plan.
-function reportIssue(outlet, description, priority, raisedBy){
+function reportIssue(outlet, description, priority, raisedBy, photos){
   const desc = (description||"").trim().slice(0,500);
   if(!desc || !outlet) return;
   saveIssue({
     id: issueUid(), outlet, description: desc,
+    photos: (photos || []).filter(x => x && x.fileId),
     priority: PRIORITIES.includes(priority) ? priority : "medium",
     status: "open",
     raisedBy: raisedBy || state.me || "Supervisor",
@@ -1613,7 +1615,7 @@ async function syncIssueTaskToLiveRounds(outlet, issue){
     const s = r.stops.find(x => x.outlet === outlet && !x.departAt);
     if(!s) continue;
     if(s.tasks.some(t => t.issueId === issue.id)) continue;
-    s.tasks.push({id:uid(), name:issue.description, kind:"issue", issueId:issue.id, startedAt:null, doneAt:null, claimedBy:null, addedBy:issue.raisedBy||null});
+    s.tasks.push(Object.assign({id:uid(), name:issue.description, kind:"issue", issueId:issue.id, startedAt:null, doneAt:null, claimedBy:null, addedBy:issue.raisedBy||null}, issue.photos && issue.photos.length ? {photos:issue.photos} : {}));
     try{ await saveRound(r); }catch(e){}
   }
 }
@@ -2088,6 +2090,16 @@ function readMismatch(d){
   const gap = Math.abs(got - read);
   return gap > Math.max(READ_GAP_G, read * READ_GAP_PCT) ? read : null;
 }
+// Stored photos as a strip of thumbnails, straight from Drive's image URL
+// (no sign-in). Used under a dosing row, an issue, and an ad-hoc job alike.
+function photoStripHtml(photos, captionOf){
+  const list = (photos || []).filter(x => x && x.fileId);
+  if(!list.length) return "";
+  return `<div class="dose-photos">${list.map((x, i) => {
+    const cap = captionOf ? captionOf(x, i) : ("Photo " + (i+1));
+    return `<button type="button" data-photoview="${esc(x.fileId)}" data-photocap="${esc(cap)}" aria-label="Open ${esc(cap)}"><img src="${driveImg(x.fileId, 400)}" alt="" loading="lazy" onerror="this.parentNode.outerHTML='<div class=&quot;dp-fail&quot;>photo not loading</div>'"><span class="dp-cap">${esc(cap)}</span></button>`;
+  }).join("")}</div>`;
+}
 function dosedSummary(d){
   const flag = offPlan(d.chlorineG, d.plannedChlorineG) || offPlan(d.acidMl, d.plannedAcidMl);
   const mis = readMismatch(d);
@@ -2101,10 +2113,7 @@ function dosedSummary(d){
   const links = legacy.map((x, i) => photoBtn(x, `📷 ${photos.length > 1 ? photoName(i+1).toLowerCase() : PHOTO_SUBJECT.toLowerCase()}`, photoName(i+1)));
   const pending = photos.filter(x => x.pending).length;
   const photo = (links.length ? " · " + links.join(" ") : "") + (pending ? ` · <span class="muted">📷 ${pending} upload${pending>1?"s":""} pending</span>` : "");
-  const strip = withFile.length ? `<div class="dose-photos">${withFile.map((x, i) => {
-    const cap = photoName(photos.indexOf(x) + 1) + (x.readG !== null && x.readG !== undefined ? " · read " + fmtG(x.readG) : "");
-    return `<button type="button" data-photoview="${esc(x.fileId)}" data-photocap="${esc(cap)}" aria-label="Open ${esc(cap)}"><img src="${driveImg(x.fileId, 400)}" alt="" loading="lazy" onerror="this.parentNode.outerHTML='<div class=&quot;dp-fail&quot;>photo not loading</div>'"><span class="dp-cap">${esc(cap)}</span></button>`;
-  }).join("")}</div>` : "";
+  const strip = photoStripHtml(withFile, x => photoName(photos.indexOf(x) + 1) + (x.readG !== null && x.readG !== undefined ? " · read " + fmtG(x.readG) : ""));
   return `Dosed <b>${fmtG(d.chlorineG)} chlorine · ${fmtMl(d.acidMl)} acid</b> (${d.tool === "jug" ? "jug" : "scale"})${plan}${src}${photo}${flag ? ' <span class="dev">⚠ off plan</span>' : ""}${mis !== null ? ` <span class="dev">⚠ photo shows ${fmtG(mis)}</span>` : ""}${strip}`;
 }
 function dosingPanel(s, t){
@@ -2251,6 +2260,71 @@ const relayCfg = () => (state.cfg.photo && state.cfg.photo.relayUrl) ? state.cfg
 // nights is not a check. When it is off nothing is asked of any model: no
 // cost, nothing to fail, amounts typed as before.
 const readerOn = () => !!(relayCfg() && state.cfg.photo.read);
+
+// Photos on "Report an issue" and "+ Add another job" -- optional, camera OR
+// gallery (an issue may have been photographed earlier; this is context, not
+// proof, so the freshness rule for dosing photos does not apply). They go
+// through the same relay into Drive, stamped with outlet, what it is, who
+// and when, and show on the issue card and the job row afterwards.
+state.fp = state.fp || {};
+const fpList = scope => (state.fp[scope] = state.fp[scope] || []);
+function formPhotosHtml(scope, what){
+  if(!relayCfg()) return "";
+  const photos = fpList(scope);
+  const rows = photos.map(ph => {
+    const img = ph.dataUrl ? `<img src="${ph.dataUrl}" alt="">` : `<div class="ph-empty" aria-hidden="true">📷</div>`;
+    const status = ph.status === "done" ? `<span class="ph-status ok">Photo ${ph.n} attached.</span>`
+      : ph.status === "failed" ? `<span class="ph-status err">Photo ${ph.n} · ${esc(ph.error || "Upload failed.")}</span>`
+      : `<span class="ph-status">Photo ${ph.n} · ${ph.status === "preparing" ? "preparing" : "uploading"}…</span>`;
+    const actions = ph.status === "failed"
+      ? `<button class="btn sm" type="button" data-fpretry="${esc(scope)}|${ph.id}">Retry</button><button class="link" type="button" data-fprm="${esc(scope)}|${ph.id}">remove</button>`
+      : ph.status === "done" ? `<button class="link" type="button" data-fprm="${esc(scope)}|${ph.id}">remove</button>` : "";
+    return `<div class="wt-photo has">${img}<div class="ph-main">${status}<div class="ph-actions">${actions}</div></div></div>`;
+  }).join("");
+  return `<div class="stack" style="gap:8px">${rows}
+    <div class="row-2">
+      <button class="btn sm" type="button" data-fpcam="${esc(scope)}">📷 Take photo</button>
+      <button class="btn sm" type="button" data-fpgal="${esc(scope)}">Upload photo</button>
+    </div>
+    <input type="file" accept="image/*" capture="environment" hidden data-fpin-cam="${esc(scope)}">
+    <input type="file" accept="image/*" hidden data-fpin-gal="${esc(scope)}">
+    <span class="note" style="margin:0">Optional. A photo of the ${esc(what)} helps whoever picks this up.</span>
+  </div>`;
+}
+// A photo arriving mid-form must not wipe what has been typed. render()
+// rebuilds the form from state, and the text isn't in state until Send -- so
+// carry the fields across the redraw by hand.
+const FORM_FIELDS = ["#issue-desc", "#issue-priority", "#newtask", "#addissue-outlet", "#addissue-desc", "#addissue-priority"];
+function renderKeepingForm(){
+  const kept = {}; let focused = null, caret = null;
+  FORM_FIELDS.forEach(sel => { const el = $(sel); if(el){ kept[sel] = el.value; if(document.activeElement === el){ focused = sel; caret = el.selectionStart; } } });
+  render();
+  FORM_FIELDS.forEach(sel => { const el = $(sel); if(el && sel in kept) el.value = kept[sel]; });
+  if(focused){ const el = $(focused); if(el){ el.focus(); try{ if(caret !== null) el.setSelectionRange(caret, caret); }catch(e){} } }
+}
+const fpBusy = scope => fpList(scope).some(ph => ph.status === "preparing" || ph.status === "uploading");
+const fpDone = scope => fpList(scope).filter(ph => ph.status === "done").map(ph => ({fileId:ph.fileId, url:ph.url, thumb:ph.thumb || null}));
+async function onFormPhotoPicked(scope, file, meta){
+  const list = fpList(scope);
+  const ph = {id: uid(), status:"preparing", n: list.length + 1};
+  list.push(ph); renderKeepingForm();
+  let prepared;
+  try{ prepared = await preparePhoto(file, [`${meta.code} · ${meta.what}`, `${state.me || "?"} · ${nowStamp()}`, (meta.text || "").slice(0, 60)]); }
+  catch(e){ state.fp[scope] = list.filter(x => x !== ph); flash("Couldn't read that image. Try again."); renderKeepingForm(); return; }
+  Object.assign(ph, {status:"uploading", dataUrl: prepared.dataUrl, base64: prepared.base64}); renderKeepingForm();
+  await uploadFormPhoto(scope, ph, meta);
+}
+async function uploadFormPhoto(scope, ph, meta){
+  try{
+    const j = await relayUpload({kind: meta.kind, outlet: meta.code, pool: meta.code, job: meta.what, person: state.me,
+      date: todayKey(), tool:"none", wantReading:false, imageBase64: ph.base64, photoNo: ph.n});
+    Object.assign(ph, {status:"done", fileId:j.fileId, url:j.url, thumb:j.thumb || null});
+  }catch(e){
+    ph.status = "failed";
+    ph.error = (e && e.relay && !e.transient) ? String(e.message) : "Upload didn't go through. Retry, or send without it.";
+  }
+  renderKeepingForm();
+}
 
 async function loadPhoto(file){
   try{ return await createImageBitmap(file, {imageOrientation:"from-image"}); }
@@ -2423,6 +2497,7 @@ async function testRelay(realFile){
   if(j.url) html += `<p class="note" style="margin:0">The test picture is in Drive — ${photoBtn({fileId:j.fileId, url:j.url}, "have a look", "Photo proof test")} — delete it whenever you like.</p>`;
   box.innerHTML = html;
 }
+function nowStamp(){ const n = new Date(); return `${n.getDate()} ${MONTH_ABBR[n.getMonth()]} ${n.getFullYear()} ${pad(n.getHours())}:${pad(n.getMinutes())}`; }
 function photoStampLines(code, poolKey, jobName){
   const n = new Date();
   return [`${code}${poolKey !== code ? " · "+poolKey : ""} · ${jobName}`, `${state.me || "?"} · ${n.getDate()} ${MONTH_ABBR[n.getMonth()]} ${n.getFullYear()} ${pad(n.getHours())}:${pad(n.getMinutes())}`];
@@ -2854,10 +2929,10 @@ function taskRow(s, t){
   // A finished water test shows what was read and what it called for; a
   // dosing job that hasn't been done yet shows the dose the water test
   // worked out for this pool, so the technician never has to look it up.
-  const detail = (finished && t.reading) ? `<span class="wt-read">${readingSummary(t.reading)}</span>`
+  const detail = ((finished && t.reading) ? `<span class="wt-read">${readingSummary(t.reading)}</span>`
                : (finished && t.dosed) ? `<span class="wt-read">${dosedSummary(t.dosed)}</span>`
                : (!finished && t.plannedDose && isDosingTask(t)) ? `<span class="wt-read">${plannedDoseSummary(t.plannedDose)}</span>`
-               : "";
+               : "") + (t.photos && t.photos.length ? `<span class="wt-read">${photoStripHtml(t.photos, (x, i) => "Job photo " + (i+1))}</span>` : "");
   // The calculator opens inline under the water-test job the moment its
   // claimer taps it -- the reading and the dose are entered right here.
   // The dosing job likewise opens its measured-amounts entry.
@@ -2903,6 +2978,7 @@ function issueSummaryRow(issue){
     ${priorityTag(issue.priority)}${planned}
     <span class="mono muted issue-meta">by ${esc(issue.raisedBy)}</span>
     ${action}
+    ${photoStripHtml(issue.photos, (x, i) => "Issue photo " + (i+1))}
   </div>`;
 }
 
@@ -2925,8 +3001,9 @@ function issueBlock(s){
           <option value="urgent">Urgent</option>
         </select>
       </div>
+      ${formPhotosHtml("issue|"+s.outlet, "problem")}
       <div class="row-2">
-        <button class="btn primary sm" data-submitissue="${s.outlet}" style="flex:1">Report to supervisor</button>
+        <button class="btn primary sm" data-submitissue="${s.outlet}" style="flex:1" ${fpBusy("issue|"+s.outlet) ? "disabled" : ""}>${fpBusy("issue|"+s.outlet) ? "Wait for the photo…" : "Report to supervisor"}</button>
         <button class="btn sm" id="cancel-issue" style="flex:1">Cancel</button>
       </div>
     </div>`
@@ -3052,8 +3129,9 @@ function stopCard(s, i, r, isHeading){
       <div class="addbox">
         <input type="text" id="newtask" placeholder="What else did you do here?" autocomplete="off">
         <div class="sugg">${SUGGESTIONS.map(x=>`<button data-sugg="${esc(x)}">${esc(x)}</button>`).join("")}</div>
+        ${formPhotosHtml("job|"+s.outlet, "job")}
         <div class="row-2">
-          <button class="btn primary sm" data-addtask="${s.outlet}" style="flex:1">Add job</button>
+          <button class="btn primary sm" data-addtask="${s.outlet}" style="flex:1" ${fpBusy("job|"+s.outlet) ? "disabled" : ""}>${fpBusy("job|"+s.outlet) ? "Wait for the photo…" : "Add job"}</button>
           <button class="btn sm" id="cancel-add" style="flex:1">Cancel</button>
         </div>
       </div>`
@@ -3157,10 +3235,10 @@ function stopJobList(s){
     // keeps the job title readable instead of wrapping mid-word around tags.
     // A finished water test carries its reading and the dose it called for;
     // a still-open dosing job shows the dose the water test worked out.
-    const detail = (t.doneAt && t.reading) ? `<div class="job-row-read">${readingSummary(t.reading)}</div>`
+    const detail = ((t.doneAt && t.reading) ? `<div class="job-row-read">${readingSummary(t.reading)}</div>`
                  : (t.doneAt && t.dosed) ? `<div class="job-row-read">${dosedSummary(t.dosed)}</div>`
                  : (!t.doneAt && t.plannedDose && isDosingTask(t)) ? `<div class="job-row-read">${plannedDoseSummary(t.plannedDose)}</div>`
-                 : "";
+                 : "") + (t.photos && t.photos.length ? `<div class="job-row-read">${photoStripHtml(t.photos, (x, i) => "Job photo " + (i+1))}</div>` : "");
     return `<div class="job-row">
       <div class="job-row-name">${t.pool?`<span class="tag pool">${esc(t.pool)}</span> `:""}${esc(t.name)}</div>
       <div class="job-row-tags">${kindTag}${who}${tStatus}</div>${detail}
@@ -3354,6 +3432,7 @@ function issueCard(issue){
       ${issue.status==="resolved" ? `<span class="tag st-done">Resolved${issue.resolvedBy?" by "+esc(issue.resolvedBy):""} · ${fmtWhenFull(issue.resolvedAt)}</span>` : ""}
     </div>
     <p class="issue-card-desc">${esc(issue.description)}</p>
+    ${photoStripHtml(issue.photos, (x, i) => "Issue photo " + (i+1))}
     ${meta}
     ${body}
   </div>`;
@@ -3380,8 +3459,9 @@ function addIssueBlock(){
     </div>
     <textarea id="addissue-desc" rows="2" maxlength="500"
       placeholder="What needs to be done? e.g. Replace worn ladder pad at JEIP2"></textarea>
+    ${formPhotosHtml("addissue", "problem")}
     <div class="row-2">
-      <button class="btn primary sm" id="submit-addissue" style="flex:1">Add task</button>
+      <button class="btn primary sm" id="submit-addissue" style="flex:1" ${fpBusy("addissue") ? "disabled" : ""}>${fpBusy("addissue") ? "Wait for the photo…" : "Add task"}</button>
       <button class="btn sm" id="cancel-addissue" style="flex:1">Cancel</button>
     </div>
   </div>`;
@@ -4239,9 +4319,24 @@ function wire(){
   each("[data-taskreopen]", b => { const [o,t] = two(b.dataset.taskreopen); if(confirm("Reopen this task?")) undoTask(o,t); });
   each("[data-rmtask]", b => { const [o,t] = two(b.dataset.rmtask); removeTask(o,t); });
   each("[data-openadd]",b => { state.adding = b.dataset.openadd; render(); const i=$("#newtask"); if(i) i.focus(); });
-  on("#cancel-add", () => { state.adding = null; render(); });
+  on("#cancel-add", () => { state.adding = null; Object.keys(state.fp).filter(k => k.startsWith("job|")).forEach(k => delete state.fp[k]); render(); });
+  // Photo buttons on the issue / add-job / supervisor forms.
+  each("[data-fpcam]", b => { const i = document.querySelector(`[data-fpin-cam="${b.dataset.fpcam}"]`); if(i){ i.value = ""; i.click(); } });
+  each("[data-fpgal]", b => { const i = document.querySelector(`[data-fpin-gal="${b.dataset.fpgal}"]`); if(i){ i.value = ""; i.click(); } });
+  const fpMeta = scope => {
+    const [type, code] = scope.split("|");
+    if(type === "issue") return {kind:"issue", code, what:"Issue", text: ($("#issue-desc")||{}).value};
+    if(type === "job") return {kind:"job", code, what:"Job", text: ($("#newtask")||{}).value};
+    return {kind:"issue", code: ($("#addissue-outlet")||{}).value || "?", what:"Issue", text: ($("#addissue-desc")||{}).value};
+  };
+  document.querySelectorAll("[data-fpin-cam],[data-fpin-gal]").forEach(i => i.addEventListener("change", () => {
+    const scope = i.dataset.fpinCam || i.dataset.fpinGal; const f = i.files && i.files[0];
+    if(f) onFormPhotoPicked(scope, f, fpMeta(scope));
+  }));
+  each("[data-fpretry]", b => { const [scope, pid] = b.dataset.fpretry.split(/\|(?=[^|]*$)/); const ph = fpList(scope).find(x => x.id === pid); if(!ph || !ph.base64) return; ph.status = "uploading"; renderKeepingForm(); uploadFormPhoto(scope, ph, fpMeta(scope)); });
+  each("[data-fprm]", b => { const [scope, pid] = b.dataset.fprm.split(/\|(?=[^|]*$)/); state.fp[scope] = fpList(scope).filter(x => x.id !== pid); state.fp[scope].forEach((x, i) => x.n = i+1); renderKeepingForm(); });
   each("[data-sugg]",   b => { const i=$("#newtask"); if(i){ i.value = b.dataset.sugg; i.focus(); } });
-  each("[data-addtask]",b => { const i=$("#newtask"); addTask(b.dataset.addtask, i ? i.value : ""); });
+  each("[data-addtask]",b => { const i=$("#newtask"); const scope = "job|"+b.dataset.addtask; if(fpBusy(scope)) return; addTask(b.dataset.addtask, i ? i.value : "", fpDone(scope)); delete state.fp[scope]; });
   const nt = $("#newtask");
   if(nt) nt.addEventListener("keydown", e => {
     if(e.key === "Enter"){ const b = document.querySelector("[data-addtask]"); if(b) addTask(b.dataset.addtask, nt.value); }
@@ -4399,12 +4494,14 @@ function wire(){
     render();
   });
   each("[data-openissue]", b => { state.reportingIssue = b.dataset.openissue; render(); const i=$("#issue-desc"); if(i) i.focus(); });
-  on("#cancel-issue", () => { state.reportingIssue = null; render(); });
+  on("#cancel-issue", () => { state.reportingIssue = null; Object.keys(state.fp).filter(k => k.startsWith("issue|")).forEach(k => delete state.fp[k]); render(); });
   each("[data-submitissue]", b => {
-    const outlet = b.dataset.submitissue;
+    const outlet = b.dataset.submitissue, scope = "issue|"+outlet;
+    if(fpBusy(scope)) return;
     const d = $("#issue-desc"), p = $("#issue-priority");
     state.reportingIssue = null;
-    reportIssue(outlet, d ? d.value : "", p ? p.value : "medium");
+    reportIssue(outlet, d ? d.value : "", p ? p.value : "medium", null, fpDone(scope));
+    delete state.fp[scope];
   });
 
   // Chun Kay wanted the "Open issues" count to actually take you to the
@@ -4416,11 +4513,13 @@ function wire(){
 
   // issues — supervisor adding a non-urgent task straight to an outlet, from Overview
   on("#open-addissue",   () => { state.addingIssue = true; render(); const i=$("#addissue-desc"); if(i) i.focus(); });
-  on("#cancel-addissue", () => { state.addingIssue = false; render(); });
+  on("#cancel-addissue", () => { state.addingIssue = false; delete state.fp.addissue; render(); });
   on("#submit-addissue", () => {
+    if(fpBusy("addissue")) return;
     const o = $("#addissue-outlet"), d = $("#addissue-desc"), p = $("#addissue-priority");
     state.addingIssue = false;
-    reportIssue(o ? o.value : "", d ? d.value : "", p ? p.value : "low");
+    reportIssue(o ? o.value : "", d ? d.value : "", p ? p.value : "low", null, fpDone("addissue"));
+    delete state.fp.addissue;
   });
 
   // issues — supervisor planning/resolving, from the Overview board
