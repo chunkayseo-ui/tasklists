@@ -2075,7 +2075,12 @@ function dmSaveState(d){
     const want = jugPhotosExpected(d);
     if(photos.length < want) return {ok:false, label:`One photo per fill — ${photos.length} of ${want}`};
   }
-  if(photos.some(ph => ph.status === "failed")) return {ok:true, label:"Save now · photo uploads later", queue:true};
+  if(photos.some(ph => ph.status === "failed")){
+    // A refusal by the relay (permissions, wrong key) won't cure itself in the
+    // queue the way a lost signal does -- so don't promise it will.
+    const refused = photos.some(ph => ph.status === "failed" && ph.relayRefused);
+    return {ok:true, label: refused ? "Save now · photo not stored" : "Save now · photo uploads later", queue:true};
+  }
   return {ok:true, label:"Save amounts · job done"};
 }
 function finishDosing(code, tid){
@@ -2170,11 +2175,32 @@ async function relayUpload(payload){
   const rc = relayCfg(); if(!rc) throw new Error("no relay");
   // text/plain keeps the browser from sending a CORS preflight, which an
   // Apps Script web app can't answer; the script parses the JSON itself.
-  const res = await fetch(rc.relayUrl, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify(Object.assign({key: rc.key || ""}, payload))});
-  if(!res.ok) throw new Error("HTTP "+res.status);
-  const j = await res.json();
-  if(!j || !j.ok) throw new Error((j && j.error) || "relay error");
+  let res;
+  try{
+    res = await fetch(rc.relayUrl, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify(Object.assign({key: rc.key || ""}, payload))});
+  }catch(e){
+    // Never reached the relay at all -- that one really is signal.
+    const err = new Error("No answer from the photo relay — check the signal."); err.network = true; throw err;
+  }
+  if(!res.ok){ const err = new Error("The photo relay answered HTTP "+res.status+"."); err.relay = true; throw err; }
+  let j = null;
+  try{ j = await res.json(); }catch(e){ const err = new Error("The photo relay sent something unexpected back."); err.relay = true; throw err; }
+  // The relay answered, but refused. That's a set-up problem, not signal --
+  // saying "signal?" here sends someone hunting for a phone problem that
+  // isn't there, so the relay's own words are shown instead.
+  if(!j || !j.ok){ const err = new Error(relayErrorText(j && j.error)); err.relay = true; throw err; }
   return j;
+}
+// Turns the relay's raw complaint into something a supervisor can act on.
+function relayErrorText(raw){
+  const msg = String(raw || "The photo relay refused the upload.");
+  if(/do not have permission to call DriveApp/i.test(msg))
+    return "The relay isn't allowed to save to Drive yet — open the Apps Script project, Run \u201cauthorizeRelay\u201d once and approve, then redeploy.";
+  if(/bad key/i.test(msg))
+    return "The relay rejected the key — check the shared key in Task Setting matches RELAY_KEY in the script.";
+  if(/no image/i.test(msg))
+    return "The relay didn't receive the photo. Try taking it again.";
+  return "The relay refused it: " + msg.slice(0, 160);
 }
 function photoStampLines(code, poolKey, jobName){
   const n = new Date();
@@ -2225,7 +2251,11 @@ async function uploadDosingPhoto(key, d, ph, meta){
     const reads = photoReadings(d);
     if(j.reading && j.reading.status === "ok" && !d.touched) flash(reads.length > 1 ? `Read ${reads.join(" + ")} = ${reads.reduce((a,b)=>a+b,0)} g off the scale — check it, then Save.` : `Read ${Math.round(j.reading.grams)} g off the scale — check it, then Save.`);
   }catch(e){
-    ph.status = "failed"; ph.error = "Upload didn't go through (signal?). Retry, or save now and it uploads later.";
+    ph.status = "failed";
+    ph.error = (e && e.relay)
+      ? String(e.message)                                    // the relay spoke: say what it said
+      : "Upload didn't go through — no answer from the relay (signal?). Retry, or save now and it uploads later.";
+    ph.relayRefused = !!(e && e.relay);
   }
   render();
 }
