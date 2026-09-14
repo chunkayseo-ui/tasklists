@@ -2171,7 +2171,35 @@ async function preparePhoto(file, lines){
   const dataUrl = c.toDataURL("image/jpeg", 0.82);
   return {dataUrl, base64: dataUrl.split(",")[1], width:W, height:H};
 }
-async function relayUpload(payload){
+const naptime = ms => new Promise(r => setTimeout(r, ms));
+const RELAY_TRIES = 3;
+// Apps Script answers a POST with a redirect to a one-time response URL. Two
+// uploads in flight at once knock each other's key out and the loser comes
+// back 404 -- which is exactly what three jug photos taken back to back did.
+// So every upload joins a queue and goes up on its own, in order, however fast
+// the photos are taken.
+let relayChain = Promise.resolve();
+function relayUpload(payload){
+  const run = () => relayTry(payload);
+  const next = relayChain.then(run, run);
+  relayChain = next.catch(() => {});   // one failure must not stall the rest
+  return next;
+}
+async function relayTry(payload){
+  let last;
+  for(let i = 0; i < RELAY_TRIES; i++){
+    try{ return await relayPost(payload); }
+    catch(e){
+      last = e;
+      // A real refusal (bad key, no Drive permission) says the same thing
+      // however many times we ask -- only transient trouble is worth a retry.
+      if(e && e.relay && !e.transient) throw e;
+      if(i < RELAY_TRIES - 1) await naptime(900 * Math.pow(2, i));
+    }
+  }
+  throw last;
+}
+async function relayPost(payload){
   const rc = relayCfg(); if(!rc) throw new Error("no relay");
   // text/plain keeps the browser from sending a CORS preflight, which an
   // Apps Script web app can't answer; the script parses the JSON itself.
@@ -2182,9 +2210,16 @@ async function relayUpload(payload){
     // Never reached the relay at all -- that one really is signal.
     const err = new Error("No answer from the photo relay — check the signal."); err.network = true; throw err;
   }
-  if(!res.ok){ const err = new Error("The photo relay answered HTTP "+res.status+"."); err.relay = true; throw err; }
+  if(!res.ok){
+    const transient = res.status === 404 || res.status === 429 || res.status >= 500;
+    const err = new Error(transient
+      ? "The relay didn't answer properly (HTTP "+res.status+") — it was busy."
+      : "The photo relay answered HTTP "+res.status+".");
+    err.relay = true; err.transient = transient; throw err;
+  }
   let j = null;
-  try{ j = await res.json(); }catch(e){ const err = new Error("The photo relay sent something unexpected back."); err.relay = true; throw err; }
+  try{ j = await res.json(); }
+  catch(e){ const err = new Error("The photo relay sent something unexpected back."); err.relay = true; err.transient = true; throw err; }
   // The relay answered, but refused. That's a set-up problem, not signal --
   // saying "signal?" here sends someone hunting for a phone problem that
   // isn't there, so the relay's own words are shown instead.
@@ -2252,10 +2287,13 @@ async function uploadDosingPhoto(key, d, ph, meta){
     if(j.reading && j.reading.status === "ok" && !d.touched) flash(reads.length > 1 ? `Read ${reads.join(" + ")} = ${reads.reduce((a,b)=>a+b,0)} g off the scale — check it, then Save.` : `Read ${Math.round(j.reading.grams)} g off the scale — check it, then Save.`);
   }catch(e){
     ph.status = "failed";
-    ph.error = (e && e.relay)
+    const refused = !!(e && e.relay && !e.transient);
+    ph.error = refused
       ? String(e.message)                                    // the relay spoke: say what it said
-      : "Upload didn't go through — no answer from the relay (signal?). Retry, or save now and it uploads later.";
-    ph.relayRefused = !!(e && e.relay);
+      : (e && e.transient)
+        ? "The relay was busy and didn't take it. Retry, or save now and it uploads later."
+        : "Upload didn't go through — no answer from the relay (signal?). Retry, or save now and it uploads later.";
+    ph.relayRefused = refused;
   }
   render();
 }
