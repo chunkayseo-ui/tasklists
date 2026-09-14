@@ -2026,6 +2026,11 @@ function dmState(key, t){
 // wanted to look at the photo they'd taken. This image URL needs no sign-in for
 // a link-shared file, so the photo opens inside the app instead.
 const driveImg = (fileId, w) => "https://drive.google.com/thumbnail?id=" + encodeURIComponent(fileId) + "&sz=w" + (w || 1600);
+// What a photo is called, everywhere it is named. These photos only ever show
+// the chlorine being measured out, so "Chlorine 2" tells a supervisor scanning
+// a job row what they are about to open; "Photo 2" told them nothing.
+const PHOTO_SUBJECT = "Chlorine";
+const photoName = n => PHOTO_SUBJECT + " " + n;
 function photoBtn(ph, label, caption){
   if(!ph || (!ph.fileId && !ph.url)) return "";
   if(!ph.fileId) return `<a href="${esc(ph.url)}" target="_blank" rel="noopener">${label}</a>`;
@@ -2061,7 +2066,7 @@ function dosedSummary(d){
   const src = d.chlorineSource === "photo" ? " · read from photo"
             : d.chlorineSource === "jug-fills" ? ` · ${d.jugFills || 0} × 1 L jar${(d.jugFills||0)===1?"":"s"}${d.jugPartMl ? " + "+d.jugPartMl+" ml" : ""}`
             : (photos.length ? " · typed" : "");
-  const links = photos.filter(x => x.fileId || x.url).map((x, i) => photoBtn(x, `📷 ${photos.length > 1 ? "photo "+(i+1) : "photo"}`, `Photo ${i+1}`));
+  const links = photos.filter(x => x.fileId || x.url).map((x, i) => photoBtn(x, `📷 ${photos.length > 1 ? photoName(i+1).toLowerCase() : PHOTO_SUBJECT.toLowerCase()}`, photoName(i+1)));
   const pending = photos.filter(x => x.pending).length;
   const photo = (links.length ? " · " + links.join(" ") : "") + (pending ? ` · <span class="muted">📷 ${pending} upload${pending>1?"s":""} pending</span>` : "");
   return `Dosed <b>${fmtG(d.chlorineG)} chlorine · ${fmtMl(d.acidMl)} acid</b> (${d.tool === "jug" ? "jug" : "scale"})${plan}${src}${photo}${flag ? ' <span class="dev">⚠ off plan</span>' : ""}`;
@@ -2185,7 +2190,7 @@ function finishDosing(code, tid){
     persist("water_tests/"+todayKey()+"__"+poolKey+"__night", wt, () => {}, {merge:true});
     queued.forEach(({qid, ph}) => { if(!ph.base64) return;
       photoQ.add({id:qid, roundId:myId(), outlet:code, taskId:tid, poolKey, date:todayKey(),
-        payload:{kind:"dosing-photo", outlet:code, pool:poolKey, job:t0.name, person:state.me, takenAt:ph.takenAt, date:todayKey(), tool:d.tool, wantReading:false, imageBase64:ph.base64, photoNo:ph.n}});
+        payload:{kind:"chlorine", outlet:code, pool:poolKey, job:t0.name, person:state.me, takenAt:ph.takenAt, date:todayKey(), tool:d.tool, wantReading:false, imageBase64:ph.base64, photoNo:ph.n}});
     });
     delete state.dm[key];
   });
@@ -2326,14 +2331,14 @@ async function onDosingPhotoPicked(key, file){
   const ph = {id: uid(), status:"preparing", n: d.photos.length + 1};
   d.photos.push(ph); render();
   let prepared;
-  try{ prepared = await preparePhoto(file, photoStampLines(code, poolKey, t.name).concat([`photo ${ph.n}`])); }
+  try{ prepared = await preparePhoto(file, photoStampLines(code, poolKey, t.name).concat([photoName(ph.n)])); }
   catch(e){ d.photos = d.photos.filter(x => x !== ph); flash("Couldn't read that image. Try again."); render(); return; }
   Object.assign(ph, {status:"uploading", dataUrl: prepared.dataUrl, base64: prepared.base64, takenAt: new Date().toISOString()}); render();
   await uploadDosingPhoto(key, d, ph, {code, poolKey, jobName:t.name, tool:d.tool});
 }
 async function uploadDosingPhoto(key, d, ph, meta){
   try{
-    const j = await relayUpload({kind:"dosing-photo", outlet:meta.code, pool:meta.poolKey, job:meta.jobName, person:state.me, takenAt:ph.takenAt,
+    const j = await relayUpload({kind:"chlorine", outlet:meta.code, pool:meta.poolKey, job:meta.jobName, person:state.me, takenAt:ph.takenAt,
       date: todayKey(), tool: meta.tool, wantReading: meta.tool !== "jug", imageBase64: ph.base64, photoNo: ph.n});
     Object.assign(ph, {status:"done", fileId:j.fileId, url:j.url, thumb:j.thumb || null, reading:j.reading || null});
     applyReading(d);
@@ -2400,20 +2405,20 @@ function dosingPhotoHtml(key, d){
     // Once it's up, tapping the thumbnail opens the saved photo full-screen —
     // the technician checking their own work shouldn't have to leave the app.
     const openable = ph.status === "done" && ph.fileId;
-    const img = ph.dataUrl ? `<img class="${openable ? "ph-open" : ""}" src="${ph.dataUrl}" alt="Photo ${ph.n} of the ${tool}">` : `<div class="ph-empty" aria-hidden="true">📷</div>`;
-    const thumb = openable ? `<button class="ph-openbtn" type="button" data-photoview="${esc(ph.fileId)}" data-photocap="Photo ${ph.n}" aria-label="Open photo ${ph.n}">${img}</button>` : img;
+    const img = ph.dataUrl ? `<img class="${openable ? "ph-open" : ""}" src="${ph.dataUrl}" alt="${photoName(ph.n)} — weighed on the ${tool}">` : `<div class="ph-empty" aria-hidden="true">📷</div>`;
+    const thumb = openable ? `<button class="ph-openbtn" type="button" data-photoview="${esc(ph.fileId)}" data-photocap="${photoName(ph.n)}" aria-label="Open ${photoName(ph.n)}">${img}</button>` : img;
     let status = "", actions = "";
-    if(ph.status === "preparing") status = `<span class="ph-status">Photo ${ph.n} · preparing…</span>`;
-    else if(ph.status === "uploading") status = `<span class="ph-status">Photo ${ph.n} · uploading${tool === "scale" ? " and reading the display" : ""}…</span>`;
+    if(ph.status === "preparing") status = `<span class="ph-status">${photoName(ph.n)} · preparing…</span>`;
+    else if(ph.status === "uploading") status = `<span class="ph-status">${photoName(ph.n)} · uploading${tool === "scale" ? " and reading the display" : ""}…</span>`;
     else if(ph.status === "done"){
       const rd = ph.reading;
-      const msg = tool === "jug" ? `Photo ${ph.n} saved.`
-        : (rd && rd.status === "ok") ? `Photo ${ph.n} · read <b>${Math.round(rd.grams)} g</b>${rd.confidence === "low" ? " (not 100% sure — check it)" : ""}`
-        : `Photo ${ph.n} saved — display couldn't be read.`;
+      const msg = tool === "jug" ? `${photoName(ph.n)} saved.`
+        : (rd && rd.status === "ok") ? `${photoName(ph.n)} · read <b>${Math.round(rd.grams)} g</b>${rd.confidence === "low" ? " (not 100% sure — check it)" : ""}`
+        : `${photoName(ph.n)} saved — display couldn't be read.`;
       status = `<span class="ph-status ok">${msg}</span>`;
       actions = `<button class="link" type="button" data-dmphotorm="${key}|${ph.id}">remove</button>`;
     } else if(ph.status === "failed"){
-      status = `<span class="ph-status err">Photo ${ph.n} · ${esc(ph.error || "Upload failed.")}</span>`;
+      status = `<span class="ph-status err">${photoName(ph.n)} · ${esc(ph.error || "Upload failed.")}</span>`;
       actions = `<button class="btn sm" type="button" data-dmphotoretry="${key}|${ph.id}">Retry upload</button><button class="link" type="button" data-dmphotorm="${key}|${ph.id}">remove</button>`;
     }
     return `<div class="wt-photo has">${thumb}<div class="ph-main">${status}<div class="ph-actions">${actions}</div></div></div>`;
