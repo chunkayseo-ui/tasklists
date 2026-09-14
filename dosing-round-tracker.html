@@ -395,6 +395,15 @@ details.panel[open] summary::after{content:"▴"}
 .wt-photo .ph-actions{display:flex;gap:8px;flex-wrap:wrap}
 .wt-src{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-3)}
 .wt-src.photo{color:var(--ok)}
+.jug-row{display:flex;align-items:center;gap:10px}
+.jug-row .step{width:46px;height:46px;flex:none;border:1px solid var(--line);background:var(--surface);border-radius:10px;font:700 22px/1 "IBM Plex Sans",sans-serif;color:var(--ink);cursor:pointer}
+.jug-row .step:disabled{opacity:.35;cursor:not-allowed}
+.jug-row .step:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.jug-row .count{flex:1;text-align:center;font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:34px;line-height:1;font-variant-numeric:tabular-nums}
+.jug-row .count small{display:block;font:400 12px/1.4 "IBM Plex Mono",monospace;color:var(--ink-3);letter-spacing:.04em;text-transform:uppercase;margin-top:4px}
+.jug-total{background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:10px;padding:10px 12px;display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.jug-total .sum{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--ink-2)}
+.jug-total .big{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:26px;line-height:1;color:var(--accent)}
 .job-row-read a{color:var(--accent)}
 .wt .panel{background:var(--surface-2)}
 .wt .panel summary{font-size:14.5px;padding:10px 12px}
@@ -1959,6 +1968,21 @@ function finishWaterTest(code, tid){
  * failing. The planned amounts from the water test are pre-filled, so the
  * common case is a glance and a tap; only a real difference needs typing.
  */
+// The team's own convention: one full 1 L jar of chlorine = 1 kg. So a jug
+// dose is counted in fills, not read off the jar -- the gradation lines are
+// invisible behind white granules, so a jar photo can honestly prove that a
+// fill happened, but never how full it was. Only a part fill (a jar that
+// isn't packed) has a readable level, and that one number is typed.
+const JUG_ML = 1000;
+function jugTotal(d){
+  const part = (d.jugPart === "" || isNaN(Number(d.jugPart))) ? 0 : Math.max(0, Number(d.jugPart));
+  return (Number(d.jugFills) || 0) * JUG_ML + part;
+}
+// How many photos a jug dose owes: one per full fill, plus one for a part fill.
+function jugPhotosExpected(d){
+  const part = (d.jugPart === "" || isNaN(Number(d.jugPart))) ? 0 : Number(d.jugPart);
+  return Math.max(1, (Number(d.jugFills) || 0) + (part > 0 ? 1 : 0));
+}
 const toGrams = (v,u) => u === "kg" ? v*1000 : v;
 const toMl = (v,u) => u === "l" ? v*1000 : v;
 const fmtG = g => (g >= 1000 && g % 100 === 0) ? (g/1000).toFixed(g % 1000 === 0 ? 0 : 1)+" kg" : g+" g";
@@ -1966,7 +1990,7 @@ const fmtMl = ml => (ml >= 1000 && ml % 100 === 0) ? (ml/1000).toFixed(ml % 1000
 // More than 10% off the plan (or anything at all when the plan was zero).
 const offPlan = (dosed, planned) => (planned === null || planned === undefined) ? false : planned > 0 ? Math.abs(dosed-planned)/planned > 0.1 : dosed > 0;
 function dmState(key, t){
-  if(!state.dm[key]) state.dm[key] = {chlorine:"", acid:"", tool:"scale", seeded:false, touched:false};
+  if(!state.dm[key]) state.dm[key] = {chlorine:"", acid:"", tool:"scale", seeded:false, touched:false, jugFills:0, jugPart:""};
   const d = state.dm[key], pd = t && t.plannedDose;
   // Pre-fill from the water test's plan -- including when the plan only
   // arrives after this job was already claimed -- unless the technician has
@@ -1980,7 +2004,9 @@ function dosedSummary(d){
   const flag = offPlan(d.chlorineG, d.plannedChlorineG) || offPlan(d.acidMl, d.plannedAcidMl);
   const plan = (d.plannedChlorineG !== null && d.plannedChlorineG !== undefined) ? ` · planned ${fmtG(d.plannedChlorineG)} / ${fmtMl(d.plannedAcidMl)}` : "";
   const photos = d.photos || (d.photo ? [d.photo] : []);
-  const src = d.chlorineSource === "photo" ? " · read from photo" : (photos.length ? " · typed" : "");
+  const src = d.chlorineSource === "photo" ? " · read from photo"
+            : d.chlorineSource === "jug-fills" ? ` · ${d.jugFills || 0} × 1 L jar${(d.jugFills||0)===1?"":"s"}${d.jugPartMl ? " + "+d.jugPartMl+" ml" : ""}`
+            : (photos.length ? " · typed" : "");
   const links = photos.filter(x => x.url).map((x, i) => `<a href="${esc(x.url)}" target="_blank" rel="noopener">📷 ${photos.length > 1 ? "photo "+(i+1) : "photo"}</a>`);
   const pending = photos.filter(x => x.pending).length;
   const photo = (links.length ? " · " + links.join(" ") : "") + (pending ? ` · <span class="muted">📷 ${pending} upload${pending>1?"s":""} pending</span>` : "");
@@ -1999,8 +2025,9 @@ function dosingPanel(s, t){
     <div class="wt-head"><span class="wt-title">Manual dosing · ${esc(poolKey)}</span></div>
     ${planHtml}
     <div class="wt-grid">
-      <label class="wt-field"><span class="wt-lbl">Chlorine measured</span><span class="num"><input type="number" inputmode="numeric" min="0" step="1" data-dmin="${key}|chlorine" value="${esc(d.chlorine)}" placeholder="0"><span>g</span></span>${d.chlorineSource === "photo" && !d.touched ? `<span class="wt-src photo">read from the photo</span>` : pd ? `<span class="plan">1 ml = 1 g if using the jug</span>` : ""}</label>
-      <label class="wt-field"><span class="wt-lbl">Acid measured</span><span class="num"><input type="number" inputmode="numeric" min="0" step="1" data-dmin="${key}|acid" value="${esc(d.acid)}" placeholder="0"><span>ml</span></span></label>
+      ${d.tool === "jug" ? jugFieldsHtml(key, d) : `
+      <label class="wt-field" style="grid-column:1/-1"><span class="wt-lbl">Chlorine measured</span><span class="num"><input type="number" inputmode="numeric" min="0" step="1" data-dmin="${key}|chlorine" value="${esc(d.chlorine)}" placeholder="0"><span>g</span></span>${d.chlorineSource === "photo" && !d.touched ? `<span class="wt-src photo">read from the photo</span>` : ""}</label>`}
+      <label class="wt-field" style="grid-column:1/-1"><span class="wt-lbl">Acid measured</span><span class="num"><input type="number" inputmode="numeric" min="0" step="1" data-dmin="${key}|acid" value="${esc(d.acid)}" placeholder="0"><span>ml</span></span></label>
       <div class="wt-field" style="grid-column:1/-1"><span class="wt-lbl">Measured with</span><div class="wt-chips">
         <button class="tog" aria-pressed="${d.tool==="scale"}" data-dmset="${key}|tool|scale">Digital scale</button>
         <button class="tog" aria-pressed="${d.tool==="jug"}" data-dmset="${key}|tool|jug">Measuring jug</button></div></div>
@@ -2009,16 +2036,45 @@ function dosingPanel(s, t){
     <button class="btn primary big" data-dmsave="${key}" ${dmSaveState(d).ok ? "" : "disabled"}>${dmSaveState(d).label}</button>
   </div>`;
 }
+// The jug entry: count the full jars, type only the part fill. The total is
+// computed, never typed -- so nobody has to read a level off a packed jar.
+function jugFieldsHtml(key, d){
+  const fills = Number(d.jugFills) || 0, total = jugTotal(d);
+  const partN = (d.jugPart === "" || isNaN(Number(d.jugPart))) ? 0 : Number(d.jugPart);
+  const sum = [fills ? `${fills} × 1 L` : null, partN ? `${partN} ml` : null].filter(Boolean).join(" + ") || "nothing yet";
+  return `<div class="wt-field" style="grid-column:1/-1">
+      <span class="wt-lbl">Full 1 L jars</span>
+      <div class="jug-row">
+        <button class="step" type="button" data-dmjug="${key}|-1" ${fills ? "" : "disabled"} aria-label="One less jar">−</button>
+        <span class="count">${fills}<small>full jars</small></span>
+        <button class="step" type="button" data-dmjug="${key}|1" aria-label="One more jar">+</button>
+      </div>
+    </div>
+    <label class="wt-field" style="grid-column:1/-1"><span class="wt-lbl">Part fill (the jar that isn't full)</span>
+      <span class="num"><input type="number" inputmode="numeric" min="0" step="10" data-dmin="${key}|jugPart" value="${esc(d.jugPart)}" placeholder="0"><span>ml</span></span>
+      <span class="wt-src">Leave at 0 if every jar was full.</span></label>
+    <div class="jug-total" style="grid-column:1/-1"><span class="sum">${sum}</span><span class="big">${fmtG(total)}</span></div>`;
+}
+
 // What the Save button should say/do given the amount and (if a relay is
 // configured) the photo: needs both; a photo that failed to upload can still
 // be saved now and uploaded later from the queue.
 function dmSaveState(d){
-  const amountOk = d.chlorine !== "" && !isNaN(Number(d.chlorine)) && Number(d.chlorine) >= 0 && (d.acid === "" || (!isNaN(Number(d.acid)) && Number(d.acid) >= 0));
-  if(!amountOk) return {ok:false, label:"Enter the chlorine measured first"};
+  const acidOk = d.acid === "" || (!isNaN(Number(d.acid)) && Number(d.acid) >= 0);
+  const amountOk = d.tool === "jug"
+    ? jugTotal(d) > 0 && acidOk
+    : (d.chlorine !== "" && !isNaN(Number(d.chlorine)) && Number(d.chlorine) >= 0 && acidOk);
+  if(!amountOk) return {ok:false, label: d.tool === "jug" ? "Count the jars first" : "Enter the chlorine measured first"};
   if(!relayCfg()) return {ok:true, label:"Save amounts · job done"};
   const photos = d.photos || [];
   if(photos.some(ph => ph.status === "preparing" || ph.status === "uploading")) return {ok:false, label:"Wait for the photo…"};
   if(!photos.length) return {ok:false, label:"Take the photo first"};
+  // One photo per fill: a jar photo can't show how full it was, so the count
+  // of photos is what stands behind the count of fills.
+  if(d.tool === "jug"){
+    const want = jugPhotosExpected(d);
+    if(photos.length < want) return {ok:false, label:`One photo per fill — ${photos.length} of ${want}`};
+  }
   if(photos.some(ph => ph.status === "failed")) return {ok:true, label:"Save now · photo uploads later", queue:true};
   return {ok:true, label:"Save amounts · job done"};
 }
@@ -2026,16 +2082,22 @@ function finishDosing(code, tid){
   const r0 = myRound(); if(!r0) return;
   const s0 = r0.stops.find(x => x.outlet === code); const t0 = s0 && s0.tasks.find(x => x.id === tid); if(!t0) return;
   const key = code+"|"+tid, d = dmState(key, t0), poolKey = dosingKeyFor(code, t0.pool);
-  const cl = Number(d.chlorine), acid = d.acid === "" ? 0 : Number(d.acid);
-  if(d.chlorine === "" || isNaN(cl) || cl < 0 || isNaN(acid) || acid < 0){ flash("Enter the chlorine measured (in grams) first."); return; }
+  const cl = d.tool === "jug" ? jugTotal(d) : Number(d.chlorine);
+  const acid = d.acid === "" ? 0 : Number(d.acid);
+  if(isNaN(cl) || cl < 0 || isNaN(acid) || acid < 0 || (d.tool !== "jug" && d.chlorine === "")){
+    flash(d.tool === "jug" ? "Count the jars you filled first." : "Enter the chlorine measured (in grams) first."); return;
+  }
   const pd = t0.plannedDose;
   const sst = dmSaveState(d);
   if(!sst.ok){ flash(sst.label === "Take the photo first" ? "Take the photo of the scale first." : sst.label); return; }
   const photos = d.photos || [];
   const dosed = {chlorineG:cl, acidMl:acid, tool:d.tool,
     plannedChlorineG: pd ? toGrams(pd.chlorine, pd.chlorineUnit) : null, plannedAcidMl: pd ? toMl(pd.acid, pd.acidUnit) : null,
-    chlorineSource: (d.chlorineSource === "photo" && !d.touched && String(d.readG) === String(cl)) ? "photo" : "typed",
+    chlorineSource: d.tool === "jug" ? "jug-fills"
+      : (d.chlorineSource === "photo" && !d.touched && String(d.readG) === String(cl)) ? "photo" : "typed",
     readG: (d.readG !== undefined && d.readG !== null) ? d.readG : null,
+    jugFills: d.tool === "jug" ? (Number(d.jugFills) || 0) : null,
+    jugPartMl: d.tool === "jug" ? ((d.jugPart === "" || isNaN(Number(d.jugPart))) ? 0 : Number(d.jugPart)) : null,
     at:new Date().toISOString(), by:state.me};
   const queued = [];
   if(relayCfg()){
@@ -2057,7 +2119,8 @@ function finishDosing(code, tid){
     // Joins the night's water_tests record (merge, so the reading written by
     // the water test stays), or starts one if the dosing came first.
     const wt = {outlet:code, pool:poolKey, date:todayKey(), slot:"night", source:"app",
-       dosedChlorineG:cl, dosedAcidMl:acid, dosingTool:d.tool, dosedAt:dosed.at, dosedBy:state.me, chlorineSource:dosed.chlorineSource};
+       dosedChlorineG:cl, dosedAcidMl:acid, dosingTool:d.tool, dosedAt:dosed.at, dosedBy:state.me, chlorineSource:dosed.chlorineSource,
+       jugFills:dosed.jugFills, jugPartMl:dosed.jugPartMl};
     const urls = (dosed.photos || []).filter(x => x.url).map(x => x.url);
     if(urls.length) wt.dosingPhotoUrls = urls;
     persist("water_tests/"+todayKey()+"__"+poolKey+"__night", wt, () => {}, {merge:true});
@@ -2127,6 +2190,7 @@ function photoReadings(d){
     .map(ph => Math.round(ph.reading.grams));
 }
 function applyReading(d){
+  if(d.tool === "jug") return;   // a jug total comes from the fills, never a photo
   const reads = photoReadings(d);
   if(!reads.length || d.touched) return;
   const total = reads.reduce((a,b) => a+b, 0);
@@ -2207,7 +2271,7 @@ function dosingPhotoHtml(key, d){
   const input = `<input type="file" accept="image/*" capture="environment" hidden data-dmphoto="${key}">`;
   if(!photos.length){
     return `<div class="wt-photo"><div class="ph-empty" aria-hidden="true">📷</div><div class="ph-main">
-      <span class="ph-status">Photo of the ${tool} showing the amount — required before Save. ${tool === "jug" ? "One photo per fill: 2.3 kg from a 1 L jug is three photos." : "If it takes more than one weighing, take a photo of each."}</span>
+      <span class="ph-status">${tool === "jug" ? "Take a photo of each jar you fill — one per fill." : "Photo of the scale showing the amount — required before Save. If it takes more than one weighing, take a photo of each."}</span>
       <div class="ph-actions"><button class="btn sm primary" type="button" data-dmphotobtn="${key}">Take photo</button></div></div>${input}</div>`;
   }
   const rows = photos.map(ph => {
@@ -2230,7 +2294,10 @@ function dosingPhotoHtml(key, d){
   }).join("");
   const reads = photoReadings(d);
   const total = (tool === "scale" && reads.length > 1) ? `<span class="wt-src photo">Scale readings add up: ${reads.join(" + ")} = ${reads.reduce((a,b)=>a+b,0)} g</span>` : "";
-  const hint = tool === "jug" ? `<span class="wt-src">Type the total measured across all fills.</span>` : (reads.length === 0 && photos.some(p=>p.status==="done") ? `<span class="wt-src">Display couldn't be read — type the amount.</span>` : "");
+  const want = jugPhotosExpected(d);
+  const hint = tool === "jug"
+    ? `<span class="wt-src">${photos.length} photo${photos.length===1?"":"s"} for ${want} fill${want===1?"":"s"}.${photos.length < want ? " Take one for each." : ""}</span>`
+    : (reads.length === 0 && photos.some(p=>p.status==="done") ? `<span class="wt-src">Display couldn't be read — type the amount.</span>` : "");
   return `<div class="stack" style="gap:8px">${rows}${total}${hint}
     <button class="btn sm" type="button" data-dmphotobtn="${key}">+ Add another photo</button>${input}</div>`;
 }
@@ -3924,11 +3991,18 @@ function wire(){
   // Manual dosing entry: typed grams/ml land in state.dm on every keystroke
   // (no re-render, so the keyboard stays put); Save reads them back out.
   document.querySelectorAll("[data-dmin]").forEach(i => i.addEventListener("input", () => {
-    const [o,t,f] = i.dataset.dmin.split("|"); const dd = dmState(o+"|"+t); dd[f] = i.value; dd.touched = true;
+    const [o,t,f] = i.dataset.dmin.split("|"); const dd = dmState(o+"|"+t); dd[f] = i.value;
+    if(f === "chlorine") dd.touched = true;
+    // The jug total is shown, not typed, so a part-fill edit has to redraw it.
+    if(f === "jugPart"){ render(); const again = document.querySelector(`[data-dmin="${o}|${t}|jugPart"]`); if(again){ again.focus(); const v = again.value; again.value = ""; again.value = v; } return; }
     const btn = document.querySelector(`[data-dmsave="${o}|${t}"]`);
     if(btn){ const st = dmSaveState(dmState(o+"|"+t)); btn.disabled = !st.ok; btn.textContent = st.label; }
   }));
   each("[data-dmset]", b => { const [o,t,f,v] = b.dataset.dmset.split("|"); dmState(o+"|"+t)[f] = v; render(); });
+  each("[data-dmjug]", b => {
+    const [o,t,delta] = b.dataset.dmjug.split("|"), d = dmState(o+"|"+t);
+    d.jugFills = Math.max(0, (Number(d.jugFills) || 0) + Number(delta)); render();
+  });
   each("[data-dmsave]", b => { const [o,t] = two(b.dataset.dmsave); finishDosing(o,t); });
   each("[data-dmphotobtn]", b => { const i = document.querySelector(`[data-dmphoto="${b.dataset.dmphotobtn}"]`); if(i){ i.value = ""; i.click(); } });
   document.querySelectorAll("[data-dmphoto]").forEach(i => i.addEventListener("change", () => { const f = i.files && i.files[0]; if(f) onDosingPhotoPicked(i.dataset.dmphoto, f); }));
