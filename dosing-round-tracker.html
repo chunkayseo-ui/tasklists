@@ -105,6 +105,23 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 @keyframes toast-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 @media (prefers-reduced-motion:reduce){#toast .bubble{animation:none}}
 
+/* Photo viewer. Opening a Drive /view page asks a phone with more than one
+   Google account signed in to pick one before it will show anything — so a
+   photo opens here instead, straight from Drive's image URL, which needs no
+   sign-in at all. The Drive link stays as a way out for anyone who wants it. */
+#lightbox{position:fixed;inset:0;z-index:1200;display:none;flex-direction:column;background:rgba(12,18,20,.94);
+  padding:calc(10px + env(safe-area-inset-top,0px)) 10px calc(10px + env(safe-area-inset-bottom,0px))}
+#lightbox.open{display:flex}
+#lightbox .lb-bar{display:flex;align-items:center;gap:10px;color:#fff;font-size:14px;font-weight:600;padding:4px 4px 10px}
+#lightbox .lb-bar .lb-cap{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+#lightbox .lb-bar button,#lightbox .lb-bar a{background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:10px;
+  padding:9px 14px;font:inherit;font-size:14px;font-weight:700;cursor:pointer;text-decoration:none;white-space:nowrap}
+#lightbox .lb-body{flex:1;display:flex;align-items:center;justify-content:center;overflow:auto}
+#lightbox img{max-width:100%;max-height:100%;border-radius:10px;background:#fff}
+#lightbox .lb-msg{color:#e7eef0;font-size:15px;line-height:1.5;text-align:center;padding:20px;max-width:340px}
+.ph-open{cursor:zoom-in}
+.wt-photo .ph-openbtn{padding:0;border:0;background:none;display:block;line-height:0;flex:none;cursor:zoom-in}
+
 .chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;
   font:600 12px/1.4 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.09em;white-space:nowrap}
 .chip .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
@@ -455,6 +472,10 @@ details.panel[open] summary::after{content:"▴"}
   <div id="view" class="stack"></div>
 </div>
 <div id="toast" aria-live="assertive"></div>
+<div id="lightbox" role="dialog" aria-modal="true" aria-label="Photo">
+  <div class="lb-bar"><span class="lb-cap"></span><a class="lb-drive" href="#" target="_blank" rel="noopener">Open in Drive</a><button type="button" class="lb-close">Close</button></div>
+  <div class="lb-body"></div>
+</div>
 
 <!--
   Same Firebase project as the Maintenance Board app (maintenance-board-f931a),
@@ -2000,6 +2021,39 @@ function dmState(key, t){
   }
   return d;
 }
+// Drive's own /view page makes a phone with two Google accounts signed in pick
+// one before it shows anything -- which is what a technician hit when they just
+// wanted to look at the photo they'd taken. This image URL needs no sign-in for
+// a link-shared file, so the photo opens inside the app instead.
+const driveImg = (fileId, w) => "https://drive.google.com/thumbnail?id=" + encodeURIComponent(fileId) + "&sz=w" + (w || 1600);
+function photoBtn(ph, label, caption){
+  if(!ph || (!ph.fileId && !ph.url)) return "";
+  if(!ph.fileId) return `<a href="${esc(ph.url)}" target="_blank" rel="noopener">${label}</a>`;
+  return `<button class="link" type="button" data-photoview="${esc(ph.fileId)}" data-photocap="${esc(caption || "Photo")}">${label}</button>`;
+}
+function openPhoto(fileId, caption){
+  const lb = document.getElementById("lightbox"); if(!lb) return;
+  lb.querySelector(".lb-cap").textContent = caption || "Photo";
+  const drive = lb.querySelector(".lb-drive"); drive.href = "https://drive.google.com/file/d/" + fileId + "/view";
+  const body = lb.querySelector(".lb-body");
+  body.innerHTML = `<div class="lb-msg">Loading the photo…</div>`;
+  const img = new Image();
+  img.alt = caption || "Photo";
+  img.onload = () => { body.innerHTML = ""; body.appendChild(img); };
+  img.onerror = () => { body.innerHTML = `<div class="lb-msg">Couldn't load the photo here. Tap <b>Open in Drive</b> above to see it — you may be asked to pick a Google account.</div>`; };
+  img.src = driveImg(fileId, 1600);
+  lb.classList.add("open");
+}
+function closePhoto(){ const lb = document.getElementById("lightbox"); if(!lb) return; lb.classList.remove("open"); lb.querySelector(".lb-body").innerHTML = ""; }
+document.addEventListener("click", e => {
+  const open = e.target.closest("[data-photoview]");
+  if(open){ e.preventDefault(); openPhoto(open.dataset.photoview, open.dataset.photocap); return; }
+  const lb = document.getElementById("lightbox");
+  // Close on the button, the backdrop, or the empty space around the photo --
+  // but not on the photo itself, so it can be pinched and panned.
+  if(lb && lb.classList.contains("open") && (e.target.closest(".lb-close") || e.target === lb || e.target.classList.contains("lb-body"))) closePhoto();
+});
+document.addEventListener("keydown", e => { if(e.key === "Escape") closePhoto(); });
 function dosedSummary(d){
   const flag = offPlan(d.chlorineG, d.plannedChlorineG) || offPlan(d.acidMl, d.plannedAcidMl);
   const plan = (d.plannedChlorineG !== null && d.plannedChlorineG !== undefined) ? ` · planned ${fmtG(d.plannedChlorineG)} / ${fmtMl(d.plannedAcidMl)}` : "";
@@ -2007,7 +2061,7 @@ function dosedSummary(d){
   const src = d.chlorineSource === "photo" ? " · read from photo"
             : d.chlorineSource === "jug-fills" ? ` · ${d.jugFills || 0} × 1 L jar${(d.jugFills||0)===1?"":"s"}${d.jugPartMl ? " + "+d.jugPartMl+" ml" : ""}`
             : (photos.length ? " · typed" : "");
-  const links = photos.filter(x => x.url).map((x, i) => `<a href="${esc(x.url)}" target="_blank" rel="noopener">📷 ${photos.length > 1 ? "photo "+(i+1) : "photo"}</a>`);
+  const links = photos.filter(x => x.fileId || x.url).map((x, i) => photoBtn(x, `📷 ${photos.length > 1 ? "photo "+(i+1) : "photo"}`, `Photo ${i+1}`));
   const pending = photos.filter(x => x.pending).length;
   const photo = (links.length ? " · " + links.join(" ") : "") + (pending ? ` · <span class="muted">📷 ${pending} upload${pending>1?"s":""} pending</span>` : "");
   return `Dosed <b>${fmtG(d.chlorineG)} chlorine · ${fmtMl(d.acidMl)} acid</b> (${d.tool === "jug" ? "jug" : "scale"})${plan}${src}${photo}${flag ? ' <span class="dev">⚠ off plan</span>' : ""}`;
@@ -2343,7 +2397,11 @@ function dosingPhotoHtml(key, d){
       <div class="ph-actions"><button class="btn sm primary" type="button" data-dmphotobtn="${key}">Take photo</button></div></div>${input}</div>`;
   }
   const rows = photos.map(ph => {
-    const thumb = ph.dataUrl ? `<img src="${ph.dataUrl}" alt="Photo ${ph.n} of the ${tool}">` : `<div class="ph-empty" aria-hidden="true">📷</div>`;
+    // Once it's up, tapping the thumbnail opens the saved photo full-screen —
+    // the technician checking their own work shouldn't have to leave the app.
+    const openable = ph.status === "done" && ph.fileId;
+    const img = ph.dataUrl ? `<img class="${openable ? "ph-open" : ""}" src="${ph.dataUrl}" alt="Photo ${ph.n} of the ${tool}">` : `<div class="ph-empty" aria-hidden="true">📷</div>`;
+    const thumb = openable ? `<button class="ph-openbtn" type="button" data-photoview="${esc(ph.fileId)}" data-photocap="Photo ${ph.n}" aria-label="Open photo ${ph.n}">${img}</button>` : img;
     let status = "", actions = "";
     if(ph.status === "preparing") status = `<span class="ph-status">Photo ${ph.n} · preparing…</span>`;
     else if(ph.status === "uploading") status = `<span class="ph-status">Photo ${ph.n} · uploading${tool === "scale" ? " and reading the display" : ""}…</span>`;
