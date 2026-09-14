@@ -2314,6 +2314,49 @@ function readerNote(rd){
   if(st === "no-key" || st === "error") return "The scale reader isn't running — nothing wrong with the photo.";
   return "No reading came back.";
 }
+// A self-check for the whole photo chain, so "why isn't it reading?" is a
+// five-second answer instead of an evening of guessing. It draws a picture of
+// the number 397, sends it like a real dosing photo, and reports each link:
+// reached · key accepted · saved to Drive · number read. When a link fails it
+// shows what the relay actually said, in full -- that is the line that names
+// the real cause (a missing Drive permission, a spending cap, a bad key).
+function testDigitsImage(){
+  const c = document.createElement("canvas"); c.width = 400; c.height = 200;
+  const g = c.getContext("2d");
+  g.fillStyle = "#111"; g.fillRect(0,0,400,200);
+  g.fillStyle = "#eaeaea"; g.font = "bold 96px monospace"; g.fillText("397", 110, 130);
+  g.font = "24px monospace"; g.fillText("g", 250, 165);
+  return c.toDataURL("image/jpeg", 0.9).split(",")[1];
+}
+const testLine = (ok, text) => `<p class="note" style="margin:0"><b style="color:var(--${ok ? "ok" : "warn"})">${ok ? "✓" : "✗"}</b> ${esc(text)}</p>`;
+async function testRelay(){
+  const box = document.getElementById("photo-relay-result"); if(!box) return;
+  box.innerHTML = `<p class="note" style="margin:0">Testing…</p>`;
+  let j;
+  try{
+    j = await relayUpload({kind:"relay-test", outlet:"TEST", pool:"TEST", job:"Photo proof test", person: state.me || "supervisor",
+      date: todayKey(), tool:"scale", wantReading:true, imageBase64: testDigitsImage(), photoNo:1});
+  }catch(e){
+    box.innerHTML = testLine(false, (e && e.relay) ? String(e.message) : "Couldn't reach the relay at all — check the address, and the signal.")
+      + `<p class="note" style="margin:0">Nothing was saved.</p>`;
+    return;
+  }
+  const rd = j.reading || {};
+  let html = testLine(true, "Relay reached and the key accepted.") + testLine(true, "Photo saved to Drive.");
+  if(rd.status === "ok"){
+    const right = Math.round(rd.grams) === 397;
+    html += testLine(right, right ? "Read 397 g off the test picture — the whole chain works."
+      : "The reader ran but read " + Math.round(rd.grams) + " g instead of 397 g.");
+  } else if(rd.status === "unreadable"){
+    html += testLine(false, "The reader ran but couldn't make out the number — unexpected on a test picture this clear.");
+  } else if(rd.status === "no-key"){
+    html += testLine(false, "No GEMINI_API_KEY is set in the script, so nothing reads the display. Amounts have to be typed.");
+  } else {
+    html += testLine(false, "The reader failed. Google said:") + `<p class="note" style="margin:0;word-break:break-word">${esc(String(rd.detail || "no detail"))}</p>`;
+  }
+  if(j.url) html += `<p class="note" style="margin:0">The test picture is in Drive — ${photoBtn({fileId:j.fileId, url:j.url}, "have a look", "Photo proof test")} — delete it whenever you like.</p>`;
+  box.innerHTML = html;
+}
 function photoStampLines(code, poolKey, jobName){
   const n = new Date();
   return [`${code}${poolKey !== code ? " · "+poolKey : ""} · ${jobName}`, `${state.me || "?"} · ${n.getDate()} ${MONTH_ABBR[n.getMonth()]} ${n.getFullYear()} ${pad(n.getHours())}:${pad(n.getMinutes())}`];
@@ -3972,6 +4015,8 @@ function taskSettingView(){
       <input type="text" id="photo-relay-url" placeholder="Apps Script web app URL (https://script.google.com/macros/s/…/exec)" value="${esc((state.cfg.photo||{}).relayUrl||"")}" autocomplete="off">
       <div class="row-2"><input type="text" id="photo-relay-key" placeholder="Shared key (same as RELAY_KEY in the script)" value="${esc((state.cfg.photo||{}).key||"")}" autocomplete="off"><button class="btn primary sm" id="photo-relay-save">Save</button></div>
       <p class="note" style="margin:0">${relayCfg() ? "Photo proof is <strong>on</strong>." : "Photo proof is <strong>off</strong> — Manual Dosing takes a typed amount only."}</p>
+      ${relayCfg() ? `<div class="row-2"><button class="btn sm" id="photo-relay-test">Test it now</button><span class="note" style="margin:0">Sends a test picture of the number 397 and reports back what happened — no need to be at a pump room.</span></div>
+      <div id="photo-relay-result" class="stack" style="gap:4px"></div>` : ""}
     </div>
   </div>
 
@@ -4168,6 +4213,7 @@ function wire(){
     render();
   });
   // Task Setting: where the photo relay lives.
+  on("#photo-relay-test", () => testRelay());
   on("#photo-relay-save", () => { const c = cfg(); c.photo = {relayUrl: ($("#photo-relay-url").value || "").trim(), key: ($("#photo-relay-key").value || "").trim()}; saveCfg(c); flash(c.photo.relayUrl ? "Photo relay saved — the scale photo is now required on Manual Dosing." : "Photo relay cleared — Manual Dosing is back to typed amounts."); });
   // The route diagram lives in a same-origin srcdoc iframe; size it to its
   // content once it loads so the whole plan shows without an inner scrollbar.
