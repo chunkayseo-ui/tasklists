@@ -367,6 +367,9 @@ details.panel[open] summary::after{content:"▴"}
 .wt-chips .tog.neg[aria-pressed="true"]{background:var(--urgent);border-color:var(--urgent);color:#fff}
 .wt-chips .tog[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
 .wt-dose{background:var(--accent);color:#fff;border-radius:10px;padding:12px 14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.wt-dose .head{grid-column:1/-1;display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.22)}
+.wt-dose .pool{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:18px;letter-spacing:.08em;text-transform:uppercase}
+.wt-dose .when{font-family:"IBM Plex Mono",monospace;font-size:12px;opacity:.9;font-variant-numeric:tabular-nums}
 .wt-dose .k{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.8}
 .wt-dose .v{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:32px;line-height:1.05;font-variant-numeric:tabular-nums}
 .wt-dose .foot{grid-column:1/-1;font-size:12.5px;opacity:.85}
@@ -1834,8 +1837,14 @@ function waterTestPanel(s, t){
     `<button class="tog ${v<0?"neg":""}" aria-pressed="${w.fc===v}" data-wtfc="${key}|${v}">${v}</button>`).join("");
   const phChips = table.ph.map(v => `<button class="tog" aria-pressed="${w.ph===v}" data-wtph="${key}|${v}">${v.toFixed(1)}</button>`).join("");
   const dose = doseFor(poolKey, w.schedule, w.fc, w.ph);
+  // The result card names the pool and stamps the moment, the way the
+  // calculator's own readout did -- so a screenshot or a glance over a
+  // shoulder says which pool and when, not just two numbers.
+  const now = new Date();
+  const stampNow = `${now.getDate()} ${MONTH_ABBR[now.getMonth()]} ${now.getFullYear()}, ${DAYNAME_FULL[now.getDay()]}, ${pad(now.getHours())}:${pad(now.getMinutes())}`;
   const doseHtml = dose
-    ? `<div class="wt-dose"><div><div class="k">Chlorine</div><div class="v">${fmtAmt(dose.cl, dose.clUnit)}</div></div>
+    ? `<div class="wt-dose"><div class="head"><span class="pool">${esc(poolKey)}</span><span class="when">${stampNow}</span></div>
+       <div><div class="k">Chlorine</div><div class="v">${fmtAmt(dose.cl, dose.clUnit)}</div></div>
        <div><div class="k">Acid</div><div class="v">${fmtAmt(dose.acid, dose.acidUnit)}</div></div>
        <div class="foot">${w.schedule==="weekday"?"Weekday (Mon–Fri)":"Weekend"} dosing · FC ${w.fc} · pH ${w.ph.toFixed(1)}</div></div>`
     : `<div class="wt-dose empty">Tap FC and pH to see tonight's dose</div>`;
