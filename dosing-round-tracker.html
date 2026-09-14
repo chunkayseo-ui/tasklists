@@ -2333,6 +2333,9 @@ function readerNote(rd){
     // for a passing blip sends them looking for something that isn't broken.
     if(/spending cap/i.test(detail)) return "The reader has hit its monthly spending cap.";
     if(/HTTP (429|5\d\d)|timed? ?out|timeout/i.test(detail)) return "Couldn't get a reading just now — type the amount.";
+    // The model answered but the answer was unusable (cut off, not JSON). Not
+    // the photo, not the key -- a relay problem for Chun Kay, not the technician.
+    if(/MAX_TOKENS|not JSON|Unexpected end of JSON|with nothing written/i.test(detail)) return "The reader's answer came back garbled — type the amount.";
     return "The scale reader isn't set up — nothing wrong with the photo.";
   }
   return "No reading came back.";
@@ -2352,13 +2355,20 @@ function testDigitsImage(){
   return c.toDataURL("image/jpeg", 0.9).split(",")[1];
 }
 const testLine = (ok, text) => `<p class="note" style="margin:0"><b style="color:var(--${ok ? "ok" : "warn"})">${ok ? "✓" : "✗"}</b> ${esc(text)}</p>`;
-async function testRelay(){
+async function testRelay(realFile){
   const box = document.getElementById("photo-relay-result"); if(!box) return;
-  box.innerHTML = `<p class="note" style="margin:0">Testing…</p>`;
+  box.innerHTML = `<p class="note" style="margin:0">Testing…${realFile ? " (a real photo takes 10–20 s)" : ""}</p>`;
+  let image, expect = 397;
+  if(realFile){
+    // Same shrink-and-stamp as a real dosing photo, so this tests the true path.
+    try{ image = (await preparePhoto(realFile, ["TEST · Photo proof test", "supervisor", "Chlorine 1"])).base64; }
+    catch(e){ box.innerHTML = testLine(false, "Couldn't read that image file."); return; }
+    expect = null;
+  } else image = testDigitsImage();
   let j;
   try{
     j = await relayUpload({kind:"relay-test", outlet:"TEST", pool:"TEST", job:"Photo proof test", person: state.me || "supervisor",
-      date: todayKey(), tool:"scale", wantReading:true, imageBase64: testDigitsImage(), photoNo:1});
+      date: todayKey(), tool:"scale", wantReading:true, imageBase64: image, photoNo:1});
   }catch(e){
     box.innerHTML = testLine(false, (e && e.relay) ? String(e.message) : "Couldn't reach the relay at all — check the address, and the signal.")
       + `<p class="note" style="margin:0">Nothing was saved.</p>`;
@@ -2367,16 +2377,22 @@ async function testRelay(){
   const rd = j.reading || {};
   let html = testLine(true, "Relay reached and the key accepted.") + testLine(true, "Photo saved to Drive.");
   if(rd.status === "ok"){
-    const right = Math.round(rd.grams) === 397;
-    html += testLine(right, right ? "Read 397 g off the test picture — the whole chain works."
-      : "The reader ran but read " + Math.round(rd.grams) + " g instead of 397 g.");
+    if(expect === null) html += testLine(true, "Read " + Math.round(rd.grams) + " g off your photo (" + (rd.confidence === "high" ? "confident" : "not fully sure") + ") — check that against the display.");
+    else {
+      const right = Math.round(rd.grams) === expect;
+      html += testLine(right, right ? "Read 397 g off the test picture — the whole chain works."
+        : "The reader ran but read " + Math.round(rd.grams) + " g instead of 397 g.");
+    }
   } else if(rd.status === "unreadable"){
-    html += testLine(false, "The reader ran but couldn't make out the number — unexpected on a test picture this clear.");
+    html += testLine(false, expect === null ? "The reader ran but couldn't make out a number in that photo." : "The reader ran but couldn't make out the number — unexpected on a test picture this clear.");
   } else if(rd.status === "no-key"){
     html += testLine(false, "No GEMINI_API_KEY is set in the script, so nothing reads the display. Amounts have to be typed.");
   } else {
     html += testLine(false, "The reader failed. Google said:") + `<p class="note" style="margin:0;word-break:break-word">${esc(String(rd.detail || "no detail"))}</p>`;
   }
+  // What it cost and which model answered -- the way to see whether
+  // "thinking" is really switched off: thoughts should read 0.
+  if(rd.tokens) html += `<p class="note" style="margin:0">${esc(rd.model || "model")} · ${rd.tokens.prompt} in, ${rd.tokens.output} out, ${rd.tokens.thoughts} thinking.${rd.tokens.thoughts ? " Thinking is still on — check the relay file is the latest." : ""}</p>`;
   if(j.url) html += `<p class="note" style="margin:0">The test picture is in Drive — ${photoBtn({fileId:j.fileId, url:j.url}, "have a look", "Photo proof test")} — delete it whenever you like.</p>`;
   box.innerHTML = html;
 }
@@ -4043,7 +4059,9 @@ function taskSettingView(){
       <input type="text" id="photo-relay-url" placeholder="Apps Script web app URL (https://script.google.com/macros/s/…/exec)" value="${esc((state.cfg.photo||{}).relayUrl||"")}" autocomplete="off">
       <div class="row-2"><input type="text" id="photo-relay-key" placeholder="Shared key (same as RELAY_KEY in the script)" value="${esc((state.cfg.photo||{}).key||"")}" autocomplete="off"><button class="btn primary sm" id="photo-relay-save">Save</button></div>
       <p class="note" style="margin:0">${relayCfg() ? "Photo proof is <strong>on</strong>." : "Photo proof is <strong>off</strong> — Manual Dosing takes a typed amount only."}</p>
-      ${relayCfg() ? `<div class="row-2"><button class="btn sm" id="photo-relay-test">Test it now</button><span class="note" style="margin:0">Sends a test picture of the number 397 and reports back what happened — no need to be at a pump room.</span></div>
+      ${relayCfg() ? `<div class="row-2"><button class="btn sm" id="photo-relay-test">Test it now</button><span class="note" style="margin:0">Sends a drawn picture of the number 397 and reports each step — no need to be at a pump room.</span></div>
+      <div class="row-2"><button class="btn sm" id="photo-relay-testphoto">Test with a real photo</button><span class="note" style="margin:0">Pick any scale photo from the gallery. The drawn picture is easy; this is what the reader actually faces.</span></div>
+      <input type="file" accept="image/*" hidden id="photo-relay-testfile">
       <div id="photo-relay-result" class="stack" style="gap:4px"></div>` : ""}
     </div>
   </div>
@@ -4242,6 +4260,8 @@ function wire(){
   });
   // Task Setting: where the photo relay lives.
   on("#photo-relay-test", () => testRelay());
+  on("#photo-relay-testphoto", () => { const i = $("#photo-relay-testfile"); if(i){ i.value = ""; i.click(); } });
+  const tf = $("#photo-relay-testfile"); if(tf) tf.addEventListener("change", () => { const f = tf.files && tf.files[0]; if(f) testRelay(f); });
   on("#photo-relay-save", () => { const c = cfg(); c.photo = {relayUrl: ($("#photo-relay-url").value || "").trim(), key: ($("#photo-relay-key").value || "").trim()}; saveCfg(c); flash(c.photo.relayUrl ? "Photo relay saved — the scale photo is now required on Manual Dosing." : "Photo relay cleared — Manual Dosing is back to typed amounts."); });
   // The route diagram lives in a same-origin srcdoc iframe; size it to its
   // content once it loads so the whole plan shows without an inner scrollbar.
