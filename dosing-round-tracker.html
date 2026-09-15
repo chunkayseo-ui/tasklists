@@ -1251,29 +1251,43 @@ function depart(code){
 function skipStop(code){ withRound(r => { r.stops = r.stops.filter(s => s.outlet !== code); if(r.headingTo === code) r.headingTo = null; }); }
 // Technician, on site: "this is just a drop-off". Refused once any job here
 // has been started -- a stop with work on it is a duty, not a pass-through.
-function markQuick(code, purpose, note){
+function markQuick(code, purpose, note, photos){
   state.quickForm = null;
   withRound(r => {
     const s = r.stops.find(x => x.outlet === code); if(!s || !s.arriveAt || s.departAt) return false;
     if(s.tasks.some(t => t.startedAt)){ flash("A job has already been started here — this is a duty stop, not a drop-off."); return false; }
-    s.quick = {purpose: QUICK_PURPOSES.some(x => x.id === purpose) ? purpose : "other", note: (note || "").trim().slice(0, 120), at: new Date().toISOString(), by: r.person};
+    s.quick = {purpose: QUICK_PURPOSES.some(x => x.id === purpose) ? purpose : "other", note: (note || "").trim().slice(0, 120), at: new Date().toISOString(), by: r.person, photos: photos || []};
   }, "Couldn't mark that. Try again.");
 }
 function unmarkQuick(code){
   withRound(r => { const s = r.stops.find(x => x.outlet === code); if(!s || !s.quick || s.departAt) return false; delete s.quick; });
+}
+// A photo taken on an active quick stop (the chemicals unloaded, the teammate
+// dropped) goes straight onto the record the moment it lands in Drive -- the
+// stop is already saved, so there is nothing to wait for a Save button for.
+const quickScope = key => "quick|" + key;
+const quickPhotos = s => (s && s.quick && s.quick.photos) || [];
+function attachQuickPhoto(scope, ph){
+  const key = scope.slice(6); if(key.includes("__")) return false;   // supervisor's past-stop form: stays in the form until Save
+  const r = myRound(); const s = r && r.stops.find(x => x.outlet === key);
+  if(!s || !s.quick || s.departAt) return false;
+  const photo = {fileId: ph.fileId, url: ph.url, thumb: ph.thumb || null};
+  state.fp[scope] = fpList(scope).filter(x => x !== ph); state.fp[scope].forEach((x, i) => x.n = i+1);
+  withRound(rr => { const ss = rr.stops.find(x => x.outlet === key); if(!ss || !ss.quick) return false; ss.quick.photos = (ss.quick.photos || []).concat([photo]); });
+  return true;
 }
 // Supervisor, afterwards: correct a past stop that was really a drop-off.
 // Only a stop where nothing was ever started can be re-marked -- the same
 // rule as on site -- and the record says who marked it and when, so it can't
 // quietly turn skipped work into a pass-through. Works on any date, since the
 // round is saved by id whether it is today's or in the history cache.
-async function markQuickById(roundId, code, purpose, note){
+async function markQuickById(roundId, code, purpose, note, photos){
   let r = state.rounds[roundId], fromHistory = false;
   if(!r){ for(const c of Object.values(state.historyCache)){ if(c && c.rounds){ const f = c.rounds.find(x => x.id === roundId); if(f){ r = f; fromHistory = true; break; } } } }
   if(!r) return;
   const rr = clone(r); const s = rr.stops.find(x => x.outlet === code); if(!s || !s.arriveAt) return;
   if(s.tasks.some(t => t.startedAt)){ flash("A job was started at that stop, so it can't be marked as a drop-off."); return; }
-  s.quick = {purpose: QUICK_PURPOSES.some(x => x.id === purpose) ? purpose : "other", note: (note || "").trim().slice(0, 120), at: new Date().toISOString(), by: state.me || "Supervisor", byRole:"supervisor"};
+  s.quick = {purpose: QUICK_PURPOSES.some(x => x.id === purpose) ? purpose : "other", note: (note || "").trim().slice(0, 120), at: new Date().toISOString(), by: state.me || "Supervisor", byRole:"supervisor", photos: photos || []};
   state.quickForm = null;
   if(fromHistory){
     Object.values(state.historyCache).forEach(c => { if(c && c.rounds) c.rounds = c.rounds.map(x => x.id === roundId ? rr : x); });
@@ -1287,12 +1301,14 @@ function quickFormHtml(key, code, purposeIdAttr){
     <p class="note" style="margin:0"><strong>Quick stop at ${esc(code)}</strong> — no night duty here, just passing through.</p>
     <select id="quick-purpose" aria-label="What for">${opts}</select>
     <input type="text" id="quick-note" placeholder="Who or what? e.g. dropped William, 2 × 25 kg chlorine" maxlength="120" autocomplete="off">
+    ${formPhotosHtml(quickScope(key), "drop-off or delivery")}
     <div class="row-2">
-      <button class="btn primary sm" ${purposeIdAttr}="${esc(key)}" style="flex:1">Save quick stop</button>
+      <button class="btn primary sm" ${purposeIdAttr}="${esc(key)}" style="flex:1" ${fpBusy(quickScope(key)) ? "disabled" : ""}>${fpBusy(quickScope(key)) ? "Wait for the photo…" : "Save quick stop"}</button>
       <button class="btn sm" data-quickcancel="1" style="flex:1">Cancel</button>
     </div>
   </div>`;
 }
+const quickStripHtml = s => quickPhotos(s).length ? photoStripHtml(quickPhotos(s), (x, i) => "Quick stop photo " + (i+1)) : "";
 
 // Lets a technician add an outlet to their own round after it's already
 // started — e.g. another technician is stuck fixing something at their own
@@ -2357,7 +2373,7 @@ function formPhotosHtml(scope, what){
 // A photo arriving mid-form must not wipe what has been typed. render()
 // rebuilds the form from state, and the text isn't in state until Send -- so
 // carry the fields across the redraw by hand.
-const FORM_FIELDS = ["#issue-desc", "#issue-priority", "#newtask", "#addissue-outlet", "#addissue-desc", "#addissue-priority"];
+const FORM_FIELDS = ["#issue-desc", "#issue-priority", "#newtask", "#addissue-outlet", "#addissue-desc", "#addissue-priority", "#quick-purpose", "#quick-note"];
 function renderKeepingForm(){
   const kept = {}; let focused = null, caret = null;
   FORM_FIELDS.forEach(sel => { const el = $(sel); if(el){ kept[sel] = el.value; if(document.activeElement === el){ focused = sel; caret = el.selectionStart; } } });
@@ -2382,6 +2398,7 @@ async function uploadFormPhoto(scope, ph, meta){
     const j = await relayUpload({kind: meta.kind, outlet: meta.code, pool: meta.code, job: meta.what, person: state.me,
       date: todayKey(), tool:"none", wantReading:false, imageBase64: ph.base64, photoNo: ph.n});
     Object.assign(ph, {status:"done", fileId:j.fileId, url:j.url, thumb:j.thumb || null});
+    if(scope.startsWith("quick|") && attachQuickPhoto(scope, ph)) return;   // already on the record; withRound re-renders
   }catch(e){
     ph.status = "failed";
     ph.error = (e && e.relay && !e.transient) ? String(e.message) : "Upload didn't go through. Retry, or send without it.";
@@ -3141,7 +3158,7 @@ function stopCard(s, i, r, isHeading){
       </div>`;
     }
   } else if(done && isQuick(s)){
-    body = `<div class="stop-body"><p class="note" style="margin:0"><span class="tag add">Quick stop</span> ${esc(quickLabel(s))}</p></div>`;
+    body = `<div class="stop-body"><p class="note" style="margin:0"><span class="tag add">Quick stop</span> ${esc(quickLabel(s))}</p>${quickStripHtml(s)}</div>`;
   } else if(done){
     // Same row-with-bar treatment the supervisor's "Time by job" uses, so a
     // finished stop reads the same way here as it does on the supervisor board.
@@ -3192,7 +3209,9 @@ function stopCard(s, i, r, isHeading){
       body = `<div class="stop-body">
         <p class="note" style="margin:0"><span class="tag add">Quick stop</span> ${esc(quickLabel(s))}</p>
         <p class="note" style="margin:0">No night duty logged here. If you end up doing the duty after all, switch it back.</p>
-        <button class="btn primary big" data-depart="${s.outlet}">Leave ${esc(s.outlet)}</button>
+        ${quickStripHtml(s)}
+        ${formPhotosHtml(quickScope(s.outlet), "drop-off or delivery")}
+        <button class="btn primary big" data-depart="${s.outlet}" ${fpBusy(quickScope(s.outlet)) ? "disabled" : ""}>${fpBusy(quickScope(s.outlet)) ? "Wait for the photo…" : "Leave " + esc(s.outlet)}</button>
         <button class="link" data-unquick="${s.outlet}" style="align-self:center">Actually doing the duty here — switch back</button>
       </div>`;
     } else
@@ -4038,6 +4057,7 @@ function routeCard(r, proj, byCode){
         <span class="mono muted">${arr}${dep?" – "+dep:" – on site"}</span>
         ${stillHere?'<span class="tag st-prog">On site</span>':""}
         <span class="mono muted" style="flex-basis:100%;font-style:italic">${esc(quickLabel({quick:o.quick}))}${o.quick.byRole === "supervisor" ? ` · marked by ${esc(o.quick.by)}` : ""}</span>
+        ${quickPhotos({quick:o.quick}).length ? `<div class="job-row-read" style="flex-basis:100%">${quickStripHtml({quick:o.quick})}</div>` : ""}
       </div>`;
     }
     const left = requiredLeft(o);
@@ -4403,10 +4423,11 @@ function wire(){
   // Quick stop: technician on site, and supervisor after the fact (Routes).
   each("[data-quickopen]",   b => { state.quickForm = b.dataset.quickopen; render(); const e = $("#quick-note"); if(e) e.focus(); });
   each("[data-quickopenby]", b => { state.quickForm = b.dataset.quickopenby; render(); const e = $("#quick-note"); if(e) e.focus(); });
-  each("[data-quickcancel]", () => { state.quickForm = null; render(); });
-  each("[data-quicksave]",   b => { const pu = $("#quick-purpose"), nt = $("#quick-note"); markQuick(b.dataset.quicksave, pu ? pu.value : "other", nt ? nt.value : ""); });
+  const clearQuickForms = () => Object.keys(state.fp).filter(k => k.startsWith("quick|") && k.slice(6) === state.quickForm).forEach(k => delete state.fp[k]);
+  each("[data-quickcancel]", () => { clearQuickForms(); state.quickForm = null; render(); });
+  each("[data-quicksave]",   b => { const k = b.dataset.quicksave, sc = quickScope(k); if(fpBusy(sc)) return; const pu = $("#quick-purpose"), nt = $("#quick-note"); const photos = fpDone(sc); delete state.fp[sc]; markQuick(k, pu ? pu.value : "other", nt ? nt.value : "", photos); });
   // Round ids already contain "__" (date__person), so split on the last one.
-  each("[data-quicksaveby]", b => { const k = b.dataset.quicksaveby, i = k.lastIndexOf("__"); const rid = k.slice(0, i), code = k.slice(i+2); const pu = $("#quick-purpose"), nt = $("#quick-note"); markQuickById(rid, code, pu ? pu.value : "other", nt ? nt.value : ""); });
+  each("[data-quicksaveby]", b => { const k = b.dataset.quicksaveby, i = k.lastIndexOf("__"); const rid = k.slice(0, i), code = k.slice(i+2); const sc = quickScope(k); if(fpBusy(sc)) return; const pu = $("#quick-purpose"), nt = $("#quick-note"); const photos = fpDone(sc); delete state.fp[sc]; markQuickById(rid, code, pu ? pu.value : "other", nt ? nt.value : "", photos); });
   each("[data-unquick]",     b => unmarkQuick(b.dataset.unquick));
   each("[data-skip]",   b => skipStop(b.dataset.skip));
   each("[data-unarrive]", b => unarrive(b.dataset.unarrive));
@@ -4431,6 +4452,16 @@ function wire(){
   each("[data-fpgal]", b => { const i = document.querySelector(`[data-fpin-gal="${b.dataset.fpgal}"]`); if(i){ i.value = ""; i.click(); } });
   const fpMeta = scope => {
     const [type, code] = scope.split("|");
+    if(type === "quick"){
+      const key = scope.slice(6), i = key.lastIndexOf("__"), outlet = i >= 0 ? key.slice(i+2) : key;
+      // In the form, the stamp says what was chosen so far; on an already
+      // saved quick stop it says what the stop is.
+      const pu = $("#quick-purpose"), nt = $("#quick-note");
+      let text;
+      if(pu) text = (QUICK_PURPOSES.find(x => x.id === pu.value) || QUICK_PURPOSES[3]).label + (nt && nt.value ? " — " + nt.value : "");
+      else { const r = myRound(); const s = r && r.stops.find(x => x.outlet === outlet); text = s && s.quick ? quickLabel(s) : ""; }
+      return {kind:"quick", code: outlet, what:"Quick stop", text};
+    }
     if(type === "issue") return {kind:"issue", code, what:"Issue", text: ($("#issue-desc")||{}).value};
     if(type === "job") return {kind:"job", code, what:"Job", text: ($("#newtask")||{}).value};
     return {kind:"issue", code: ($("#addissue-outlet")||{}).value || "?", what:"Issue", text: ($("#addissue-desc")||{}).value};
