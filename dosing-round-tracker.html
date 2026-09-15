@@ -627,6 +627,7 @@ const state = {
                            // office, etc.) form is open on the technician's own round
   adding:null,           // outlet code whose "add task" box is open
   confirmDepart:null,    // outlet code of a Leave-with-open-must-do pending a second confirming tap
+  quickForm:null,        // outlet code (technician) or roundId__outlet (supervisor) whose quick-stop form is open
   confirmReopen:null,    // outlet code of a Reopen (undo a departure) pending a second confirming tap
   timeByGroup:"job",     // "Time by job" section: "job" (aggregate) or "outlet" (grouped per branch)
   pending:{},            // docPath -> {data, tries} — writes not yet confirmed saved to the team
@@ -1078,7 +1079,25 @@ function totals(r){
   });
   return {onSite:on, travel:tr, done:r.stops.filter(s=>s.departAt).length, total:r.stops.length, tasksDone:tdone};
 }
-function requiredLeft(s){ return s.tasks.filter(t => t.kind==="required" && !t.doneAt).length; }
+// A quick stop is a visit that was never a duty: dropping a teammate off,
+// delivering tools or chemicals, and driving on. Two technicians share a van,
+// so the driver passes through outlets he isn't dosing. Without this, that
+// pass-through shows as "0/4 jobs · 3 must-do left open" -- a skipped duty --
+// which is what Chun Kay saw on Islam's 11 Sep round at CC. With it, the
+// stop carries its purpose instead, no jobs are expected, and Overview never
+// counts it as the outlet being done.
+const QUICK_PURPOSES = [
+  {id:"dropoff",  label:"Dropping off a teammate"},
+  {id:"delivery", label:"Delivering tools / chemicals"},
+  {id:"pickup",   label:"Picking something up"},
+  {id:"other",    label:"Something else"}
+];
+const isQuick = s => !!(s && s.quick);
+function quickLabel(s){
+  const q = s.quick || {}; const base = (QUICK_PURPOSES.find(x => x.id === q.purpose) || QUICK_PURPOSES[3]).label;
+  return q.note ? `${base} — ${q.note}` : base;
+}
+function requiredLeft(s){ return isQuick(s) ? 0 : s.tasks.filter(t => t.kind==="required" && !t.doneAt).length; }
 
 async function startRound(codes){
   state.picking = null;
@@ -1230,6 +1249,50 @@ function depart(code){
   });
 }
 function skipStop(code){ withRound(r => { r.stops = r.stops.filter(s => s.outlet !== code); if(r.headingTo === code) r.headingTo = null; }); }
+// Technician, on site: "this is just a drop-off". Refused once any job here
+// has been started -- a stop with work on it is a duty, not a pass-through.
+function markQuick(code, purpose, note){
+  state.quickForm = null;
+  withRound(r => {
+    const s = r.stops.find(x => x.outlet === code); if(!s || !s.arriveAt || s.departAt) return false;
+    if(s.tasks.some(t => t.startedAt)){ flash("A job has already been started here — this is a duty stop, not a drop-off."); return false; }
+    s.quick = {purpose: QUICK_PURPOSES.some(x => x.id === purpose) ? purpose : "other", note: (note || "").trim().slice(0, 120), at: new Date().toISOString(), by: r.person};
+  }, "Couldn't mark that. Try again.");
+}
+function unmarkQuick(code){
+  withRound(r => { const s = r.stops.find(x => x.outlet === code); if(!s || !s.quick || s.departAt) return false; delete s.quick; });
+}
+// Supervisor, afterwards: correct a past stop that was really a drop-off.
+// Only a stop where nothing was ever started can be re-marked -- the same
+// rule as on site -- and the record says who marked it and when, so it can't
+// quietly turn skipped work into a pass-through. Works on any date, since the
+// round is saved by id whether it is today's or in the history cache.
+async function markQuickById(roundId, code, purpose, note){
+  let r = state.rounds[roundId], fromHistory = false;
+  if(!r){ for(const c of Object.values(state.historyCache)){ if(c && c.rounds){ const f = c.rounds.find(x => x.id === roundId); if(f){ r = f; fromHistory = true; break; } } } }
+  if(!r) return;
+  const rr = clone(r); const s = rr.stops.find(x => x.outlet === code); if(!s || !s.arriveAt) return;
+  if(s.tasks.some(t => t.startedAt)){ flash("A job was started at that stop, so it can't be marked as a drop-off."); return; }
+  s.quick = {purpose: QUICK_PURPOSES.some(x => x.id === purpose) ? purpose : "other", note: (note || "").trim().slice(0, 120), at: new Date().toISOString(), by: state.me || "Supervisor", byRole:"supervisor"};
+  state.quickForm = null;
+  if(fromHistory){
+    Object.values(state.historyCache).forEach(c => { if(c && c.rounds) c.rounds = c.rounds.map(x => x.id === roundId ? rr : x); });
+    render();
+    await persist("dosing_rounds/"+roundId, (()=>{ const c = clone(rr); delete c.id; return c; })(), () => { const all = local.read(); all[roundId] = rr; local.write(all); });
+  } else await saveRound(rr);
+}
+function quickFormHtml(key, code, purposeIdAttr){
+  const opts = QUICK_PURPOSES.map(x => `<option value="${x.id}">${esc(x.label)}</option>`).join("");
+  return `<div class="addbox">
+    <p class="note" style="margin:0"><strong>Quick stop at ${esc(code)}</strong> — no night duty here, just passing through.</p>
+    <select id="quick-purpose" aria-label="What for">${opts}</select>
+    <input type="text" id="quick-note" placeholder="Who or what? e.g. dropped William, 2 × 25 kg chlorine" maxlength="120" autocomplete="off">
+    <div class="row-2">
+      <button class="btn primary sm" ${purposeIdAttr}="${esc(key)}" style="flex:1">Save quick stop</button>
+      <button class="btn sm" data-quickcancel="1" style="flex:1">Cancel</button>
+    </div>
+  </div>`;
+}
 
 // Lets a technician add an outlet to their own round after it's already
 // started — e.g. another technician is stuck fixing something at their own
@@ -3077,6 +3140,8 @@ function stopCard(s, i, r, isHeading){
         <button class="link" data-skip="${s.outlet}" style="align-self:center">Remove from round</button>
       </div>`;
     }
+  } else if(done && isQuick(s)){
+    body = `<div class="stop-body"><p class="note" style="margin:0"><span class="tag add">Quick stop</span> ${esc(quickLabel(s))}</p></div>`;
   } else if(done){
     // Same row-with-bar treatment the supervisor's "Time by job" uses, so a
     // finished stop reads the same way here as it does on the supervisor board.
@@ -3123,8 +3188,17 @@ function stopCard(s, i, r, isHeading){
            <button class="btn warn big" style="flex:1" data-depart="${s.outlet}">Yes, leave anyway</button>
            <button class="btn big" style="flex:1" data-canceldepart="${s.outlet}">Cancel</button>
          </div>`;
+    if(isQuick(s)){
+      body = `<div class="stop-body">
+        <p class="note" style="margin:0"><span class="tag add">Quick stop</span> ${esc(quickLabel(s))}</p>
+        <p class="note" style="margin:0">No night duty logged here. If you end up doing the duty after all, switch it back.</p>
+        <button class="btn primary big" data-depart="${s.outlet}">Leave ${esc(s.outlet)}</button>
+        <button class="link" data-unquick="${s.outlet}" style="align-self:center">Actually doing the duty here — switch back</button>
+      </div>`;
+    } else
     body = `<div class="stop-body">
       <div class="tasks">${taskListHtml(s)}</div>
+      ${state.quickForm === s.outlet ? quickFormHtml(s.outlet, s.outlet, "data-quicksave") : ""}
       ${adding ? `
       <div class="addbox">
         <input type="text" id="newtask" placeholder="What else did you do here?" autocomplete="off">
@@ -3137,6 +3211,7 @@ function stopCard(s, i, r, isHeading){
       </div>`
       : `<button class="btn sm" data-openadd="${s.outlet}" style="align-self:flex-start">+ Add another job</button>`}
       ${leaveBlock}
+      ${s.tasks.some(t=>t.startedAt) || state.quickForm === s.outlet ? "" : `<button class="link" data-quickopen="${s.outlet}" style="align-self:center">Just a drop-off / delivery — no duty here</button>`}
       ${s.tasks.some(t=>t.startedAt) ? "" : `<button class="link" data-unarrive="${s.outlet}" style="align-self:center">Wrong outlet — undo arrival</button>`}
     </div>`;
   } else {
@@ -3277,7 +3352,8 @@ function mergeStopTasks(stops){
 function outletStatusGrid(rounds){
   const cards = OUTLETS.map(o => {
     const stops = [];
-    rounds.forEach(r => { const s = r.stops.find(x => x.outlet===o.code); if(s) stops.push({s, person:r.person}); });
+    // A drop-off at an outlet is not that outlet's duty being done tonight.
+    rounds.forEach(r => { const s = r.stops.find(x => x.outlet===o.code); if(s && !isQuick(s)) stops.push({s, person:r.person}); });
     const issues = openIssuesFor(o.code);
     const issueN = issues.length;
     const issueTag = issueN ? `<span class="tag urgent">${issueN} issue${issueN>1?"s":""}</span>` : "";
@@ -3334,7 +3410,7 @@ function outletStatusGrid(rounds){
 function unfinishedJobs(rounds){
   const seen = new Set(), out = [];
   rounds.forEach(r => r.stops.forEach(s => {
-    if(!s.departAt) return;
+    if(!s.departAt || isQuick(s)) return;
     // A custom stop's outlet field is a synthetic CUSTOM- id, never something
     // to show a supervisor -- stopLabel(s) is the friendly name for it (see
     // the custom-stop feature).
@@ -3750,7 +3826,7 @@ function routeCard(r, proj, byCode){
   // has to be sorted by actual arrival time, not by position in r.stops.
   const visited = r.stops.filter(s => s.arriveAt && byCode[s.outlet])
     .sort((a,b) => a.arriveAt < b.arriveAt ? -1 : 1);
-  const seq = visited.map((s,i) => Object.assign({idx:i+1, arriveAt:s.arriveAt, departAt:s.departAt, tasks:s.tasks, covering:s.covering, coveringNote:s.coveringNote}, byCode[s.outlet]));
+  const seq = visited.map((s,i) => Object.assign({idx:i+1, arriveAt:s.arriveAt, departAt:s.departAt, tasks:s.tasks, covering:s.covering, coveringNote:s.coveringNote, quick:s.quick||null}, byCode[s.outlet]));
   const visitedCodes = new Set(seq.map(o=>o.code));
   // The textual stop list below is built from the FULL seq, always -- a stop
   // with no coordinates yet (a custom stop still waiting on/failed geocoding)
@@ -3950,6 +4026,20 @@ function routeCard(r, proj, byCode){
         ${customTaskBreakdown}
       </div>`;
     }
+    // A quick stop (drop-off, delivery) is not a duty: no job count, no
+    // "left open", just what it was for -- and, for a stop where nothing was
+    // ever started, a supervisor can mark it so after the fact.
+    if(o.quick){
+      const qKey = r.id+"__"+o.code;
+      return `${gap}<div class="route-stop">
+        <span class="route-idx">${o.idx}</span>
+        <span class="route-name"><strong>${esc(o.label)}</strong></span>
+        <span class="tag add">Quick stop</span>
+        <span class="mono muted">${arr}${dep?" – "+dep:" – on site"}</span>
+        ${stillHere?'<span class="tag st-prog">On site</span>':""}
+        <span class="mono muted" style="flex-basis:100%;font-style:italic">${esc(quickLabel({quick:o.quick}))}${o.quick.byRole === "supervisor" ? ` · marked by ${esc(o.quick.by)}` : ""}</span>
+      </div>`;
+    }
     const left = requiredLeft(o);
     const doneN = o.tasks.filter(t=>t.doneAt).length;
     const status = stillHere
@@ -3957,6 +4047,13 @@ function routeCard(r, proj, byCode){
       : left
       ? `<span class="tag req">${left} must-do left open</span>`
       : `<span class="tag st-done">All done</span>`;
+    const untouched = !stillHere && !o.tasks.some(t => t.startedAt);
+    const qKey = r.id+"__"+o.code;
+    const quickFix = untouched
+      ? (state.quickForm === qKey
+          ? `<div style="flex-basis:100%">${quickFormHtml(qKey, o.code, "data-quicksaveby")}</div>`
+          : `<button type="button" class="link mono" data-quickopenby="${esc(qKey)}" style="flex-basis:100%;text-align:left">Was this just a drop-off? Mark as quick stop</button>`)
+      : "";
     // Any issue raised at this outlet (still open or already planned, but not
     // yet resolved) shows right here too -- a supervisor scanning routes
     // shouldn't have to separately check Overview to see that a stop they're
@@ -3985,6 +4082,7 @@ function routeCard(r, proj, byCode){
       ${status}${issueTag}
       ${noteLine}
       ${taskBreakdown}
+      ${quickFix}
     </div>`;
   }).join("");
 
@@ -4302,6 +4400,14 @@ function wire(){
   each("[data-askdepart]",    b => { state.confirmDepart = b.dataset.askdepart; render(); });
   each("[data-canceldepart]", b => { state.confirmDepart = null; render(); });
   each("[data-depart]", b => { state.confirmDepart = null; depart(b.dataset.depart); });
+  // Quick stop: technician on site, and supervisor after the fact (Routes).
+  each("[data-quickopen]",   b => { state.quickForm = b.dataset.quickopen; render(); const e = $("#quick-note"); if(e) e.focus(); });
+  each("[data-quickopenby]", b => { state.quickForm = b.dataset.quickopenby; render(); const e = $("#quick-note"); if(e) e.focus(); });
+  each("[data-quickcancel]", () => { state.quickForm = null; render(); });
+  each("[data-quicksave]",   b => { const pu = $("#quick-purpose"), nt = $("#quick-note"); markQuick(b.dataset.quicksave, pu ? pu.value : "other", nt ? nt.value : ""); });
+  // Round ids already contain "__" (date__person), so split on the last one.
+  each("[data-quicksaveby]", b => { const k = b.dataset.quicksaveby, i = k.lastIndexOf("__"); const rid = k.slice(0, i), code = k.slice(i+2); const pu = $("#quick-purpose"), nt = $("#quick-note"); markQuickById(rid, code, pu ? pu.value : "other", nt ? nt.value : ""); });
+  each("[data-unquick]",     b => unmarkQuick(b.dataset.unquick));
   each("[data-skip]",   b => skipStop(b.dataset.skip));
   each("[data-unarrive]", b => unarrive(b.dataset.unarrive));
   // Reopening a departed stop (Leave tapped by mistake) also needs a confirm —
