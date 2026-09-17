@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pool Plant Control Panel</title>
+<style>
+:root{
+  --bg:#f2f3f4; --fg:#16181a; --muted:#5d646b; --line:#d3d7db;
+  --card:#ffffff; --accent:#0d7d6b;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#111315; --fg:#e8eaec; --muted:#9aa3ab; --line:#2a2f34;
+    --card:#191c1f; --accent:#38b39c;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111315; --fg:#e8eaec; --muted:#9aa3ab; --line:#2a2f34;
+  --card:#191c1f; --accent:#38b39c;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font-family:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+  padding:18px 14px 48px;
+}
+.wrap{max-width:860px;margin:0 auto}
+h1{font-size:19px;margin:0 0 2px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 18px}
+
+/* ---------- PANEL ---------- */
+.panel{
+  background:linear-gradient(160deg,#e6e6e2,#cdcdc8);
+  border-radius:10px; padding:16px;
+  box-shadow:0 6px 22px rgba(0,0,0,.28);
+  max-width:520px; margin:0 auto;
+}
+.window{
+  background:#1c1d1f; border-radius:26px; padding:13px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12);
+}
+.face{
+  background:linear-gradient(155deg,#dcdedd,#c6c9c8);
+  border-radius:16px; padding:18px 14px 22px;
+  box-shadow:inset 0 0 22px rgba(0,0,0,.18);
+}
+.strip{
+  background:#f4f4f1; border:1px solid #2b2b2b; color:#141414;
+  font-size:9.5px; letter-spacing:.09em; text-align:center;
+  padding:2.5px 2px; font-weight:600; border-radius:2px;
+  white-space:nowrap; overflow:hidden;
+}
+.block{margin-bottom:22px}
+.grid6{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;align-items:center}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;width:58%;margin:0 auto}
+.grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;width:40%;margin:0 auto}
+.titlebar{margin:0 0 4px}
+.titlebar.span{margin-left:16.6%}
+.cell{display:flex;justify-content:center;align-items:center;height:52px}
+
+/* lamps + buttons */
+.lamp{
+  width:38px;height:38px;border-radius:50%;
+  border:3px solid #3a3d40; cursor:default; position:relative;
+  transition:background .18s, box-shadow .18s;
+  background:#4a4f52;
+}
+.lamp::after{
+  content:"";position:absolute;top:5px;left:8px;width:14px;height:8px;
+  border-radius:50%;background:rgba(255,255,255,.35);
+}
+.btn{cursor:pointer;border:3px solid #2f3235}
+.btn:active{transform:scale(.94)}
+
+.off-green{background:#20563f}
+.on-green{background:#2fe08a;box-shadow:0 0 14px 3px rgba(47,224,138,.65)}
+.off-teal{background:#12514c}
+.on-teal{background:#12d9c0;box-shadow:0 0 14px 3px rgba(18,217,192,.6)}
+.off-red{background:#5c1c1c}
+.on-red{background:#ff2f2f;box-shadow:0 0 14px 3px rgba(255,47,47,.6)}
+.off-amber{background:#5c3f11}
+.on-amber{background:#ffa61f;box-shadow:0 0 14px 3px rgba(255,166,31,.65)}
+.off-white{background:#8d918f}
+.on-white{background:#f6f7ef;box-shadow:0 0 14px 3px rgba(246,247,239,.7)}
+
+/* rotary selector */
+.knob{
+  width:40px;height:40px;border-radius:50%;
+  background:radial-gradient(circle at 34% 30%,#5a5e61,#1a1c1e 70%);
+  border:2px solid #0e0f10; position:relative; cursor:pointer;
+  box-shadow:0 2px 5px rgba(0,0,0,.4);
+}
+.knob i{
+  position:absolute;left:50%;top:50%;width:5px;height:19px;
+  background:#101112;border-radius:3px;transform-origin:50% 2px;
+  margin-left:-2.5px;margin-top:-2px;
+  box-shadow:0 0 0 1px rgba(255,255,255,.18);
+  transition:transform .18s ease;
+}
+.knobwrap{display:flex;flex-direction:column;align-items:center;gap:3px}
+.knobtag{font-size:8.5px;font-weight:700;color:#1d1f21;letter-spacing:.06em}
+
+/* ---------- TIMER DIAL ---------- */
+.tpair{display:flex;gap:14px;align-items:flex-start}
+.tdial{flex:0 0 auto;background:linear-gradient(160deg,#d8c7a4,#c9b088);
+  padding:8px;border-radius:8px;box-shadow:0 3px 10px rgba(0,0,0,.22)}
+.tdial svg{display:block}
+.dialnote{font-size:11px;color:#3c3222;text-align:center;margin:5px 0 0;line-height:1.35}
+.dialnote b{font-variant-numeric:tabular-nums;font-size:13px;color:#1d1810}
+.dialkey{display:inline-block;margin-top:4px;font-size:10px;color:#4b3f2c}
+.tside{flex:1 1 auto;min-width:0}
+@media(max-width:470px){.tpair{gap:9px}}
+
+/* ---------- CONTROLS ---------- */
+.controls{max-width:520px;margin:24px auto 0}
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:10px;
+  padding:14px 14px 16px;margin-bottom:14px;
+}
+.card h2{font-size:13px;margin:0 0 10px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.row:last-child{margin-bottom:0}
+label{font-size:13px}
+input[type=time]{
+  font-family:inherit;font-size:14px;padding:5px 7px;border-radius:6px;
+  border:1px solid var(--line);background:var(--bg);color:var(--fg);
+}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.clock{font-size:30px;font-weight:600;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{
+  font:inherit;font-size:12.5px;padding:6px 12px;border:0;cursor:pointer;
+  background:transparent;color:var(--fg);
+}
+.seg button.sel{background:var(--accent);color:#fff}
+.mini{font-size:12px;color:var(--muted);line-height:1.5}
+.del{font:inherit;font-size:12px;padding:4px 9px;border:1px solid var(--line);
+  background:transparent;color:var(--muted);border-radius:6px;cursor:pointer}
+.add{font:inherit;font-size:12.5px;padding:6px 11px;border:1px solid var(--accent);
+  background:transparent;color:var(--accent);border-radius:7px;cursor:pointer}
+.lab{font-size:12.5px;width:96px;color:var(--muted)}
+input[type=text],input[type=number],select{font:inherit;font-size:13px;padding:5px 7px;
+  border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--fg);max-width:100%}
+input[type=text]{flex:1 1 130px;min-width:110px}
+input[type=number]{width:70px}
+.logrow{border-top:1px solid var(--line);padding:9px 0;font-size:13px;line-height:1.5}
+.logrow:first-child{border-top:0}
+.logmeta{color:var(--muted);font-size:12px;margin-top:2px}
+.pill{display:inline-block;font-size:11px;padding:2px 7px;border-radius:99px;
+  background:var(--line);margin-right:6px}
+.rm{float:right;font:inherit;font-size:11px;padding:2px 7px;border:1px solid var(--line);
+  background:transparent;color:var(--muted);border-radius:6px;cursor:pointer}
+.setline{font-size:14px;margin-bottom:5px}
+.setline b{font-variant-numeric:tabular-nums}
+#site{font:inherit;font-size:14px;padding:6px 9px;border-radius:7px;
+  border:1px solid var(--line);background:var(--card);color:var(--fg)}
+.tl{position:relative;height:16px;background:var(--line);border-radius:4px;overflow:hidden;margin:4px 0 2px}
+.tl span{position:absolute;top:0;bottom:0;background:var(--accent);opacity:.8}
+.tl b{position:absolute;top:-3px;bottom:-3px;width:2px;background:#e2413c}
+.ticks{display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
+.state{font-size:12.5px;color:var(--muted);margin-top:6px}
+.state b{color:var(--fg)}
+@media(max-width:420px){
+  .lamp{width:32px;height:32px}.knob{width:34px;height:34px}.cell{height:46px}
+  .strip{font-size:8px;letter-spacing:.04em}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Check timer</h1>
+  <p class="sub">What the timers and panel should look like right now. Compare against the real plant room.</p>
+  <div class="row" style="margin-bottom:14px">
+    <select id="site"></select>
+    <span class="mini" id="siteNote"></span>
+  </div>
+
+  <!-- ================= PANEL ================= -->
+  <div class="panel">
+   <div class="window">
+    <div class="face">
+
+      <!-- MAIN INCOMING -->
+      <div class="block">
+        <div class="strip titlebar" style="width:58%;margin:0 auto 4px">MAIN INCOMING LIGHT</div>
+        <div class="grid3">
+          <div class="strip">L1</div><div class="strip">L2</div><div class="strip">L3</div>
+        </div>
+        <div class="grid3">
+          <div class="cell"><div class="lamp on-white"></div></div>
+          <div class="cell"><div class="lamp on-white"></div></div>
+          <div class="cell"><div class="lamp on-white"></div></div>
+        </div>
+      </div>
+
+      <div id="panelPumps"></div>
+
+      <!-- HEAT PUMP -->
+      <div class="block" id="heatBlock" style="margin-bottom:4px">
+        <div class="strip titlebar" style="width:40%;margin:0 auto 4px">HEAT PUMP</div>
+        <div class="grid2">
+          <div class="strip">OFF-ON</div><div class="strip">ON</div>
+        </div>
+        <div class="grid2">
+          <div class="cell"><div class="knobwrap">
+            <div class="knob" data-knob="heat"><i></i></div><div class="knobtag" id="khtag">ON</div>
+          </div></div>
+          <div class="cell"><div class="lamp" id="hplamp"></div></div>
+        </div>
+      </div>
+
+    </div>
+   </div>
+  </div>
+
+  <!-- ================= CONTROLS ================= -->
+  <div class="controls">
+
+    <div class="card">
+      <h2>Clock</h2>
+      <div class="row" style="justify-content:space-between">
+        <div class="clock" id="clockTxt">--:--</div>
+        <div class="seg">
+          <button id="mLive" class="sel">Live now</button>
+          <button id="mManual">Scrub time</button>
+        </div>
+      </div>
+      <div id="scrubWrap" style="display:none">
+        <input type="range" id="scrub" min="0" max="1435" step="5" value="480">
+        <div class="ticks"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+      </div>
+    </div>
+
+    <div id="timerCards"></div>
+
+    <div class="card">
+      <h2>How it behaves</h2>
+      <p class="mini">
+        <b>AUTO</b> — pump follows its timer periods. <b>MAN</b> — runs continuously, START/STOP buttons take over.
+        <b>OFF</b> — dead, STOP lamp lit.<br>
+        The white STOP lamp logic: RUN lamp lit while running, red STOP lamp lit while stopped.
+        Heat pump ON lamp only lights when its selector is ON <i>and</i> at least one circulation pump is running
+        (no flow, no heating).<br>
+        Tap a <b>TRIP</b> lamp to simulate an overload trip — the pump drops out until you tap it again to reset.
+      </p>
+      <p class="mini" style="margin-top:10px">
+        <b>The dial beside each timer</b> is what the Hager EH011 in the plant room should look like right now,
+        with these ON periods set. Hold your phone next to the real unit and compare: the hour against the
+        ▶ pointer should match, and the blue tappets should be pushed in over the same hours.
+        If the real dial reads a different time, the pump is running to the wrong clock — correct it and note it down.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================================================================
+   TIMER SETTINGS — the only part that changes when a pool is added.
+   Each pool: a name, a list of timers, and whether it has a heat pump.
+   A timer needs a label and its ON periods. Add as many as the pool has.
+
+   device: 'hager'   — analogue roller time switch (Hager EH011 and lookalikes)
+           'digital' — digital time switch with an LCD
+   model:  what is printed on the unit, e.g. 'Hager EH011' or 'Theben TR 610'.
+   panel:false — the timer has no row on the main panel.
+   ================================================================ */
+var SITES = {
+  JEIP1: {
+    name:'JE — Indoor Pool 1',
+    heatPump:true,
+    timers:[
+      { label:'Circulation Pump 1', device:'hager', model:'Hager EH011',
+        sch:[{on:'03:00',off:'15:00'}] },
+      { label:'Circulation Pump 2', device:'hager', model:'Hager EH011',
+        sch:[{on:'15:00',off:'00:00'}] }
+    ]
+  }
+};
+var PENDING = ['JE — Indoor Pool 2','JE — Outdoor Pool 1','JE — Outdoor Pool 2',
+  'CC','DR','Lentor','Tengah','HB','HS','BK','WWW','TPY'];
+
+var S = { mode:'live', manual:480, site:'JEIP1', pumps:[], heat:'ON', hasHeat:true };
+
+function loadSite(id){
+  if(!SITES[id]) return;
+  S.site=id;
+  var cfg=SITES[id];
+  S.hasHeat = !!cfg.heatPump;
+  S.pumps = cfg.timers.map(function(t){
+    return {label:t.label, onPanel:(t.panel!==false), device:(t.device||'hager'),
+            model:(t.model||''), sel:'AUTO', tripped:false,
+            manRun:true, tsw:'auto', sch:t.sch.slice()};
+  });
+  try{ localStorage.setItem('timerSite', id); }catch(e){}
+  buildPanel(); buildCards();
+}
+
+/* ---------- markup built from the config ---------- */
+function buildPanel(){
+  document.getElementById('panelPumps').innerHTML = S.pumps.map(function(p,i){
+    if(!p.onPanel) return '';
+    return '<div class="block">'+
+      '<div class="strip titlebar span">'+p.label.toUpperCase()+'</div>'+
+      '<div class="grid6"><div class="strip">MAN-OFF-AUTO</div><div class="strip">START</div>'+
+      '<div class="strip">STOP</div><div class="strip">RUN</div><div class="strip">STOP</div>'+
+      '<div class="strip">TRIP</div></div>'+
+      '<div class="grid6">'+
+        '<div class="cell"><div class="knobwrap"><div class="knob" data-knob="'+i+'"><i></i></div>'+
+          '<div class="knobtag" id="k'+i+'tag">AUTO</div></div></div>'+
+        '<div class="cell"><div class="lamp btn off-green" data-press="start'+i+'"></div></div>'+
+        '<div class="cell"><div class="lamp btn off-red" data-press="stop'+i+'"></div></div>'+
+        '<div class="cell"><div class="lamp" id="run'+i+'"></div></div>'+
+        '<div class="cell"><div class="lamp" id="stp'+i+'"></div></div>'+
+        '<div class="cell"><div class="lamp" id="trp'+i+'" data-press="trip'+i+'" style="cursor:pointer"></div></div>'+
+      '</div></div>';
+  }).join('');
+  document.getElementById('heatBlock').style.display = S.hasHeat ? '' : 'none';
+}
+
+function dialSvg(i,label){
+  return '<svg viewBox="0 0 124 320" width="120" aria-label="Hager time switch, '+label+'">'+
+  '<defs><clipPath id="cw'+i+'"><rect x="44" y="26" width="70" height="196"/></clipPath></defs>'+
+  '<rect x="2" y="2" width="120" height="316" rx="4" fill="#f0f0ec" stroke="#b3b5b1"/>'+
+  '<rect x="7" y="8" width="110" height="304" rx="3" fill="#e9eae6" stroke="#aeb1ad"/>'+
+  '<path d="M24 186 V58 M19 66 L24 56 L29 66" fill="none" stroke="#6a6d6a" stroke-width="2"/>'+
+  '<path d="M14 184 L14 208 L34 196 Z" fill="#5c5f5c"/>'+
+  '<text x="10" y="232" font-size="13" font-family="Arial" fill="#3b3e3b">auto</text>'+
+  '<rect x="44" y="26" width="70" height="196" rx="1" fill="#f2f3ef" stroke="#9fa29e"/>'+
+  '<g clip-path="url(#cw'+i+')"><g id="dial'+i+'"></g></g>'+
+  '<rect x="44" y="26" width="70" height="196" rx="2" fill="none" stroke="#8d908c"/>'+
+  '<line x1="34" y1="196" x2="116" y2="196" stroke="#d01e1e" stroke-width="1.6"/>'+
+  '<rect x="12" y="238" width="36" height="54" rx="2" fill="#2b2e30"/>'+
+  '<g id="ts'+i+'"><rect x="14" y="240" width="32" height="24" rx="2" fill="#5a5e60" stroke="#3a3d3f"/>'+
+  '<path d="M19 246 h22 M19 251 h22 M19 256 h22" stroke="#8d9193" stroke-width="1.4"/></g>'+
+  '<rect x="12" y="238" width="36" height="54" fill="transparent" data-tsw="'+i+'" style="cursor:pointer"/>'+
+  '<text x="27" y="308" text-anchor="middle" font-size="15" font-weight="bold" font-family="Arial" fill="#3b3e3b">1</text>'+
+  '<rect x="84" y="224" width="30" height="38" rx="2" fill="#f4f4f1" stroke="#b9bcb8"/>'+
+  '<text x="93" y="250" text-anchor="middle" font-size="16" font-weight="bold" font-family="Arial" fill="#2b2e30">1</text>'+
+  '<text x="107" y="250" text-anchor="middle" font-size="16" font-weight="bold" font-family="Arial" fill="#2b2e30">0</text>'+
+  '</svg>';
+}
+
+function digitalSvg(i,label){
+  return '<svg viewBox="0 0 124 320" width="120" aria-label="Digital time switch, '+label+'">'+
+  '<rect x="2" y="2" width="120" height="316" rx="4" fill="#f2f2ef" stroke="#b3b5b1"/>'+
+  '<rect x="9" y="10" width="106" height="20" rx="2" fill="#e2e4e0" stroke="#b9bcb8"/>'+
+  '<text x="62" y="24" text-anchor="middle" font-size="10" font-family="Arial" fill="#5c6064" id="mdl'+i+'"></text>'+
+  '<rect x="12" y="40" width="100" height="104" rx="4" fill="#c3d6bb" stroke="#7d8a78"/>'+
+  '<g id="days'+i+'" font-family="Arial" font-size="9" fill="#46523f"></g>'+
+  '<text x="62" y="102" text-anchor="middle" font-family="Arial" font-size="30" font-weight="bold" '+
+    'fill="#1f2a1c" id="lcd'+i+'">--:--</text>'+
+  '<text x="22" y="132" font-family="Arial" font-size="11" font-weight="bold" fill="#1f2a1c" id="lcdmode'+i+'">AUTO</text>'+
+  '<circle cx="92" cy="128" r="6" id="lcdout'+i+'" fill="#7d8a78"/>'+
+  '<text x="102" y="132" font-family="Arial" font-size="9" fill="#46523f">ON</text>'+
+  '<rect x="12" y="158" width="100" height="58" rx="3" fill="#e8e9e5" stroke="#c2c5c0"/>'+
+  '<g font-family="Arial" font-size="9" fill="#3b3e3b" text-anchor="middle">'+
+    '<circle cx="32" cy="176" r="10" fill="#d8dad5" stroke="#aeb1ad"/><text x="32" y="179">menu</text>'+
+    '<circle cx="62" cy="176" r="10" fill="#d8dad5" stroke="#aeb1ad"/><text x="62" y="179">+</text>'+
+    '<circle cx="92" cy="176" r="10" fill="#d8dad5" stroke="#aeb1ad"/><text x="92" y="179">−</text>'+
+    '<circle cx="62" cy="200" r="10" fill="#d8dad5" stroke="#aeb1ad"/><text x="62" y="203">ok</text>'+
+  '</g>'+
+  '<rect x="12" y="232" width="100" height="26" rx="3" fill="#dcdedb" stroke="#a6a9a5"/>'+
+  '<g id="ts'+i+'"><rect x="44" y="235" width="24" height="20" rx="2" fill="#5a5e60" stroke="#3a3d3f"/></g>'+
+  '<rect x="12" y="232" width="100" height="26" fill="transparent" data-tsw="'+i+'" style="cursor:pointer"/>'+
+  '<text x="22" y="250" font-family="Arial" font-size="12" font-weight="bold" fill="#2b2e30">1</text>'+
+  '<text x="98" y="250" font-family="Arial" font-size="12" font-weight="bold" fill="#2b2e30">0</text>'+
+  '<text x="62" y="276" text-anchor="middle" font-family="Arial" font-size="11" fill="#3b3e3b">auto</text>'+
+  '</svg>';
+}
+
+function drawDigital(i,m){
+  var p=S.pumps[i];
+  document.getElementById('lcd'+i).textContent=fmt(m);
+  document.getElementById('mdl'+i).textContent=p.model||'Digital time switch';
+  var names=['SU','MO','TU','WE','TH','FR','SA'], today=new Date().getDay(), h='';
+  for(var d=0;d<7;d++){
+    var x=20+d*14;
+    h+='<text x="'+x+'" y="56" text-anchor="middle" opacity="'+(d===today?1:0.35)+'" '+
+       'font-weight="'+(d===today?'bold':'normal')+'">'+names[d]+'</text>';
+    if(d===today) h+='<rect x="'+(x-7)+'" y="60" width="14" height="2" fill="#1f2a1c"/>';
+  }
+  document.getElementById('days'+i).innerHTML=h;
+  var run=running(p,m);
+  document.getElementById('lcdout'+i).setAttribute('fill', run?'#1f2a1c':'#7d8a78');
+  document.getElementById('lcdmode'+i).textContent =
+    p.tsw==='on' ? 'ON' : (p.sel==='OFF' ? 'OFF' : 'AUTO');
+  document.getElementById('ts'+i).setAttribute('transform',
+    p.tsw==='on' ? 'translate(-32,0)' : 'translate(0,0)');
+}
+
+function buildCards(){
+  document.getElementById('timerCards').innerHTML = S.pumps.map(function(p,i){
+    return '<div class="card"><h2>'+p.label+' — timer</h2><div class="tpair"><div>'+
+      '<div class="tdial">'+(p.device==='digital'?digitalSvg(i,p.label):dialSvg(i,p.label))+'</div>'+
+      '<p class="dialnote">Should read <b id="dn'+i+'">--:--</b><br>'+
+      (p.device==='digital'
+        ? '<span class="dialkey">check the day is right too</span>'
+        : '<span class="dialkey">left = running</span><br>'+
+          '<span class="dialkey">knob in the middle = auto · at 1 = always on</span>')+
+      '</p></div>'+
+      '<div class="tside"><div id="sch'+i+'"></div>'+
+      '<div class="tl" id="tl'+i+'"></div>'+
+      '<div class="ticks"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>'+
+      '<div class="state" id="st'+i+'"></div></div></div></div>';
+  }).join('');
+  S.pumps.forEach(function(p,i){ drawSchedules(i); });
+}
+try{ var last=localStorage.getItem('timerSite'); }catch(e){}
+loadSite(SITES[last]?last:'JEIP1');
+function save(){}
+
+function toMin(t){ var p=t.split(':'); return (+p[0])*60 + (+p[1]); }
+function pad(n){ return (n<10?'0':'')+n; }
+function fmt(m){ m=((m%1440)+1440)%1440; return pad(Math.floor(m/60))+':'+pad(m%60); }
+function nowMin(){
+  if(S.mode==='manual') return S.manual;
+  var d=new Date(); return d.getHours()*60+d.getMinutes();
+}
+function inWindow(w, m){
+  var a=toMin(w.on), b=toMin(w.off);
+  if(a===b) return false;
+  return a<b ? (m>=a && m<b) : (m>=a || m<b);
+}
+function timerOn(p, m){ for(var i=0;i<p.sch.length;i++){ if(inWindow(p.sch[i],m)) return true; } return false; }
+function running(p, m){
+  if(p.tripped) return false;
+  if(p.sel==='OFF') return false;
+  if(p.sel==='MAN') return p.manRun;
+  return (p.tsw==='on') ? true : timerOn(p, m);
+}
+
+var ANG={MAN:-45, OFF:0, AUTO:45, ON:45};
+
+function drawSchedules(i){
+  var box=document.getElementById('sch'+i), p=S.pumps[i];
+  if(!p.sch.length){ box.innerHTML='<p class="mini">No ON period set for this pump.</p>'; return; }
+  box.innerHTML = p.sch.map(function(w){
+    return '<div class="setline">ON <b>'+w.on+'</b> &nbsp;·&nbsp; OFF <b>'+w.off+'</b></div>';
+  }).join('');
+}
+
+function drawTimeline(i, m){
+  var p=S.pumps[i], el=document.getElementById('tl'+i), h='';
+  p.sch.forEach(function(w){
+    var a=toMin(w.on), b=toMin(w.off);
+    if(a===b) return;
+    if(a<b){ h+=bar(a,b); } else { h+=bar(a,1440)+bar(0,b); }
+  });
+  h+='<b style="left:'+(m/1440*100)+'%"></b>';
+  el.innerHTML=h;
+  function bar(a,b){ return '<span style="left:'+(a/1440*100)+'%;width:'+((b-a)/1440*100)+'%"></span>'; }
+}
+
+function setLamp(id, cls){ var e=document.getElementById(id); e.className='lamp '+cls; }
+
+/* --- Hager EH011 dial: scale ring seen through the window --- */
+function drawDial(i, m){
+  var p=S.pumps[i], R=175, CY=196, g='', k, a, b;
+  function proj(t){
+    var d=((t-m+720+2880)%1440)-720, th=d/1440*2*Math.PI;
+    return {y:CY+R*Math.sin(th), c:Math.cos(th), bow:(1-Math.cos(th))*7,
+            vis:Math.abs(d)<350};
+  }
+  /* the tappet drum, seen edge-on */
+  g+='<rect x="86" y="26" width="28" height="196" fill="#8f938e"/>';
+  for(k=0;k<96;k++){                                   /* tappets: pushed left = ON */
+    a=proj(k*15); b=proj(k*15+15);
+    if(!a.vis&&!b.vis) continue;
+    var y1=Math.min(a.y,b.y), h=Math.abs(b.y-a.y);
+    if(h<0.5) continue;
+    var on=timerOn(p, k*15+7), c=(a.c+b.c)/2, bw=(a.bow+b.bow)/2;
+    var x = (on?87:101) + bw*0.35;
+    g+='<rect x="'+x.toFixed(1)+'" y="'+(y1+0.35).toFixed(1)+'" width="12" height="'+
+       Math.max(h-0.7,0.6).toFixed(1)+'" rx=".8" fill="'+(on?'#33618a':'#41454a')+
+       '" stroke="'+(on?'#23486a':'#2b2f33')+'" stroke-width=".5" opacity="'+
+       (0.5+0.5*c).toFixed(2)+'"/>';
+  }
+  for(k=0;k<96;k++){                                   /* 15-min ticks, bowed like the ring */
+    var q=proj(k*15); if(!q.vis) continue;
+    var hr=(k%4===0), len=hr?12:7, x0=83-len-q.bow;
+    g+='<rect x="'+x0.toFixed(1)+'" y="'+(q.y-0.4).toFixed(1)+'" width="'+len+'" height="'+(hr?1.3:0.9)+
+       '" fill="#3c3f42" opacity="'+(0.3+0.7*q.c).toFixed(2)+'"/>';
+  }
+  for(k=0;k<24;k++){                                   /* hour numbers, squashed by the curve */
+    var n=proj(k*60); if(!n.vis || n.c<0.1) continue;
+    g+='<g transform="translate('+(70-n.bow).toFixed(1)+','+n.y.toFixed(1)+') scale(1,'+
+       n.c.toFixed(3)+')"><text x="0" y="4.4" text-anchor="end" font-family="Arial" '+
+       'font-weight="bold" font-size="13" fill="#24272a" opacity="'+
+       (0.4+0.6*n.c).toFixed(2)+'">'+k+'</text></g>';
+  }
+  document.getElementById('dial'+i).innerHTML=g;
+  document.getElementById('dn'+i).textContent=fmt(m);
+  document.getElementById('ts'+i).setAttribute('transform',
+    p.tsw==='on' ? 'translate(0,26)' : 'translate(0,0)');
+}
+
+function render(){
+  var m=nowMin();
+  document.getElementById('clockTxt').textContent=fmt(m);
+  var anyRun=false;
+
+  for(var i=0;i<S.pumps.length;i++){
+    var p=S.pumps[i], run=running(p,m);
+    if(run) anyRun=true;
+    if(p.onPanel){
+      setLamp('run'+i, run?'on-teal':'off-teal');
+      setLamp('stp'+i, run?'off-red':'on-red');
+      setLamp('trp'+i, p.tripped?'on-amber':'off-amber');
+      document.getElementById('k'+i+'tag').textContent=p.sel;
+      document.querySelector('[data-knob="'+i+'"] i').style.transform='rotate('+ANG[p.sel]+'deg)';
+    }
+    drawTimeline(i,m);
+    if(p.device==='digital') drawDigital(i,m); else drawDial(i,m);
+    document.getElementById('dn'+i).textContent=fmt(m);
+
+    var st;
+    if(p.tripped) st='<b>TRIPPED</b> — overload. Reset by tapping the TRIP lamp.';
+    else if(p.sel==='OFF') st='Selector at <b>OFF</b> — pump stopped.';
+    else if(p.sel==='MAN') st='Manual — <b>'+(p.manRun?'RUNNING':'STOPPED')+'</b> (use START / STOP).';
+    else if(p.tsw==='on'){
+      st = 'Timer slider is down at <b>1</b> — contact held closed, tappets ignored. Pump runs 24 h.';
+    }
+    else {
+      st = run ? 'In timer period — <b>RUNNING</b>.' : 'Outside timer period — <b>STOPPED</b>.';
+      var nx=nextChange(p,m);
+      if(nx!==null) st+=' Next change at <b>'+fmt(nx)+'</b>.';
+      st+=' Runs <b>'+dailyHours(p)+' h</b>/day.';
+    }
+    document.getElementById('st'+i).innerHTML=st;
+  }
+
+  if(S.hasHeat){
+    var hpOn = (S.heat==='ON' && anyRun);
+    setLamp('hplamp', hpOn?'on-green':'off-green');
+    document.getElementById('khtag').textContent=S.heat;
+    document.querySelector('[data-knob="heat"] i').style.transform='rotate('+ANG[S.heat]+'deg)';
+  }
+}
+
+function nextChange(p,m){
+  var cur=timerOn(p,m);
+  for(var k=1;k<=1440;k++){ var t=(m+k)%1440; if(timerOn(p,t)!==cur) return t; }
+  return null;
+}
+function dailyHours(p){
+  var mins=0, on=[];
+  for(var t=0;t<1440;t++) if(timerOn(p,t)) mins++;
+  return (mins/60).toFixed(1);
+}
+
+/* ---- events ---- */
+document.addEventListener('click', function(e){
+  var ts=e.target.closest('[data-tsw]');
+  if(ts){ var ti=+ts.dataset.tsw;
+    S.pumps[ti].tsw = (S.pumps[ti].tsw==='on') ? 'auto' : 'on';
+    save(); render(); return; }
+  var k=e.target.closest('[data-knob]');
+  if(k){
+    if(k.dataset.knob==='heat'){ S.heat = S.heat==='ON'?'OFF':'ON'; }
+    else{
+      var order=['MAN','OFF','AUTO'], p=S.pumps[+k.dataset.knob];
+      p.sel=order[(order.indexOf(p.sel)+1)%3];
+    }
+    save(); render(); return;
+  }
+  var b=e.target.closest('[data-press]');
+  if(b){
+    var a=b.dataset.press;
+    if(a.indexOf('start')===0){ var i=+a.slice(5); S.pumps[i].manRun=true; }
+    if(a.indexOf('stop')===0){ var i2=+a.slice(4); S.pumps[i2].manRun=false; }
+    if(a.indexOf('trip')===0){ var i3=+a.slice(4); S.pumps[i3].tripped=!S.pumps[i3].tripped; }
+    save(); render(); return;
+  }
+});
+
+document.getElementById('mLive').onclick=function(){
+  S.mode='live'; this.classList.add('sel');
+  document.getElementById('mManual').classList.remove('sel');
+  document.getElementById('scrubWrap').style.display='none'; render();
+};
+document.getElementById('mManual').onclick=function(){
+  S.mode='manual'; this.classList.add('sel');
+  document.getElementById('mLive').classList.remove('sel');
+  document.getElementById('scrubWrap').style.display='block';
+  document.getElementById('scrub').value=S.manual; render();
+};
+document.getElementById('scrub').oninput=function(){ S.manual=+this.value; render(); };
+
+(function(){
+  var sel=document.getElementById('site'), h='';
+  Object.keys(SITES).forEach(function(k){
+    h+='<option value="'+k+'"'+(k===S.site?' selected':'')+'>'+SITES[k].name+'</option>';
+  });
+  PENDING.forEach(function(n){ h+='<option disabled>'+n+' — not set up yet</option>'; });
+  sel.innerHTML=h;
+  sel.onchange=function(){ loadSite(this.value); render(); };
+  document.getElementById('siteNote').textContent='Timer settings for this pool';
+})();
+
+render();
+setInterval(function(){ if(S.mode==='live') render(); }, 5000);
+
+
+</script>
+</body>
+</html>
