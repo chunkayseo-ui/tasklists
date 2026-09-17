@@ -52,11 +52,13 @@ h1{font-size:19px;margin:0 0 2px}
   white-space:nowrap; overflow:hidden;
 }
 .block{margin-bottom:22px}
+.block:last-child{margin-bottom:4px}
 .grid6{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;align-items:center}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;width:58%;margin:0 auto}
 .grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;width:40%;margin:0 auto}
 .titlebar{margin:0 0 4px}
 .titlebar.span{margin-left:16.6%}
+.strip.tight{font-size:8px;letter-spacing:.01em}
 .cell{display:flex;justify-content:center;align-items:center;height:52px}
 
 /* lamps + buttons */
@@ -105,6 +107,7 @@ h1{font-size:19px;margin:0 0 2px}
 .tpair{display:flex;gap:14px;align-items:flex-start}
 .tdial{flex:0 0 auto;background:linear-gradient(160deg,#d8c7a4,#c9b088);
   padding:8px;border-radius:8px;box-shadow:0 3px 10px rgba(0,0,0,.22)}
+.tdial.dig{background:linear-gradient(160deg,#3a3d40,#26282a)}
 .tdial svg{display:block}
 .dialnote{font-size:11px;color:#3c3222;text-align:center;margin:5px 0 0;line-height:1.35}
 .dialnote b{font-variant-numeric:tabular-nums;font-size:13px;color:#1d1810}
@@ -122,12 +125,9 @@ h1{font-size:19px;margin:0 0 2px}
 .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
 .row:last-child{margin-bottom:0}
 label{font-size:13px}
-input[type=time]{
-  font-family:inherit;font-size:14px;padding:5px 7px;border-radius:6px;
-  border:1px solid var(--line);background:var(--bg);color:var(--fg);
-}
 input[type=range]{width:100%;accent-color:var(--accent)}
 .clock{font-size:30px;font-weight:600;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.clock small{font-size:14px;font-weight:400;color:var(--muted);margin-left:6px}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
 .seg button{
   font:inherit;font-size:12.5px;padding:6px 12px;border:0;cursor:pointer;
@@ -135,32 +135,33 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 }
 .seg button.sel{background:var(--accent);color:#fff}
 .mini{font-size:12px;color:var(--muted);line-height:1.5}
-.del{font:inherit;font-size:12px;padding:4px 9px;border:1px solid var(--line);
-  background:transparent;color:var(--muted);border-radius:6px;cursor:pointer}
-.add{font:inherit;font-size:12.5px;padding:6px 11px;border:1px solid var(--accent);
-  background:transparent;color:var(--accent);border-radius:7px;cursor:pointer}
-.lab{font-size:12.5px;width:96px;color:var(--muted)}
-input[type=text],input[type=number],select{font:inherit;font-size:13px;padding:5px 7px;
+.lab{font-size:12.5px;color:var(--muted)}
+select{font:inherit;font-size:13px;padding:5px 7px;
   border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--fg);max-width:100%}
-input[type=text]{flex:1 1 130px;min-width:110px}
-input[type=number]{width:70px}
-.logrow{border-top:1px solid var(--line);padding:9px 0;font-size:13px;line-height:1.5}
-.logrow:first-child{border-top:0}
-.logmeta{color:var(--muted);font-size:12px;margin-top:2px}
-.pill{display:inline-block;font-size:11px;padding:2px 7px;border-radius:99px;
-  background:var(--line);margin-right:6px}
-.rm{float:right;font:inherit;font-size:11px;padding:2px 7px;border:1px solid var(--line);
-  background:transparent;color:var(--muted);border-radius:6px;cursor:pointer}
 .setline{font-size:14px;margin-bottom:5px}
 .setline b{font-variant-numeric:tabular-nums}
+.setline .dw{font-size:11px;color:var(--muted);margin-left:4px;letter-spacing:.04em}
+.steps{border:1px solid var(--line);border-radius:7px;margin:8px 0 6px;overflow:hidden}
+.steps div{display:flex;gap:8px;font-size:12px;padding:4px 8px;border-top:1px solid var(--line);
+  font-variant-numeric:tabular-nums;align-items:baseline}
+.steps div:first-child{border-top:0}
+.steps .sn{color:var(--muted);width:44px;flex:0 0 auto}
+.steps .sv{font-weight:600}
+.steps .sd{color:var(--muted);font-size:11px;letter-spacing:.04em;margin-left:auto}
+.drives{font-size:12.5px;margin:0 0 8px;line-height:1.5}
+.drives .pillOn{color:var(--accent);font-weight:600}
 #site{font:inherit;font-size:14px;padding:6px 9px;border-radius:7px;
   border:1px solid var(--line);background:var(--card);color:var(--fg)}
 .tl{position:relative;height:16px;background:var(--line);border-radius:4px;overflow:hidden;margin:4px 0 2px}
 .tl span{position:absolute;top:0;bottom:0;background:var(--accent);opacity:.8}
 .tl b{position:absolute;top:-3px;bottom:-3px;width:2px;background:#e2413c}
+.tlname{font-size:11.5px;color:var(--muted);margin-top:7px}
 .ticks{display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
-.state{font-size:12.5px;color:var(--muted);margin-top:6px}
+.state{font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.55}
 .state b{color:var(--fg)}
+.warn{color:#b4611a}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .warn{color:#e2a15c}}
+:root[data-theme="dark"] .warn{color:#e2a15c}
 @media(max-width:420px){
   .lamp{width:32px;height:32px}.knob{width:34px;height:34px}.cell{height:46px}
   .strip{font-size:8px;letter-spacing:.04em}
@@ -180,10 +181,8 @@ input[type=number]{width:70px}
   <div class="panel">
    <div class="window">
     <div class="face">
-
-      <!-- MAIN INCOMING -->
       <div class="block">
-        <div class="strip titlebar" style="width:58%;margin:0 auto 4px">MAIN INCOMING LIGHT</div>
+        <div class="strip titlebar" id="supplyTitle" style="width:58%;margin:0 auto 4px">SUPPLY ON LIGHTS</div>
         <div class="grid3">
           <div class="strip">L1</div><div class="strip">L2</div><div class="strip">L3</div>
         </div>
@@ -193,23 +192,7 @@ input[type=number]{width:70px}
           <div class="cell"><div class="lamp on-white"></div></div>
         </div>
       </div>
-
-      <div id="panelPumps"></div>
-
-      <!-- HEAT PUMP -->
-      <div class="block" id="heatBlock" style="margin-bottom:4px">
-        <div class="strip titlebar" style="width:40%;margin:0 auto 4px">HEAT PUMP</div>
-        <div class="grid2">
-          <div class="strip">OFF-ON</div><div class="strip">ON</div>
-        </div>
-        <div class="grid2">
-          <div class="cell"><div class="knobwrap">
-            <div class="knob" data-knob="heat"><i></i></div><div class="knobtag" id="khtag">ON</div>
-          </div></div>
-          <div class="cell"><div class="lamp" id="hplamp"></div></div>
-        </div>
-      </div>
-
+      <div id="panelRows"></div>
     </div>
    </div>
   </div>
@@ -220,7 +203,7 @@ input[type=number]{width:70px}
     <div class="card">
       <h2>Clock</h2>
       <div class="row" style="justify-content:space-between">
-        <div class="clock" id="clockTxt">--:--</div>
+        <div class="clock"><span id="clockTxt">--:--</span><small id="clockDay"></small></div>
         <div class="seg">
           <button id="mLive" class="sel">Live now</button>
           <button id="mManual">Scrub time</button>
@@ -229,6 +212,10 @@ input[type=number]{width:70px}
       <div id="scrubWrap" style="display:none">
         <input type="range" id="scrub" min="0" max="1435" step="5" value="480">
         <div class="ticks"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+        <div class="row" style="margin-top:10px">
+          <span class="lab">Day</span>
+          <select id="dayPick"></select>
+        </div>
       </div>
     </div>
 
@@ -236,73 +223,183 @@ input[type=number]{width:70px}
 
     <div class="card">
       <h2>How it behaves</h2>
-      <p class="mini">
-        <b>AUTO</b> — pump follows its timer periods. <b>MAN</b> — runs continuously, START/STOP buttons take over.
-        <b>OFF</b> — dead, STOP lamp lit.<br>
-        The white STOP lamp logic: RUN lamp lit while running, red STOP lamp lit while stopped.
-        Heat pump ON lamp only lights when its selector is ON <i>and</i> at least one circulation pump is running
-        (no flow, no heating).<br>
-        Tap a <b>TRIP</b> lamp to simulate an overload trip — the pump drops out until you tap it again to reset.
-      </p>
-      <p class="mini" style="margin-top:10px">
-        <b>The dial beside each timer</b> is what the Hager EH011 in the plant room should look like right now,
-        with these ON periods set. Hold your phone next to the real unit and compare: the hour against the
-        ▶ pointer should match, and the blue tappets should be pushed in over the same hours.
-        If the real dial reads a different time, the pump is running to the wrong clock — correct it and note it down.
-      </p>
+      <p class="mini" id="howto"></p>
     </div>
   </div>
 </div>
 
 <script>
 /* ================================================================
-   TIMER SETTINGS — the only part that changes when a pool is added.
-   Each pool: a name, a list of timers, and whether it has a heat pump.
-   A timer needs a label and its ON periods. Add as many as the pool has.
+   PLANT SETTINGS — the only part that changes when a pool is added.
 
-   device: 'hager'   — analogue roller time switch (Hager EH011 and lookalikes)
-           'digital' — digital time switch with an LCD
-   model:  what is printed on the unit, e.g. 'Hager EH011' or 'Theben TR 610'.
-   panel:false — the timer has no row on the main panel.
+   timers[] — the physical time switches in the panel.
+     device : 'hager'   analogue roller time switch (Hager EH011 and lookalikes)
+              'digital' digital time switch with an LCD
+     model  : what is printed on the unit.
+     sch[]  : ON periods, {on:'HH:MM', off:'HH:MM'} and optionally
+              days:[0..6] (0 = Sunday) when the period only runs some days.
+
+   loads[]  — the rows on the panel door.
+     row    : 'full'     MAN-OFF-AUTO / START / STOP / RUN / STOP / TRIP
+              'selector' OFF-ON knob + one lamp
+     timer  : which timer drives it (omit for a load with no timer)
+     invert : true = runs while that timer's contact is OFF (standby pump)
+     flow   : true = this load is a circulation pump, so it provides flow
+     needsFlow : true = cannot run unless some flow load is running
    ================================================================ */
 var SITES = {
   JEIP1: {
     name:'JE — Indoor Pool 1',
-    heatPump:true,
+    supply:'MAIN INCOMING LIGHT',
     timers:[
-      { label:'Circulation Pump 1', device:'hager', model:'Hager EH011',
+      { id:'T1', label:'Circulation Pump 1', device:'hager', model:'Hager EH011',
         sch:[{on:'03:00',off:'15:00'}] },
-      { label:'Circulation Pump 2', device:'hager', model:'Hager EH011',
+      { id:'T2', label:'Circulation Pump 2', device:'hager', model:'Hager EH011',
         sch:[{on:'15:00',off:'00:00'}] }
+    ],
+    loads:[
+      { label:'Circulation Pump 1', row:'full', timer:'T1', flow:true },
+      { label:'Circulation Pump 2', row:'full', timer:'T2', flow:true },
+      { label:'Heat Pump', row:'selector', needsFlow:true }
+    ]
+  },
+  JEIP2: {
+    name:'JE — Indoor Pool 2',
+    supply:'SUPPLY ON LIGHTS',
+    note:'One timer runs both circulation pumps — duty and standby',
+    timers:[
+      { id:'T1', label:'Circulation pumps — duty changeover', device:'digital', model:'GIC time switch',
+        sch:[{on:'03:00',off:'06:00'},{on:'18:10',off:'00:00'}] },
+      { id:'T2', label:'Heat pump', device:'digital', model:'GIC time switch',
+        sch:[{on:'12:00',off:'18:00',days:[1,2,3,4,5]},
+             {on:'08:00',off:'17:00',days:[0,6]}] }
+    ],
+    loads:[
+      { label:'Circulation Pump 1', row:'full', timer:'T1', flow:true },
+      { label:'Circulation Pump 2', row:'full', timer:'T1', invert:true, flow:true },
+      { label:'Heat Pump', row:'full', timer:'T2', needsFlow:true }
     ]
   }
 };
-var PENDING = ['JE — Indoor Pool 2','JE — Outdoor Pool 1','JE — Outdoor Pool 2',
+var PENDING = ['JE — Outdoor Pool 1','JE — Outdoor Pool 2',
   'CC','DR','Lentor','Tengah','HB','HS','BK','WWW','TPY'];
 
-var S = { mode:'live', manual:480, site:'JEIP1', pumps:[], heat:'ON', hasHeat:true };
+var DAYS = ['SU','MO','TU','WE','TH','FR','SA'];
+var DAYFULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+var S = { mode:'live', manual:480, day:new Date().getDay(), site:'JEIP1', timers:[], loads:[], supply:'' };
 
+/* ---------- time helpers ---------- */
+function toMin(t){ var p=t.split(':'); return (+p[0])*60 + (+p[1]); }
+function pad(n){ return (n<10?'0':'')+n; }
+function fmt(m){ m=((m%1440)+1440)%1440; return pad(Math.floor(m/60))+':'+pad(m%60); }
+function nowMin(){
+  if(S.mode==='manual') return S.manual;
+  var d=new Date(); return d.getHours()*60+d.getMinutes();
+}
+function nowDay(){ return S.mode==='manual' ? S.day : new Date().getDay(); }
+
+/* A period may be limited to certain days. When it crosses midnight the days
+   listed are the days it STARTS on, so the tail after midnight belongs to the
+   day before — the same way the time switch counts it. */
+function periodActive(w, m, d){
+  var a=toMin(w.on), b=toMin(w.off), days=w.days||null;
+  if(a===b) return false;
+  function ok(dd){ return !days || days.indexOf(dd)>=0; }
+  if(a<b) return (m>=a && m<b) && ok(d);
+  if(m>=a) return ok(d);
+  if(m<b)  return ok((d+6)%7);
+  return false;
+}
+function timerOn(t, m, d){
+  for(var i=0;i<t.sch.length;i++){ if(periodActive(t.sch[i],m,d)) return true; }
+  return false;
+}
+function timerById(id){ for(var i=0;i<S.timers.length;i++){ if(S.timers[i].id===id) return S.timers[i]; } return null; }
+function contact(t, m, d){ return t.over ? true : timerOn(t,m,d); }
+
+/* what the timer asks of this load, before the selector and the flow rule */
+function demand(l, m, d){
+  if(!l.timer) return true;
+  var t=timerById(l.timer); if(!t) return false;
+  var on=contact(t,m,d);
+  return l.invert ? !on : on;
+}
+function runningRaw(l, m, d){
+  if(l.tripped) return false;
+  if(l.sel==='OFF') return false;
+  if(l.sel==='MAN') return l.manRun;
+  return demand(l,m,d);
+}
+/* Two passes: the circulation pumps first, then anything that needs flow. */
+function runState(m, d){
+  var out=S.loads.map(function(l){ return runningRaw(l,m,d); });
+  var flow=S.loads.some(function(l,i){ return l.flow && out[i]; });
+  S.loads.forEach(function(l,i){ if(l.needsFlow && !flow) out[i]=false; });
+  return {run:out, flow:flow};
+}
+function nextChange(t, m, d){
+  var cur=timerOn(t,m,d);
+  for(var k=1;k<=1440*7;k++){
+    var tot=m+k, mm=tot%1440, dd=(d+Math.floor(tot/1440))%7;
+    if(timerOn(t,mm,dd)!==cur) return {m:mm, d:dd, sameDay:Math.floor(tot/1440)===0};
+  }
+  return null;
+}
+function hoursOn(t, d){
+  var mins=0;
+  for(var x=0;x<1440;x++) if(timerOn(t,x,d)) mins++;
+  return mins;
+}
+function hm(mins){
+  var h=Math.floor(mins/60), m=mins%60;
+  return m ? h+' h '+m+' m' : h+' h';
+}
+function dayWord(list){
+  if(!list) return '';
+  if(list.length===7) return 'every day';
+  var s=list.slice().sort(), wk=[1,2,3,4,5].join(), we=[0,6].join();
+  if(s.join()===wk) return 'Mon–Fri';
+  if(s.join()===we) return 'Sat–Sun';
+  return s.map(function(d){ return DAYS[d]; }).join(' ');
+}
+
+/* ---------- site loading ---------- */
 function loadSite(id){
   if(!SITES[id]) return;
   S.site=id;
   var cfg=SITES[id];
-  S.hasHeat = !!cfg.heatPump;
-  S.pumps = cfg.timers.map(function(t){
-    return {label:t.label, onPanel:(t.panel!==false), device:(t.device||'hager'),
-            model:(t.model||''), sel:'AUTO', tripped:false,
-            manRun:true, tsw:'auto', sch:t.sch.slice()};
+  S.supply=cfg.supply||'SUPPLY ON LIGHTS';
+  S.timers = cfg.timers.map(function(t){
+    return {id:t.id, label:t.label, device:t.device||'hager', model:t.model||'',
+            sch:t.sch.map(function(w){ return {on:w.on, off:w.off, days:w.days?w.days.slice():null}; }),
+            over:false};
+  });
+  S.loads = cfg.loads.map(function(l){
+    return {label:l.label, row:l.row||'full', timer:l.timer||null, invert:!!l.invert,
+            flow:!!l.flow, needsFlow:!!l.needsFlow,
+            sel:(l.row==='selector'?'ON':'AUTO'), tripped:false, manRun:true};
   });
   try{ localStorage.setItem('timerSite', id); }catch(e){}
-  buildPanel(); buildCards();
+  document.getElementById('supplyTitle').textContent=S.supply;
+  document.getElementById('siteNote').textContent=cfg.note||'Timer settings for this pool';
+  buildPanel(); buildCards(); buildHowTo();
 }
 
-/* ---------- markup built from the config ---------- */
 function buildPanel(){
-  document.getElementById('panelPumps').innerHTML = S.pumps.map(function(p,i){
-    if(!p.onPanel) return '';
+  document.getElementById('panelRows').innerHTML = S.loads.map(function(l,i){
+    if(l.row==='selector'){
+      return '<div class="block">'+
+        '<div class="strip titlebar" style="width:40%;margin:0 auto 4px">'+l.label.toUpperCase()+'</div>'+
+        '<div class="grid2"><div class="strip">OFF-ON</div><div class="strip">ON</div></div>'+
+        '<div class="grid2">'+
+          '<div class="cell"><div class="knobwrap"><div class="knob" data-knob="'+i+'"><i></i></div>'+
+            '<div class="knobtag" id="k'+i+'tag">ON</div></div></div>'+
+          '<div class="cell"><div class="lamp" id="run'+i+'"></div></div>'+
+        '</div></div>';
+    }
     return '<div class="block">'+
-      '<div class="strip titlebar span">'+p.label.toUpperCase()+'</div>'+
-      '<div class="grid6"><div class="strip">MAN-OFF-AUTO</div><div class="strip">START</div>'+
+      '<div class="strip titlebar span">'+l.label.toUpperCase()+'</div>'+
+      '<div class="grid6"><div class="strip tight">MAN-OFF-AUTO</div><div class="strip">START</div>'+
       '<div class="strip">STOP</div><div class="strip">RUN</div><div class="strip">STOP</div>'+
       '<div class="strip">TRIP</div></div>'+
       '<div class="grid6">'+
@@ -315,11 +412,11 @@ function buildPanel(){
         '<div class="cell"><div class="lamp" id="trp'+i+'" data-press="trip'+i+'" style="cursor:pointer"></div></div>'+
       '</div></div>';
   }).join('');
-  document.getElementById('heatBlock').style.display = S.hasHeat ? '' : 'none';
 }
 
+/* ---------- the two kinds of time switch ---------- */
 function dialSvg(i,label){
-  return '<svg viewBox="0 0 124 320" width="120" aria-label="Hager time switch, '+label+'">'+
+  return '<svg viewBox="0 0 124 320" width="120" aria-label="Analogue time switch, '+label+'">'+
   '<defs><clipPath id="cw'+i+'"><rect x="44" y="26" width="70" height="196"/></clipPath></defs>'+
   '<rect x="2" y="2" width="120" height="316" rx="4" fill="#f0f0ec" stroke="#b3b5b1"/>'+
   '<rect x="7" y="8" width="110" height="304" rx="3" fill="#e9eae6" stroke="#aeb1ad"/>'+
@@ -333,7 +430,7 @@ function dialSvg(i,label){
   '<rect x="12" y="238" width="36" height="54" rx="2" fill="#2b2e30"/>'+
   '<g id="ts'+i+'"><rect x="14" y="240" width="32" height="24" rx="2" fill="#5a5e60" stroke="#3a3d3f"/>'+
   '<path d="M19 246 h22 M19 251 h22 M19 256 h22" stroke="#8d9193" stroke-width="1.4"/></g>'+
-  '<rect x="12" y="238" width="36" height="54" fill="transparent" data-tsw="'+i+'" style="cursor:pointer"/>'+
+  '<rect x="12" y="238" width="36" height="54" fill="transparent" data-over="'+i+'" style="cursor:pointer"/>'+
   '<text x="27" y="308" text-anchor="middle" font-size="15" font-weight="bold" font-family="Arial" fill="#3b3e3b">1</text>'+
   '<rect x="84" y="224" width="30" height="38" rx="2" fill="#f4f4f1" stroke="#b9bcb8"/>'+
   '<text x="93" y="250" text-anchor="middle" font-size="16" font-weight="bold" font-family="Arial" fill="#2b2e30">1</text>'+
@@ -341,148 +438,83 @@ function dialSvg(i,label){
   '</svg>';
 }
 
+/* GIC-style DIN time switch: day row, big clock, ON/OFF and AUTO under it. */
 function digitalSvg(i,label){
-  return '<svg viewBox="0 0 124 320" width="120" aria-label="Digital time switch, '+label+'">'+
-  '<rect x="2" y="2" width="120" height="316" rx="4" fill="#f2f2ef" stroke="#b3b5b1"/>'+
-  '<rect x="9" y="10" width="106" height="20" rx="2" fill="#e2e4e0" stroke="#b9bcb8"/>'+
-  '<text x="62" y="24" text-anchor="middle" font-size="10" font-family="Arial" fill="#5c6064" id="mdl'+i+'"></text>'+
-  '<rect x="12" y="40" width="100" height="104" rx="4" fill="#c3d6bb" stroke="#7d8a78"/>'+
-  '<g id="days'+i+'" font-family="Arial" font-size="9" fill="#46523f"></g>'+
-  '<text x="62" y="102" text-anchor="middle" font-family="Arial" font-size="30" font-weight="bold" '+
+  return '<svg viewBox="0 0 132 300" width="126" aria-label="Digital time switch, '+label+'">'+
+  '<rect x="2" y="2" width="128" height="296" rx="5" fill="#2e3134" stroke="#191b1d"/>'+
+  '<rect x="9" y="9" width="114" height="34" rx="3" fill="#1d3f86" opacity=".75"/>'+
+  '<path d="M14 40 L60 16 M70 16 L118 40" stroke="#5f7fc2" stroke-width="2" fill="none" opacity=".6"/>'+
+  '<text x="66" y="60" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold" fill="#e9ebed">GIC</text>'+
+  '<rect x="16" y="68" width="100" height="62" rx="3" fill="#cfd6c4" stroke="#6f766a"/>'+
+  '<g id="days'+i+'" font-family="Arial" font-size="7" fill="#2b3226"></g>'+
+  '<text x="20" y="112" font-family="Arial" font-size="12" font-weight="bold" fill="#1f2a1c" id="stepno'+i+'"></text>'+
+  '<text x="70" y="115" text-anchor="middle" font-family="Arial" font-size="26" font-weight="bold" '+
     'fill="#1f2a1c" id="lcd'+i+'">--:--</text>'+
-  '<text x="22" y="132" font-family="Arial" font-size="11" font-weight="bold" fill="#1f2a1c" id="lcdmode'+i+'">AUTO</text>'+
-  '<circle cx="92" cy="128" r="6" id="lcdout'+i+'" fill="#7d8a78"/>'+
-  '<text x="102" y="132" font-family="Arial" font-size="9" fill="#46523f">ON</text>'+
-  '<rect x="12" y="158" width="100" height="58" rx="3" fill="#e8e9e5" stroke="#c2c5c0"/>'+
-  '<g font-family="Arial" font-size="9" fill="#3b3e3b" text-anchor="middle">'+
-    '<circle cx="32" cy="176" r="10" fill="#d8dad5" stroke="#aeb1ad"/><text x="32" y="179">menu</text>'+
-    '<circle cx="62" cy="176" r="10" fill="#d8dad5" stroke="#aeb1ad"/><text x="62" y="179">+</text>'+
-    '<circle cx="92" cy="176" r="10" fill="#d8dad5" stroke="#aeb1ad"/><text x="92" y="179">−</text>'+
-    '<circle cx="62" cy="200" r="10" fill="#d8dad5" stroke="#aeb1ad"/><text x="62" y="203">ok</text>'+
-  '</g>'+
-  '<rect x="12" y="232" width="100" height="26" rx="3" fill="#dcdedb" stroke="#a6a9a5"/>'+
-  '<g id="ts'+i+'"><rect x="44" y="235" width="24" height="20" rx="2" fill="#5a5e60" stroke="#3a3d3f"/></g>'+
-  '<rect x="12" y="232" width="100" height="26" fill="transparent" data-tsw="'+i+'" style="cursor:pointer"/>'+
-  '<text x="22" y="250" font-family="Arial" font-size="12" font-weight="bold" fill="#2b2e30">1</text>'+
-  '<text x="98" y="250" font-family="Arial" font-size="12" font-weight="bold" fill="#2b2e30">0</text>'+
-  '<text x="62" y="276" text-anchor="middle" font-family="Arial" font-size="11" fill="#3b3e3b">auto</text>'+
+  '<text x="20" y="126" font-family="Arial" font-size="9.5" font-weight="bold" fill="#1f2a1c" id="lcdout'+i+'">OFF</text>'+
+  '<text x="74" y="126" font-family="Arial" font-size="9.5" font-weight="bold" fill="#1f2a1c" id="lcdmode'+i+'">AUTO</text>'+
+  '<g font-family="Arial" font-size="7.5" fill="#dfe2e4" text-anchor="middle">'+
+    '<text x="28" y="146">PR</text><text x="56" y="146">D+</text>'+
+    '<text x="84" y="146">H+</text><text x="112" y="146">M+</text></g>'+
+  '<g fill="#4caf50" stroke="#2f7d32">'+
+    '<rect x="18" y="150" width="20" height="17" rx="2"/><rect x="46" y="150" width="20" height="17" rx="2"/>'+
+    '<rect x="74" y="150" width="20" height="17" rx="2"/><rect x="102" y="150" width="20" height="17" rx="2"/>'+
+    '<rect x="18" y="176" width="20" height="17" rx="2"/><rect x="102" y="176" width="20" height="17" rx="2"/></g>'+
+  '<circle cx="56" cy="185" r="6" fill="#20452a" stroke="#14301c"/>'+
+  '<circle cx="84" cy="185" r="5" id="led'+i+'" fill="#4a1414"/>'+
+  '<g font-family="Arial" font-size="7.5" fill="#dfe2e4" text-anchor="middle">'+
+    '<text x="28" y="203">clock</text><text x="56" y="203">RST</text><text x="112" y="203">MAN</text></g>'+
+  '<rect x="18" y="176" width="20" height="17" fill="transparent"/>'+
+  '<rect x="98" y="172" width="28" height="25" fill="transparent" data-over="'+i+'" style="cursor:pointer"/>'+
+  '<rect x="9" y="214" width="114" height="76" rx="3" fill="#3a3d40" stroke="#232628"/>'+
+  '<g stroke="#4c4f52" stroke-width="2">'+
+    '<path d="M18 224 h96 M18 238 h96 M18 252 h96 M18 266 h96 M18 280 h96"/></g>'+
   '</svg>';
 }
 
-function drawDigital(i,m){
-  var p=S.pumps[i];
+function drawDigital(i,m,d,on){
+  var t=S.timers[i];
   document.getElementById('lcd'+i).textContent=fmt(m);
-  document.getElementById('mdl'+i).textContent=p.model||'Digital time switch';
-  var names=['SU','MO','TU','WE','TH','FR','SA'], today=new Date().getDay(), h='';
-  for(var d=0;d<7;d++){
-    var x=20+d*14;
-    h+='<text x="'+x+'" y="56" text-anchor="middle" opacity="'+(d===today?1:0.35)+'" '+
-       'font-weight="'+(d===today?'bold':'normal')+'">'+names[d]+'</text>';
-    if(d===today) h+='<rect x="'+(x-7)+'" y="60" width="14" height="2" fill="#1f2a1c"/>';
+  var h='';
+  for(var k=0;k<7;k++){
+    var dd=(k+1)%7;                       /* the unit prints MO…SU */
+    var x=23+k*14;
+    h+='<text x="'+x+'" y="80" text-anchor="middle" opacity="'+(dd===d?1:0.28)+'" '+
+       'font-weight="'+(dd===d?'bold':'normal')+'">'+DAYS[dd]+'</text>';
   }
   document.getElementById('days'+i).innerHTML=h;
-  var run=running(p,m);
-  document.getElementById('lcdout'+i).setAttribute('fill', run?'#1f2a1c':'#7d8a78');
-  document.getElementById('lcdmode'+i).textContent =
-    p.tsw==='on' ? 'ON' : (p.sel==='OFF' ? 'OFF' : 'AUTO');
-  document.getElementById('ts'+i).setAttribute('transform',
-    p.tsw==='on' ? 'translate(-32,0)' : 'translate(0,0)');
+  document.getElementById('lcdout'+i).textContent = on ? 'ON' : 'OFF';
+  document.getElementById('lcdmode'+i).textContent = t.over ? 'MAN' : 'AUTO';
+  document.getElementById('stepno'+i).textContent = '';
+  document.getElementById('led'+i).setAttribute('fill', on ? '#ff3b30' : '#4a1414');
 }
 
-function buildCards(){
-  document.getElementById('timerCards').innerHTML = S.pumps.map(function(p,i){
-    return '<div class="card"><h2>'+p.label+' — timer</h2><div class="tpair"><div>'+
-      '<div class="tdial">'+(p.device==='digital'?digitalSvg(i,p.label):dialSvg(i,p.label))+'</div>'+
-      '<p class="dialnote">Should read <b id="dn'+i+'">--:--</b><br>'+
-      (p.device==='digital'
-        ? '<span class="dialkey">check the day is right too</span>'
-        : '<span class="dialkey">left = running</span><br>'+
-          '<span class="dialkey">knob in the middle = auto · at 1 = always on</span>')+
-      '</p></div>'+
-      '<div class="tside"><div id="sch'+i+'"></div>'+
-      '<div class="tl" id="tl'+i+'"></div>'+
-      '<div class="ticks"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>'+
-      '<div class="state" id="st'+i+'"></div></div></div></div>';
-  }).join('');
-  S.pumps.forEach(function(p,i){ drawSchedules(i); });
-}
-try{ var last=localStorage.getItem('timerSite'); }catch(e){}
-loadSite(SITES[last]?last:'JEIP1');
-function save(){}
-
-function toMin(t){ var p=t.split(':'); return (+p[0])*60 + (+p[1]); }
-function pad(n){ return (n<10?'0':'')+n; }
-function fmt(m){ m=((m%1440)+1440)%1440; return pad(Math.floor(m/60))+':'+pad(m%60); }
-function nowMin(){
-  if(S.mode==='manual') return S.manual;
-  var d=new Date(); return d.getHours()*60+d.getMinutes();
-}
-function inWindow(w, m){
-  var a=toMin(w.on), b=toMin(w.off);
-  if(a===b) return false;
-  return a<b ? (m>=a && m<b) : (m>=a || m<b);
-}
-function timerOn(p, m){ for(var i=0;i<p.sch.length;i++){ if(inWindow(p.sch[i],m)) return true; } return false; }
-function running(p, m){
-  if(p.tripped) return false;
-  if(p.sel==='OFF') return false;
-  if(p.sel==='MAN') return p.manRun;
-  return (p.tsw==='on') ? true : timerOn(p, m);
-}
-
-var ANG={MAN:-45, OFF:0, AUTO:45, ON:45};
-
-function drawSchedules(i){
-  var box=document.getElementById('sch'+i), p=S.pumps[i];
-  if(!p.sch.length){ box.innerHTML='<p class="mini">No ON period set for this pump.</p>'; return; }
-  box.innerHTML = p.sch.map(function(w){
-    return '<div class="setline">ON <b>'+w.on+'</b> &nbsp;·&nbsp; OFF <b>'+w.off+'</b></div>';
-  }).join('');
-}
-
-function drawTimeline(i, m){
-  var p=S.pumps[i], el=document.getElementById('tl'+i), h='';
-  p.sch.forEach(function(w){
-    var a=toMin(w.on), b=toMin(w.off);
-    if(a===b) return;
-    if(a<b){ h+=bar(a,b); } else { h+=bar(a,1440)+bar(0,b); }
-  });
-  h+='<b style="left:'+(m/1440*100)+'%"></b>';
-  el.innerHTML=h;
-  function bar(a,b){ return '<span style="left:'+(a/1440*100)+'%;width:'+((b-a)/1440*100)+'%"></span>'; }
-}
-
-function setLamp(id, cls){ var e=document.getElementById(id); e.className='lamp '+cls; }
-
-/* --- Hager EH011 dial: scale ring seen through the window --- */
-function drawDial(i, m){
-  var p=S.pumps[i], R=175, CY=196, g='', k, a, b;
-  function proj(t){
-    var d=((t-m+720+2880)%1440)-720, th=d/1440*2*Math.PI;
-    return {y:CY+R*Math.sin(th), c:Math.cos(th), bow:(1-Math.cos(th))*7,
-            vis:Math.abs(d)<350};
+/* the roller ring seen through the window of an analogue switch */
+function drawDial(i, m, d){
+  var t=S.timers[i], R=175, CY=196, g='', k, a, b;
+  function proj(x){
+    var dd=((x-m+720+2880)%1440)-720, th=dd/1440*2*Math.PI;
+    return {y:CY+R*Math.sin(th), c:Math.cos(th), bow:(1-Math.cos(th))*7, vis:Math.abs(dd)<350};
   }
-  /* the tappet drum, seen edge-on */
   g+='<rect x="86" y="26" width="28" height="196" fill="#8f938e"/>';
-  for(k=0;k<96;k++){                                   /* tappets: pushed left = ON */
+  for(k=0;k<96;k++){
     a=proj(k*15); b=proj(k*15+15);
     if(!a.vis&&!b.vis) continue;
-    var y1=Math.min(a.y,b.y), h=Math.abs(b.y-a.y);
-    if(h<0.5) continue;
-    var on=timerOn(p, k*15+7), c=(a.c+b.c)/2, bw=(a.bow+b.bow)/2;
-    var x = (on?87:101) + bw*0.35;
+    var y1=Math.min(a.y,b.y), hh=Math.abs(b.y-a.y);
+    if(hh<0.5) continue;
+    var on=timerOn(t, k*15+7, d), c=(a.c+b.c)/2, bw=(a.bow+b.bow)/2;
+    var x=(on?87:101)+bw*0.35;
     g+='<rect x="'+x.toFixed(1)+'" y="'+(y1+0.35).toFixed(1)+'" width="12" height="'+
-       Math.max(h-0.7,0.6).toFixed(1)+'" rx=".8" fill="'+(on?'#33618a':'#41454a')+
+       Math.max(hh-0.7,0.6).toFixed(1)+'" rx=".8" fill="'+(on?'#33618a':'#41454a')+
        '" stroke="'+(on?'#23486a':'#2b2f33')+'" stroke-width=".5" opacity="'+
        (0.5+0.5*c).toFixed(2)+'"/>';
   }
-  for(k=0;k<96;k++){                                   /* 15-min ticks, bowed like the ring */
+  for(k=0;k<96;k++){
     var q=proj(k*15); if(!q.vis) continue;
     var hr=(k%4===0), len=hr?12:7, x0=83-len-q.bow;
     g+='<rect x="'+x0.toFixed(1)+'" y="'+(q.y-0.4).toFixed(1)+'" width="'+len+'" height="'+(hr?1.3:0.9)+
        '" fill="#3c3f42" opacity="'+(0.3+0.7*q.c).toFixed(2)+'"/>';
   }
-  for(k=0;k<24;k++){                                   /* hour numbers, squashed by the curve */
+  for(k=0;k<24;k++){
     var n=proj(k*60); if(!n.vis || n.c<0.1) continue;
     g+='<g transform="translate('+(70-n.bow).toFixed(1)+','+n.y.toFixed(1)+') scale(1,'+
        n.c.toFixed(3)+')"><text x="0" y="4.4" text-anchor="end" font-family="Arial" '+
@@ -490,87 +522,165 @@ function drawDial(i, m){
        (0.4+0.6*n.c).toFixed(2)+'">'+k+'</text></g>';
   }
   document.getElementById('dial'+i).innerHTML=g;
-  document.getElementById('dn'+i).textContent=fmt(m);
-  document.getElementById('ts'+i).setAttribute('transform',
-    p.tsw==='on' ? 'translate(0,26)' : 'translate(0,0)');
+  document.getElementById('ts'+i).setAttribute('transform', t.over ? 'translate(0,26)' : 'translate(0,0)');
 }
+
+/* ---------- cards ---------- */
+function drivenBy(t){ return S.loads.filter(function(l){ return l.timer===t.id; }); }
+
+function buildCards(){
+  document.getElementById('timerCards').innerHTML = S.timers.map(function(t,i){
+    var dig = t.device==='digital';
+    return '<div class="card"><h2>Timer '+(i+1)+' — '+t.label+'</h2>'+
+      '<div class="tpair"><div>'+
+      '<div class="tdial'+(dig?' dig':'')+'">'+(dig?digitalSvg(i,t.label):dialSvg(i,t.label))+'</div>'+
+      '<p class="dialnote">Should read <b id="dn'+i+'">--:--</b><br>'+
+      (dig ? '<span class="dialkey">check the day is right too</span>'
+           : '<span class="dialkey">left = running</span><br>'+
+             '<span class="dialkey">knob in the middle = auto · at 1 = always on</span>')+
+      '</p></div>'+
+      '<div class="tside">'+
+        '<div class="drives" id="dr'+i+'"></div>'+
+        '<div id="sch'+i+'"></div>'+
+        (dig ? '<div class="steps" id="pg'+i+'"></div>' : '')+
+        '<div id="tls'+i+'"></div>'+
+        '<div class="ticks"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>'+
+        '<div class="state" id="st'+i+'"></div>'+
+      '</div></div></div>';
+  }).join('');
+  S.timers.forEach(function(t,i){ drawSchedule(i); drawProgramme(i); });
+}
+
+function drawSchedule(i){
+  var box=document.getElementById('sch'+i), t=S.timers[i];
+  if(!t.sch.length){ box.innerHTML='<p class="mini">No ON period set.</p>'; return; }
+  box.innerHTML = t.sch.map(function(w){
+    return '<div class="setline">ON <b>'+w.on+'</b> &nbsp;·&nbsp; OFF <b>'+w.off+'</b>'+
+      (w.days ? '<span class="dw">'+dayWord(w.days)+'</span>' : '')+'</div>';
+  }).join('');
+}
+
+/* What you see stepping through the unit with PR — one line per stored step,
+   in the unit's own order, so it can be checked press by press. */
+function drawProgramme(i){
+  var box=document.getElementById('pg'+i); if(!box) return;
+  var t=S.timers[i], rows='';
+  t.sch.forEach(function(w,n){
+    rows+='<div><span class="sn">Step '+(n+1)+'</span><span class="sv">ON &nbsp;'+w.on+'</span>'+
+          '<span class="sd">'+(w.days?dayWord(w.days):'every day')+'</span></div>'+
+          '<div><span class="sn">Step '+(n+1)+'</span><span class="sv">OFF '+w.off+'</span>'+
+          '<span class="sd">'+(w.days?dayWord(w.days):'every day')+'</span></div>';
+  });
+  box.innerHTML=rows;
+}
+
+function drawTimelines(i, m, d){
+  var t=S.timers[i], loads=drivenBy(t), h='';
+  loads.forEach(function(l){
+    var bars='';
+    for(var x=0;x<1440;x++){
+      var on = l.invert ? !timerOn(t,x,d) : timerOn(t,x,d);
+      if(!on) continue;
+      var st=x; while(x<1440 && (l.invert ? !timerOn(t,x,d) : timerOn(t,x,d))) x++;
+      bars+='<span style="left:'+(st/1440*100)+'%;width:'+((x-st)/1440*100)+'%"></span>';
+    }
+    h+='<div class="tlname">'+l.label+(l.invert?' <span class="dw">(runs while the contact is off)</span>':'')+'</div>'+
+       '<div class="tl">'+bars+'<b style="left:'+(m/1440*100)+'%"></b></div>';
+  });
+  document.getElementById('tls'+i).innerHTML=h;
+}
+
+function setLamp(id, cls){ var e=document.getElementById(id); if(e) e.className='lamp '+cls; }
+var ANG={MAN:-45, OFF:0, AUTO:45, ON:45};
 
 function render(){
-  var m=nowMin();
+  var m=nowMin(), d=nowDay(), r=runState(m,d);
   document.getElementById('clockTxt').textContent=fmt(m);
-  var anyRun=false;
+  document.getElementById('clockDay').textContent=DAYFULL[d];
 
-  for(var i=0;i<S.pumps.length;i++){
-    var p=S.pumps[i], run=running(p,m);
-    if(run) anyRun=true;
-    if(p.onPanel){
+  S.loads.forEach(function(l,i){
+    var run=r.run[i];
+    if(l.row==='selector'){
+      setLamp('run'+i, run?'on-green':'off-green');
+    }else{
       setLamp('run'+i, run?'on-teal':'off-teal');
       setLamp('stp'+i, run?'off-red':'on-red');
-      setLamp('trp'+i, p.tripped?'on-amber':'off-amber');
-      document.getElementById('k'+i+'tag').textContent=p.sel;
-      document.querySelector('[data-knob="'+i+'"] i').style.transform='rotate('+ANG[p.sel]+'deg)';
+      setLamp('trp'+i, l.tripped?'on-amber':'off-amber');
     }
-    drawTimeline(i,m);
-    if(p.device==='digital') drawDigital(i,m); else drawDial(i,m);
-    document.getElementById('dn'+i).textContent=fmt(m);
+    var tag=document.getElementById('k'+i+'tag'); if(tag) tag.textContent=l.sel;
+    var kn=document.querySelector('[data-knob="'+i+'"] i'); if(kn) kn.style.transform='rotate('+ANG[l.sel]+'deg)';
+  });
+
+  S.timers.forEach(function(t,i){
+    var on=contact(t,m,d);
+    if(t.device==='digital') drawDigital(i,m,d,on); else drawDial(i,m,d);
+    document.getElementById('dn'+i).textContent = fmt(m) + (t.device==='digital' ? ' · '+DAYS[d] : '');
+    drawTimelines(i,m,d);
+
+    /* what this timer is doing to its loads right now */
+    var loads=drivenBy(t);
+    document.getElementById('dr'+i).innerHTML = loads.map(function(l){
+      var idx=S.loads.indexOf(l);
+      return '<div>'+l.label+' — <span class="'+(r.run[idx]?'pillOn':'')+'">'+
+        (r.run[idx]?'running':'stopped')+'</span>'+
+        (l.invert?' <span class="dw">standby</span>':'')+'</div>';
+    }).join('');
 
     var st;
-    if(p.tripped) st='<b>TRIPPED</b> — overload. Reset by tapping the TRIP lamp.';
-    else if(p.sel==='OFF') st='Selector at <b>OFF</b> — pump stopped.';
-    else if(p.sel==='MAN') st='Manual — <b>'+(p.manRun?'RUNNING':'STOPPED')+'</b> (use START / STOP).';
-    else if(p.tsw==='on'){
-      st = 'Timer slider is down at <b>1</b> — contact held closed, tappets ignored. Pump runs 24 h.';
+    if(t.over){
+      st='Held <b>ON</b> by hand — the programme is ignored until it is put back to auto.';
+    }else{
+      st='Contact is <b>'+(on?'ON':'OFF')+'</b> now.';
+      var nx=nextChange(t,m,d);
+      if(nx) st+=' Next change at <b>'+fmt(nx.m)+'</b>'+(nx.sameDay?'':' ('+DAYFULL[nx.d]+')')+'.';
+      st+=' Closed <b>'+hm(hoursOn(t,d))+'</b> today.';
     }
-    else {
-      st = run ? 'In timer period — <b>RUNNING</b>.' : 'Outside timer period — <b>STOPPED</b>.';
-      var nx=nextChange(p,m);
-      if(nx!==null) st+=' Next change at <b>'+fmt(nx)+'</b>.';
-      st+=' Runs <b>'+dailyHours(p)+' h</b>/day.';
-    }
+    /* anything odd at a glance: a tripped or hand-set load under this timer */
+    var odd=loads.filter(function(l){ return l.tripped || l.sel!=='AUTO'; });
+    if(odd.length) st+='<br><span class="warn">'+odd.map(function(l){
+      return l.label+(l.tripped?' is TRIPPED':' selector is at '+l.sel);
+    }).join('; ')+' — the timer cannot reach it.</span>';
+    if(!r.flow && S.loads.some(function(l){ return l.needsFlow && drivenBy(t).indexOf(l)>=0; }))
+      st+='<br><span class="warn">No circulation pump is running, so the heat pump stays off whatever the timer says.</span>';
     document.getElementById('st'+i).innerHTML=st;
-  }
-
-  if(S.hasHeat){
-    var hpOn = (S.heat==='ON' && anyRun);
-    setLamp('hplamp', hpOn?'on-green':'off-green');
-    document.getElementById('khtag').textContent=S.heat;
-    document.querySelector('[data-knob="heat"] i').style.transform='rotate('+ANG[S.heat]+'deg)';
-  }
+  });
 }
 
-function nextChange(p,m){
-  var cur=timerOn(p,m);
-  for(var k=1;k<=1440;k++){ var t=(m+k)%1440; if(timerOn(p,t)!==cur) return t; }
-  return null;
-}
-function dailyHours(p){
-  var mins=0, on=[];
-  for(var t=0;t<1440;t++) if(timerOn(p,t)) mins++;
-  return (mins/60).toFixed(1);
+function buildHowTo(){
+  var swap=S.loads.some(function(l){ return l.invert; });
+  var h='<b>AUTO</b> — the pump follows its timer. <b>MAN</b> — runs continuously, START/STOP take over. '+
+        '<b>OFF</b> — dead, the red STOP lamp lit.<br>'+
+        'RUN lamp lit while running, red STOP lamp lit while stopped. '+
+        'Tap a <b>TRIP</b> lamp to simulate an overload — the pump drops out until you tap it again.';
+  if(swap) h+='<br><br><b>One timer, two pumps.</b> The changeover timer runs Pump 1 while its contact is '+
+      'closed and Pump 2 while it is open, so one pump is always circulating and the two never run together. '+
+      'That means a pump stopped at the right time is normal — check the <i>other</i> one is running before '+
+      'you call it a fault.';
+  h+='<br><br><b>The unit beside each timer</b> is what the real one in the plant room should look like now. '+
+     'Hold your phone next to it: the time (and the day, on the digital ones) must match. '+
+     'Then press <b>PR</b> and step through — each step should read exactly what is listed here. '+
+     'If the clock is out, the pool is running to the wrong hours; correct it and note it down.';
+  document.getElementById('howto').innerHTML=h;
 }
 
 /* ---- events ---- */
 document.addEventListener('click', function(e){
-  var ts=e.target.closest('[data-tsw]');
-  if(ts){ var ti=+ts.dataset.tsw;
-    S.pumps[ti].tsw = (S.pumps[ti].tsw==='on') ? 'auto' : 'on';
-    save(); render(); return; }
+  var ov=e.target.closest('[data-over]');
+  if(ov){ var ti=+ov.dataset.over; S.timers[ti].over=!S.timers[ti].over; render(); return; }
   var k=e.target.closest('[data-knob]');
   if(k){
-    if(k.dataset.knob==='heat'){ S.heat = S.heat==='ON'?'OFF':'ON'; }
-    else{
-      var order=['MAN','OFF','AUTO'], p=S.pumps[+k.dataset.knob];
-      p.sel=order[(order.indexOf(p.sel)+1)%3];
-    }
-    save(); render(); return;
+    var l=S.loads[+k.dataset.knob];
+    var order = l.row==='selector' ? ['ON','OFF'] : ['MAN','OFF','AUTO'];
+    l.sel=order[(order.indexOf(l.sel)+1)%order.length];
+    render(); return;
   }
   var b=e.target.closest('[data-press]');
   if(b){
     var a=b.dataset.press;
-    if(a.indexOf('start')===0){ var i=+a.slice(5); S.pumps[i].manRun=true; }
-    if(a.indexOf('stop')===0){ var i2=+a.slice(4); S.pumps[i2].manRun=false; }
-    if(a.indexOf('trip')===0){ var i3=+a.slice(4); S.pumps[i3].tripped=!S.pumps[i3].tripped; }
-    save(); render(); return;
+    if(a.indexOf('start')===0) S.loads[+a.slice(5)].manRun=true;
+    else if(a.indexOf('stop')===0) S.loads[+a.slice(4)].manRun=false;
+    else if(a.indexOf('trip')===0){ var x=+a.slice(4); S.loads[x].tripped=!S.loads[x].tripped; }
+    render(); return;
   }
 });
 
@@ -583,25 +693,33 @@ document.getElementById('mManual').onclick=function(){
   S.mode='manual'; this.classList.add('sel');
   document.getElementById('mLive').classList.remove('sel');
   document.getElementById('scrubWrap').style.display='block';
-  document.getElementById('scrub').value=S.manual; render();
+  document.getElementById('scrub').value=S.manual;
+  document.getElementById('dayPick').value=String(S.day);
+  render();
 };
 document.getElementById('scrub').oninput=function(){ S.manual=+this.value; render(); };
+(function(){
+  var dp=document.getElementById('dayPick'), h='';
+  for(var i=1;i<=7;i++){ var d=i%7; h+='<option value="'+d+'">'+DAYFULL[d]+'</option>'; }
+  dp.innerHTML=h; dp.value=String(S.day);
+  dp.onchange=function(){ S.day=+this.value; render(); };
+})();
 
 (function(){
+  var last=null;
+  try{ last=localStorage.getItem('timerSite'); }catch(e){}
   var sel=document.getElementById('site'), h='';
-  Object.keys(SITES).forEach(function(k){
-    h+='<option value="'+k+'"'+(k===S.site?' selected':'')+'>'+SITES[k].name+'</option>';
-  });
+  Object.keys(SITES).forEach(function(k){ h+='<option value="'+k+'">'+SITES[k].name+'</option>'; });
   PENDING.forEach(function(n){ h+='<option disabled>'+n+' — not set up yet</option>'; });
   sel.innerHTML=h;
+  var start = SITES[last] ? last : 'JEIP1';
+  sel.value=start;
   sel.onchange=function(){ loadSite(this.value); render(); };
-  document.getElementById('siteNote').textContent='Timer settings for this pool';
+  loadSite(start);
 })();
 
 render();
 setInterval(function(){ if(S.mode==='live') render(); }, 5000);
-
-
 </script>
 </body>
 </html>
