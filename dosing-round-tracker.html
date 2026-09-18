@@ -1839,9 +1839,16 @@ function dosingKeyFor(outletCode, pool){ return pool || DOSING_KEY_MAP[outletCod
 const PANEL_URL = "https://chunkayseo-ui.github.io/fm/check-timer.html";
 // Outlets whose panels have been set up over there. Add a code here once its
 // panel exists on the check-timer page.
-const PANEL_OUTLETS = ["LENTOR", "BK", "TENGAH"];
+const PANEL_OUTLETS = ["JE", "LENTOR", "TENGAH", "HS", "BK", "CC", "DR"];
+// JE is four pools behind one outlet, and its jobs are already split per pool,
+// so the job opens that pool's own panel rather than all four.
+const PANEL_POOLS = ["JEIP1", "JEIP2", "JEOP1", "JEOP2"];
 const isPanelTask = t => /pump\s*panel|salt\s*chlorinator/i.test(t.name || "");
 const hasPanel = code => PANEL_OUTLETS.indexOf(String(code||"").toUpperCase()) >= 0;
+const panelPoolOf = t => {
+  const p = String((t && t.pool) || "").toUpperCase();
+  return PANEL_POOLS.indexOf(p) >= 0 ? p : "";
+};
 
 const isWaterTestTask = t => /water\s*test/i.test(t.name || "");
 const isDosingTask = t => /dosing/i.test(t.name || "") && !isWaterTestTask(t);
@@ -2003,24 +2010,26 @@ const DAYNAME_FULL = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday
 // technician has claimed and not yet finished.
 // Opens the plant-room door full screen. The button is all that lives in the
 // job row: the panel itself sits in #panelbox, outside the redraw.
-function pumpPanelBlock(s){
+function pumpPanelBlock(s, t){
   const code = String(s.outlet||"").toUpperCase();
+  const pool = panelPoolOf(t);
   return `<div class="wt">
-    <div class="wt-head"><span class="wt-title">Pump panel · ${esc(code)}</span></div>
+    <div class="wt-head"><span class="wt-title">Pump panel · ${esc(pool || code)}</span></div>
     <p class="note" style="margin:0 0 10px">See what the door and the timers should show right now,
       then compare with the real panel.</p>
-    <button class="panel-open" data-openpanel="${esc(code)}">🔌 Show the pump panel</button>
+    <button class="panel-open" data-openpanel="${esc(code)}" data-openpool="${esc(pool)}">🔌 Show the pump panel</button>
   </div>`;
 }
-function openPumpPanel(code){
+function openPumpPanel(code, pool){
   const box = document.getElementById("panelbox");
   if(!box) return;
   const body = box.querySelector(".pb-body");
-  const url = PANEL_URL + "?embed=1&outlet=" + encodeURIComponent(code);
+  const q = pool ? "site=" + encodeURIComponent(pool) : "outlet=" + encodeURIComponent(code);
+  const url = PANEL_URL + "?embed=1&" + q;
   // rebuild the frame each time it opens, so the clock inside is current
-  body.innerHTML = `<iframe src="${esc(url)}" title="Pump panel at ${esc(code)}" loading="lazy"></iframe>`;
-  box.querySelector(".lb-cap").textContent = "Pump panel · " + code;
-  box.querySelector(".pb-full").href = PANEL_URL + "?outlet=" + encodeURIComponent(code);
+  body.innerHTML = `<iframe src="${esc(url)}" title="Pump panel at ${esc(pool||code)}" loading="lazy"></iframe>`;
+  box.querySelector(".lb-cap").textContent = "Pump panel · " + (pool || code);
+  box.querySelector(".pb-full").href = PANEL_URL + "?" + q;
   box.classList.add("open");
 }
 function closePumpPanel(){
@@ -2209,7 +2218,7 @@ function openPhoto(fileId, caption){
 function closePhoto(){ const lb = document.getElementById("lightbox"); if(!lb) return; lb.classList.remove("open"); lb.querySelector(".lb-body").innerHTML = ""; }
 document.addEventListener("click", e => {
   const pp = e.target.closest("[data-openpanel]");
-  if(pp){ e.preventDefault(); openPumpPanel(pp.dataset.openpanel); return; }
+  if(pp){ e.preventDefault(); openPumpPanel(pp.dataset.openpanel, pp.dataset.openpool||""); return; }
   const pb = document.getElementById("panelbox");
   if(pb && pb.classList.contains("open") && (e.target.closest(".pb-close") || e.target === pb)){ closePumpPanel(); return; }
   const open = e.target.closest("[data-photoview]");
@@ -3083,7 +3092,7 @@ function taskRow(s, t){
   // The dosing job likewise opens its measured-amounts entry.
   const panel = (running && mine && isWaterTestTask(t)) ? waterTestPanel(s, t)
               : (running && mine && isDosingTask(t)) ? dosingPanel(s, t)
-              : (running && mine && isPanelTask(t) && hasPanel(s.outlet)) ? pumpPanelBlock(s)
+              : (running && mine && isPanelTask(t) && hasPanel(s.outlet)) ? pumpPanelBlock(s, t)
               : "";
 
   return `<div class="task ${running?"running":""} ${finished?"finished":""}">
