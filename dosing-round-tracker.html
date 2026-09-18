@@ -312,6 +312,27 @@ details.panel[open] summary::after{content:"▴"}
 /* Informational only -- another technician already having this outlet in
    their round today never blocks picking it too, it's just a heads-up. */
 .pill-taken{border-color:var(--travel);background:var(--travel-soft)}
+/* How the outlet actually stands tonight, so a round can be built around
+   what is already covered. Same colours the Overview board uses. */
+.pill-done{border-color:var(--ok);background:var(--ok-soft)}
+.pill-done .pill-state{color:var(--ok)}
+/* left behind with must-do jobs open is the one state worth chasing, so it
+   gets its own colour rather than sharing amber with "still on site" */
+.pill-partial{border-color:var(--urgent);background:var(--urgent-soft)}
+.pill-partial .pill-state{color:var(--urgent)}
+.pill-onsite{border-color:var(--warn);background:var(--warn-soft)}
+.pill-onsite .pill-state{color:var(--warn)}
+.pill-done .pill-who,.pill-partial .pill-who,.pill-onsite .pill-who{color:inherit;opacity:.75}
+.pill-state{display:block;font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:700;
+  text-transform:none;letter-spacing:0;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill[aria-pressed="true"] .pill-state{color:#fff}
+.pill-key{display:flex;flex-wrap:wrap;gap:10px 14px;margin-top:10px;font-size:11.5px;color:var(--muted)}
+.pill-key span{display:inline-flex;align-items:center;gap:5px}
+.pill-key i{width:11px;height:11px;border-radius:3px;border:1px solid var(--line);display:inline-block}
+.pill-key .k-done{border-color:var(--ok);background:var(--ok-soft)}
+.pill-key .k-partial{border-color:var(--urgent);background:var(--urgent-soft)}
+.pill-key .k-onsite{border-color:var(--warn);background:var(--warn-soft)}
+.pill-key .k-taken{border-color:var(--travel);background:var(--travel-soft)}
 .pill-who{display:block;font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;text-transform:none;
   letter-spacing:0;margin-top:3px;color:var(--travel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pill[aria-pressed="true"] .pill-who{color:#fff;opacity:.9}
@@ -678,6 +699,27 @@ const myRound = () => state.rounds[myId()] || null;
 // they've arrived yet or not. Purely informational — nothing stops two
 // technicians covering the same outlet, this just lets a technician picking
 // their round see who else already grabbed a branch.
+// Where an outlet stands tonight, read the same way the Overview board reads
+// it: on site now, left with everything done, left with must-do jobs still
+// open, or nobody there yet. A drop-off is not the duty, so it doesn't count.
+// This lets someone building a round see at a glance which branches are
+// already covered and which still need picking up.
+function outletTonight(code){
+  const stops = [];
+  Object.values(state.rounds).forEach(r => {
+    if(r.date !== todayKey() || !r.stops) return;
+    const s = r.stops.find(x => x.outlet === code);
+    if(s && !isQuick(s) && s.arriveAt) stops.push({s, person:r.person});
+  });
+  if(!stops.length) return {k:"open", names:[], left:0};
+  const names = [...new Set(stops.map(x => x.person))];
+  if(stops.some(x => !x.s.departAt)) return {k:"onsite", names, left:0};
+  // everyone has left: is anything must-do still open?
+  const left = mergeStopTasks(stops.map(x => x.s))
+    .filter(t => t.kind === "required" && !t.doneAt).length;
+  return {k: left ? "partial" : "done", names, left};
+}
+
 function othersOn(code){
   const mine = myId();
   const names = new Set();
@@ -2822,16 +2864,32 @@ function buildRound(){
   const pills = OUTLETS.map(o => {
     const extra = assignedFor(o.code, operationalNow().getDay()).length;
     const others = othersOn(o.code);
-    const who = others.length ? `<span class="pill-who">${esc(others.join(", "))}</span>` : "";
-    return `<button class="pill ${others.length?"pill-taken":""}" data-pick="${o.code}" aria-pressed="${sel.includes(o.code)}">
-      ${esc(o.code)}<small>${extra ? "+"+extra+" job"+(extra>1?"s":"") : "&nbsp;"}</small>${who}</button>`;
+    const night = outletTonight(o.code);
+    // Whoever is actually at the outlet is the more useful name to show; fall
+    // back to whoever merely has it in their round.
+    const names = night.names.length ? night.names : others;
+    const who = names.length ? `<span class="pill-who">${esc(names.join(", "))}</span>` : "";
+    const state2 = night.k === "done"    ? `<span class="pill-state">✓ done</span>`
+                 : night.k === "partial" ? `<span class="pill-state">${night.left} left</span>`
+                 : night.k === "onsite"  ? `<span class="pill-state">on site</span>`
+                 : "";
+    const cls = night.k !== "open" ? "pill-" + night.k : (others.length ? "pill-taken" : "");
+    return `<button class="pill ${cls}" data-pick="${o.code}" aria-pressed="${sel.includes(o.code)}">
+      ${esc(o.code)}<small>${extra ? "+"+extra+" job"+(extra>1?"s":"") : "&nbsp;"}</small>${state2}${who}</button>`;
   }).join("");
-  const anyTaken = OUTLETS.some(o => othersOn(o.code).length);
+  const anyTaken = OUTLETS.some(o => othersOn(o.code).length || outletTonight(o.code).k !== "open");
+  const doneN = OUTLETS.filter(o => outletTonight(o.code).k === "done").length;
   return `
   <div class="card" style="padding:20px">
     <div class="sec-head" style="margin-bottom:4px"><h2 class="sec">Today's round</h2><span class="eyebrow">${esc(state.me)}</span></div>
-    <p class="note" style="margin:0 0 14px">Tap the outlets you're covering today, then Start round.${anyTaken ? " Outlets already picked up by someone else today are marked — you can still take them too." : ""}</p>
+    <p class="note" style="margin:0 0 14px">Tap the outlets you're covering today, then Start round.${anyTaken ? " Outlets someone else has already covered or picked up are marked — you can still take them too." : ""}</p>
     <div class="pill-grid">${pills}</div>
+    ${anyTaken ? `<div class="pill-key">
+      <span><i class="k-done"></i>done tonight${doneN?` (${doneN})`:""}</span>
+      <span><i class="k-partial"></i>left with must-do open</span>
+      <span><i class="k-onsite"></i>someone on site</span>
+      <span><i class="k-taken"></i>in someone's round</span>
+    </div>` : ""}
     <div class="row-2" style="margin-top:16px">
       <button class="btn" id="pick-all" style="flex:1">Select all</button>
       <button class="btn" id="pick-none" style="flex:1">Clear</button>
