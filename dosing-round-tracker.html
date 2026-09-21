@@ -1410,7 +1410,7 @@ async function relocate(code){
   if(fix.fail) flash("Still no location. Check that location is allowed for Telegram / your browser.");
 }
 function depart(code){
-  let autoClosed = [], stopOutlet = null;
+  let autoClosed = [], stopOutlet = null, vacQueued = [];
   withRound(r => {
     const s = r.stops.find(x=>x.outlet===code); if(!s || !s.arriveAt || s.departAt) return false;
     // Only auto-close jobs the departing technician themselves claimed. A
@@ -1420,13 +1420,18 @@ function depart(code){
     s.tasks.forEach(t => {
       if(t.startedAt && !t.doneAt && t.claimedBy === r.person){
         t.doneAt = new Date().toISOString();
-        autoClosed.push({name:t.name, kind:t.kind, pool:t.pool||null, doneAt:t.doneAt});
+        // A photo-proof vacuum can't be finished by walking out: it's closed,
+        // but marked as left unfinished with whatever photos were taken.
+        const vq = vacLeftUnfinished(code, t, r.id);
+        if(vq){ t.vac = vq.vac; vacQueued.push(...vq.queued); }
+        autoClosed.push(Object.assign({name:t.name, kind:t.kind, pool:t.pool||null, doneAt:t.doneAt}, t.vac ? {vac:t.vac} : {}));
       }
     });
     s.departAt = new Date().toISOString();
     stopOutlet = s.outlet;
   }, "Couldn't record the departure. Try again.").then(async () => {
-    for(const task of autoClosed) await syncTaskToOtherRounds(stopOutlet, task, {doneAt:task.doneAt});
+    for(const task of autoClosed) await syncTaskToOtherRounds(stopOutlet, task, task.vac ? {doneAt:task.doneAt, vac:task.vac} : {doneAt:task.doneAt});
+    vacQueued.forEach(q => { photoQ.add(q.item); delete state.vac[q.key]; });
     const fix = await getFix();
     withRoundKeepingForm(r => { const s = r.stops.find(x=>x.outlet===code); if(!s || (s.fixOut && !s.fixOut.fail)) return false; s.fixOut = fix; });
   });
@@ -1702,6 +1707,7 @@ function finishTask(code, tid){
     if(d.chlorine === "" || isNaN(Number(d.chlorine))){ flash("Enter the chlorine measured below first, then Save."); return; }
     finishDosing(code, tid); return;
   }
+  if(t0 && t0.claimedBy === state.me && vacSpec(code, t0)){ finishVacuum(code, tid); return; }
   let finished = null, stopOutlet = null, issueId = null;
   withRound(r => {
     const s = r.stops.find(x=>x.outlet===code); if(!s) return false;
@@ -2920,7 +2926,16 @@ async function flushPhotoQueue(){
 function attachQueuedPhoto(item, j){
   const r = state.rounds[item.roundId]; if(!r) return;
   const rr = clone(r); const s = rr.stops.find(x => x.outlet === item.outlet); const t = s && s.tasks.find(x => x.id === item.taskId);
-  if(!t || !t.dosed) return;
+  if(!t) return;
+  if(item.vacSlot){
+    const prev = (t.vac && t.vac.photos && t.vac.photos[item.vacSlot]) || {};
+    t.vac = t.vac || {};
+    t.vac.photos = Object.assign({}, t.vac.photos || {}, {[item.vacSlot]: {fileId:j.fileId, url:j.url, thumb:j.thumb || null, takenAt: prev.takenAt || item.payload.takenAt}});
+    saveRound(rr);
+    syncTaskToOtherRounds(item.outlet, {name:t.name, kind:t.kind, pool:t.pool||null}, {vac:t.vac});
+    return;
+  }
+  if(!t.dosed) return;
   t.dosed.photos = (t.dosed.photos || []).filter(x => x.queueId !== item.id);
   t.dosed.photos.push({fileId:j.fileId, url:j.url, thumb:j.thumb || null});
   saveRound(rr);
@@ -2971,6 +2986,211 @@ function dosingPhotoHtml(key, d){
         ? `<span class="wt-src">${readerNote((photos.filter(p=>p.status==="done").pop()||{}).reading)} Type the amount.</span>` : "");
   return `<div class="stack" style="gap:8px">${rows}${total}${hint}
     <button class="btn sm" type="button" data-dmphotobtn="${key}">+ Add another photo</button>${input}</div>`;
+}
+
+/* ---------- photo proof: Manual vacuum ----------
+ * A vacuum job leaves nothing behind to check -- until now the only way to
+ * know it happened was CCTV after the fact. At pools with a photo list the
+ * technician proves the walk instead: a set-up shot at the vacuum port, one
+ * from each corner of the route, then the close-down shots. The photos are
+ * taken in order (only the next one can be taken), so the corner shots can
+ * only come from walking the route. Same camera-only, time-stamped relay
+ * upload as the dosing photos, and each photo goes onto the job the moment
+ * it lands, so a reload mid-vacuum loses nothing. The time from the first
+ * photo to the last is how long the vacuum really took.
+ * Pools not listed here, or no photo relay set up: the job works as before.
+ */
+const VAC_ROUTE_URL = "https://chunkayseo-ui.github.io/dosing-app/vacuum-route-maps.html";
+const VAC_PHOTOS = {
+  // normalMin: how long a proper vacuum usually takes here, first photo to last.
+  // Leave null until it's known; a job much quicker than it gets flagged.
+  Tengah: {card:"TENGAH", normalMin:null, list:[
+    {id:"P1", when:"start", label:"Set-up at the vacuum port", hint:"Hose, vacuum head and telescopic pole connected at the vacuum port, top right corner."},
+    {id:"P2", when:"start", label:"Corner 1 – left side", hint:"Stand on the left deck level with the top half of the arm. Look right along it towards the port."},
+    {id:"P3", when:"start", label:"Corner 2 – bottom of the leg", hint:"Stand at the bottom right of the leg. Look diagonally up across the leg."},
+    {id:"P4", when:"start", label:"Corner 3 – inner corner", hint:"Stand at the inner corner by the stairs. Look diagonally down across the leg."},
+    {id:"P5", when:"start", label:"Corner 4 – right side", hint:"Stand on the right side below the port. Look left along the lower half of the arm."},
+    {id:"E1", when:"end", label:"Tools packed away", hint:"Hose, vacuum head and pole stored."},
+    {id:"E2", when:"end", label:"Vacuum port closed", hint:"The port with its cover on."},
+    {id:"E3", when:"end", label:"Vacuum valve closed", hint:"The valve handle in the closed position."}
+  ]}
+};
+const isVacuumTask = t => /vacuum/i.test((t && t.name) || "");
+const vacSpecFor = (code, t) => (t && isVacuumTask(t)) ? (VAC_PHOTOS[dosingKeyFor(code, t.pool)] || null) : null;
+const vacSpec = (code, t) => relayCfg() ? vacSpecFor(code, t) : null;
+state.vac = state.vac || {};
+const vacLocal = key => (state.vac[key] = state.vac[key] || {});
+const vacSaved = t => (t && t.vac && t.vac.photos) || {};
+function vacSlotState(key, t, id){
+  const saved = vacSaved(t)[id], loc = vacLocal(key)[id];
+  if(loc && (loc.status === "preparing" || loc.status === "uploading" || loc.status === "failed")) return loc.status;
+  if(saved) return saved.pending ? "queued" : "done";
+  return "todo";
+}
+const vacNext = (key, t, spec) => spec.list.find(p => vacSlotState(key, t, p.id) === "todo") || null;
+function vacTime(key, t, id){ const s = vacSaved(t)[id], l = vacLocal(key)[id]; return (s && s.takenAt) || (l && l.takenAt) || null; }
+function vacSaveState(key, t, spec){
+  const st = spec.list.map(p => vacSlotState(key, t, p.id));
+  if(st.some(x => x === "preparing" || x === "uploading")) return {ok:false, label:"Wait for the photo…"};
+  const next = vacNext(key, t, spec);
+  if(next) return {ok:false, label:`Take ${next.id} next — ${next.label}`};
+  if(st.some(x => x === "failed")) return {ok:true, label:"Save now · photos upload later", queue:true};
+  return {ok:true, label:"Vacuum done · save"};
+}
+const vacPayload = (code, poolKey, t, slot, ph, n) => ({kind:"job", outlet:code, pool:poolKey, job:`${t.name} · ${slot.id} ${slot.label}`,
+  person:state.me, takenAt:ph.takenAt, date:todayKey(), tool:"none", wantReading:false, imageBase64:ph.base64, photoNo:n});
+function vacTaskOf(key){
+  const [code, tid] = key.split("|");
+  const r = myRound(); const s = r && r.stops.find(x => x.outlet === code); const t = s && s.tasks.find(x => x.id === tid);
+  return {code, tid, t};
+}
+async function onVacPhotoPicked(key, id, file){
+  const {code, t} = vacTaskOf(key);
+  const spec = vacSpec(code, t); if(!spec) return;
+  const slot = spec.list.find(p => p.id === id); if(!slot) return;
+  const next = vacNext(key, t, spec);
+  if(!next || next.id !== id){ flash("Take the photos in order."); return; }
+  // Camera-only is enforced by the input; this is the belt to that brace.
+  if(file.lastModified && Date.now() - file.lastModified > PHOTO_MAX_AGE_MS){ flash("That photo isn't from just now — take a fresh one."); return; }
+  const loc = vacLocal(key);
+  const ph = loc[id] = {status:"preparing", takenAt:new Date().toISOString()};
+  render();
+  let prepared;
+  try{ prepared = await preparePhoto(file, photoStampLines(code, dosingKeyFor(code, t.pool), t.name).concat([`${slot.id} · ${slot.label}`])); }
+  catch(e){ delete loc[id]; flash("Couldn't read that image. Try again."); render(); return; }
+  Object.assign(ph, {status:"uploading", dataUrl:prepared.dataUrl, base64:prepared.base64}); render();
+  await uploadVacPhoto(key, id);
+}
+async function uploadVacPhoto(key, id){
+  const {code, tid, t} = vacTaskOf(key);
+  const spec = vacSpec(code, t), ph = vacLocal(key)[id]; if(!spec || !ph) return;
+  const i = spec.list.findIndex(p => p.id === id), slot = spec.list[i];
+  try{
+    const j = await relayUpload(vacPayload(code, dosingKeyFor(code, t.pool), t, slot, ph, i+1));
+    ph.status = "done";
+    await attachVacPhoto(code, tid, id, {fileId:j.fileId, url:j.url, thumb:j.thumb || null, takenAt:ph.takenAt});
+    delete ph.base64;
+  }catch(e){
+    ph.status = "failed";
+    ph.relayRefused = !!(e && e.relay && !e.transient);
+    ph.error = ph.relayRefused ? String(e.message)
+      : (e && e.transient) ? "The relay was busy. Retry, or carry on — it uploads when you save."
+      : "No answer from the relay (signal?). Retry, or carry on — it uploads when you save.";
+  }
+  render();
+}
+// Each photo is written onto the job straight away, so the proof survives a
+// reload, a flat battery, or a teammate looking at the same outlet.
+async function attachVacPhoto(code, tid, id, rec){
+  let patch = null, task = null;
+  await withRound(r => {
+    const s = r.stops.find(x => x.outlet === code); const t = s && s.tasks.find(x => x.id === tid); if(!t) return false;
+    t.vac = t.vac || {}; t.vac.photos = Object.assign({}, t.vac.photos || {}, {[id]: rec});
+    patch = {vac:t.vac}; task = {name:t.name, kind:t.kind, pool:t.pool||null};
+  }, "Couldn't save that photo onto the job. Try again.");
+  if(patch) syncTaskToOtherRounds(code, task, patch);
+}
+function vacuumPanel(s, t){
+  const key = s.outlet+"|"+t.id, spec = vacSpec(s.outlet, t), poolKey = dosingKeyFor(s.outlet, t.pool);
+  const next = vacNext(key, t, spec), first = vacTime(key, t, spec.list[0].id);
+  const slotHtml = p => {
+    const st = vacSlotState(key, t, p.id), loc = vacLocal(key)[p.id], saved = vacSaved(t)[p.id], at = vacTime(key, t, p.id);
+    const isNext = st === "todo" && next && next.id === p.id;
+    const img = (loc && loc.dataUrl) ? `<img src="${loc.dataUrl}" alt="">`
+      : (saved && saved.fileId) ? `<img src="${driveImg(saved.fileId, 200)}" alt="" loading="lazy">`
+      : `<div class="ph-empty" aria-hidden="true">📷</div>`;
+    let status, actions = "";
+    if(st === "done") status = `<span class="ph-status ok">${p.id} · ${esc(p.label)} · ${clockOf(at)}</span>`;
+    else if(st === "queued") status = `<span class="ph-status ok">${p.id} · taken ${clockOf(at)}, uploads later</span>`;
+    else if(st === "preparing" || st === "uploading") status = `<span class="ph-status">${p.id} · ${st}…</span>`;
+    else if(st === "failed"){
+      status = `<span class="ph-status err">${p.id} · ${esc((loc && loc.error) || "Upload failed.")}</span>`;
+      actions = `<button class="btn sm" type="button" data-vacretry="${key}|${p.id}">Retry upload</button>`;
+    } else if(isNext){
+      status = `<span class="ph-status"><b>${p.id} · ${esc(p.label)}</b><br>${esc(p.hint)}</span>`;
+      actions = `<button class="btn sm primary" type="button" data-vacbtn="${key}|${p.id}">📷 Take ${p.id}</button><input type="file" accept="image/*" capture="environment" hidden data-vacin="${key}|${p.id}">`;
+    } else status = `<span class="ph-status" style="color:var(--ink-3)">${p.id} · ${esc(p.label)}</span>`;
+    return `<div class="wt-photo${st === "todo" && !isNext ? "" : " has"}">${img}<div class="ph-main">${status}<div class="ph-actions">${actions}</div></div></div>`;
+  };
+  const group = (when, title) => `<span class="wt-lbl" style="margin-top:4px">${title}</span>${spec.list.filter(p => p.when === when).map(slotHtml).join("")}`;
+  const sst = vacSaveState(key, t, spec);
+  const card = spec.card ? ` <a href="${VAC_ROUTE_URL}#${encodeURIComponent(spec.card)}" target="_blank" rel="noopener">Open the route card</a> to see where each one is taken.` : "";
+  return `<div class="wt" data-vacpanel="${key}">
+    <div class="wt-head"><span class="wt-title">Manual vacuum · ${esc(poolKey)} · photo proof</span></div>
+    <p class="note" style="margin:0">Take each photo in order, from where the route card shows it. The time is printed on every photo.${card}${first ? ` First photo ${clockOf(first)} — ${liveDur(first)} so far.` : ""}</p>
+    <div class="stack" style="gap:8px">${group("start", "At the start and each corner")}${group("end", "Close down")}</div>
+    <button class="btn primary big" data-vacsave="${key}" ${sst.ok ? "" : "disabled"}>${esc(sst.label)}</button>
+  </div>`;
+}
+function finishVacuum(code, tid){
+  const {t:t0} = vacTaskOf(code+"|"+tid); if(!t0) return;
+  const key = code+"|"+tid, spec = vacSpec(code, t0); if(!spec) return;
+  const sst = vacSaveState(key, t0, spec); if(!sst.ok){ flash(sst.label); return; }
+  const loc = vacLocal(key), poolKey = dosingKeyFor(code, t0.pool), queued = [];
+  const photos = Object.assign({}, vacSaved(t0));
+  spec.list.forEach((p, i) => {
+    const l = loc[p.id];
+    if(l && l.status === "failed" && l.base64){ const qid = uid(); photos[p.id] = {pending:true, queueId:qid, takenAt:l.takenAt}; queued.push({qid, p, l, n:i+1}); }
+  });
+  const a = photos[spec.list[0].id], b = photos[spec.list[spec.list.length-1].id];
+  const firstAt = (a && a.takenAt) || null, lastAt = (b && b.takenAt) || null;
+  const vac = {photos, firstAt, lastAt, minutes:(firstAt && lastAt) ? mins(firstAt, lastAt) : null, normalMin:spec.normalMin || null};
+  let finished = null;
+  withRound(r => {
+    const s = r.stops.find(x => x.outlet === code); if(!s) return false;
+    const t = s.tasks.find(x => x.id === tid); if(!t || !t.startedAt || t.doneAt) return false;
+    if(t.claimedBy !== state.me) return false;
+    t.doneAt = new Date().toISOString(); t.vac = vac;
+    finished = {name:t.name, kind:t.kind, pool:t.pool||null, doneAt:t.doneAt};
+  }, "Couldn't save the vacuum. Try again.").then(() => {
+    if(!finished) return;
+    syncTaskToOtherRounds(code, finished, {doneAt:finished.doneAt, vac});
+    queued.forEach(({qid, p, l, n}) => photoQ.add({id:qid, roundId:myId(), outlet:code, taskId:tid, poolKey, date:todayKey(), vacSlot:p.id,
+      payload: vacPayload(code, poolKey, t0, p, l, n)}));
+    delete state.vac[key];
+  });
+}
+// What a finished vacuum shows on the job row, for the technician and the
+// supervisor alike: how long it took, first photo to last, and the photos.
+// Leaving the outlet while a photo-proof vacuum is still running. Keeps every
+// photo taken so far (failed uploads are queued), marks the job unfinished.
+function vacLeftUnfinished(code, t, roundId){
+  const spec = vacSpec(code, t); if(!spec) return null;
+  const key = code+"|"+t.id, loc = vacLocal(key), poolKey = dosingKeyFor(code, t.pool), queued = [];
+  const photos = Object.assign({}, vacSaved(t));
+  spec.list.forEach((p, i) => {
+    const l = loc[p.id];
+    if(l && l.status === "failed" && l.base64 && !photos[p.id]){
+      const qid = uid(); photos[p.id] = {pending:true, queueId:qid, takenAt:l.takenAt};
+      queued.push({key, item:{id:qid, roundId, outlet:code, taskId:t.id, poolKey, date:todayKey(), vacSlot:p.id, payload:vacPayload(code, poolKey, t, p, l, i+1)}});
+    }
+  });
+  const ids = spec.list.map(p => p.id).filter(id => photos[id]);
+  const a = photos[ids[0]], b = photos[ids[ids.length-1]];
+  const firstAt = (a && a.takenAt) || null, lastAt = (b && b.takenAt) || null;
+  return {vac:{photos, firstAt, lastAt, minutes:(firstAt && lastAt && ids.length > 1) ? mins(firstAt, lastAt) : null,
+    normalMin:spec.normalMin || null, unfinished:true}, queued};
+}
+function vacOpenHere(s){
+  return s.tasks.filter(t => t.startedAt && !t.doneAt && t.claimedBy === state.me && vacSpec(s.outlet, t)).map(t => {
+    const spec = vacSpec(s.outlet, t), key = s.outlet+"|"+t.id;
+    const n = spec.list.filter(p => ["done","queued","failed"].includes(vacSlotState(key, t, p.id))).length;
+    return {t, n, of:spec.list.length};
+  });
+}
+function vacSummaryHtml(code, t){
+  const v = t.vac; if(!v || !v.photos) return "";
+  const spec = vacSpecFor(code, t);
+  const order = spec ? spec.list : Object.keys(v.photos).sort().map(id => ({id, label:""}));
+  const got = order.filter(p => v.photos[p.id]).map(p => Object.assign({id:p.id, label:p.label}, v.photos[p.id]));
+  const up = got.filter(x => x.fileId), pending = got.filter(x => x.pending).length;
+  if(!t.doneAt) return `📷 ${got.length}${spec ? " of " + spec.list.length : ""} proof photos so far`;
+  const len = (v.minutes !== null && v.minutes !== undefined && v.firstAt && v.lastAt) ? ` · ${clockOf(v.firstAt)}–${clockOf(v.lastAt)} · <b>${dur(v.minutes)}</b> first photo to last` : "";
+  const quick = (v.normalMin && v.minutes !== null && v.minutes < v.normalMin * 0.6) ? ` <span class="dev">⚠ much quicker than the usual ${dur(v.normalMin)}</span>` : "";
+  const missing = spec && got.length < spec.list.length ? ` <span class="dev">⚠ ${spec.list.length - got.length} photo${spec.list.length - got.length > 1 ? "s" : ""} missing</span>` : "";
+  const left = v.unfinished ? ` <span class="dev">⚠ left without finishing — ${got.length}${spec ? " of " + spec.list.length : ""} photos</span>` : "";
+  return `Vacuum photo proof · ${got.length}${spec ? " of " + spec.list.length : ""} photos${len}${quick}${left}${v.unfinished ? "" : missing}${pending ? ` · <span class="muted">📷 ${pending} upload${pending > 1 ? "s" : ""} pending</span>` : ""}
+    ${photoStripHtml(up, x => `${x.id}${x.label ? " " + x.label : ""}${x.takenAt ? " · " + clockOf(x.takenAt) : ""}`)}`;
 }
 
 /* ---------- technician ---------- */
@@ -3279,12 +3499,14 @@ function taskRow(s, t){
   // worked out for this pool, so the technician never has to look it up.
   const detail = ((finished && t.reading) ? `<span class="wt-read">${readingSummary(t.reading)}</span>`
                : (finished && t.dosed) ? `<span class="wt-read">${dosedSummary(t.dosed)}</span>`
+               : (finished && t.vac) ? `<span class="wt-read">${vacSummaryHtml(s.outlet, t)}</span>`
                : (!finished && t.plannedDose && isDosingTask(t)) ? `<span class="wt-read">${plannedDoseSummary(t.plannedDose)}</span>`
                : "") + (t.photos && t.photos.length ? `<span class="wt-read">${photoStripHtml(t.photos, (x, i) => "Job photo " + (i+1))}</span>` : "");
   // The calculator opens inline under the water-test job the moment its
   // claimer taps it -- the reading and the dose are entered right here.
   // The dosing job likewise opens its measured-amounts entry.
-  const panel = (running && mine && isWaterTestTask(t)) ? waterTestPanel(s, t)
+  const panel = (running && mine && vacSpec(s.outlet, t)) ? vacuumPanel(s, t)
+              : (running && mine && isWaterTestTask(t)) ? waterTestPanel(s, t)
               : (running && mine && isDosingTask(t)) ? dosingPanel(s, t)
               : (running && mine && isPanelTask(t) && hasPanel(s.outlet)) ? pumpPanelBlock(s, t)
               : "";
@@ -3437,7 +3659,7 @@ function stopCard(s, i, r, isHeading){
       <span class="lbl">${esc(t.name)}</span>
       <span class="val">${dur(m)}</span>
       <span class="track"><span class="fill" style="width:${Math.max(3,m/maxM*100)}%"></span></span>
-    </div>`; }).join("");
+    </div>${(t.vac && t.vac.photos) ? `<div class="job-row-read">${vacSummaryHtml(s.outlet, t)}</div>` : ""}`; }).join("");
     // A stop left by mistake — nothing claimed, or "Leave" tapped before a
     // must-do job was — can be reopened rather than being stuck as-is for the
     // rest of the day. A second tap confirms, since it changes the round's shape.
@@ -3463,13 +3685,24 @@ function stopCard(s, i, r, isHeading){
     // best chance of getting Leave tapped when it actually happens instead of
     // later at the next outlet (which is what quietly turns real travel time
     // into a false "0 minutes" on the Routes tab).
-    const leaveBlock = !left
+    const vacOpen = vacOpenHere(s);
+    const vacWarn = vacOpen.map(o => `${esc(o.t.name)} is still running (${o.n} of ${o.of} photos) — leaving now records it as <strong>not finished</strong>.`).join("<br>");
+    const leaveBlock = (!left && vacOpen.length)
+      ? (!departConfirm
+        ? `<p class="note" style="margin:0;color:var(--warn)">${vacWarn}</p>
+           <button class="btn big" data-askdepart="${s.outlet}">Leave ${esc(s.outlet)}</button>`
+        : `<p class="note" style="margin:0;color:var(--warn)">${vacWarn} Leave anyway?</p>
+           <div class="row-2">
+             <button class="btn warn big" style="flex:1" data-depart="${s.outlet}">Yes, leave anyway</button>
+             <button class="btn big" style="flex:1" data-canceldepart="${s.outlet}">Cancel</button>
+           </div>`)
+      : !left
       ? `<p class="note" style="margin:0">All must-do jobs done here. Tap <strong>Leave</strong> right when you actually head out — that's what starts the drive-time count to your next stop.</p>
          <button class="btn primary big" data-depart="${s.outlet}">Leave ${esc(s.outlet)}</button>`
       : !departConfirm
-      ? `<p class="note" style="margin:0;color:var(--warn)">${left} must-do job${left>1?"s":""} still open.</p>
+      ? `<p class="note" style="margin:0;color:var(--warn)">${left} must-do job${left>1?"s":""} still open.${vacWarn ? "<br>" + vacWarn : ""}</p>
          <button class="btn big" data-askdepart="${s.outlet}">Leave ${esc(s.outlet)}</button>`
-      : `<p class="note" style="margin:0;color:var(--warn)">${left} must-do job${left>1?"s":""} still open — leave anyway?</p>
+      : `<p class="note" style="margin:0;color:var(--warn)">${left} must-do job${left>1?"s":""} still open${vacWarn ? ".<br>" + vacWarn : ""} — leave anyway?</p>
          <div class="row-2">
            <button class="btn warn big" style="flex:1" data-depart="${s.outlet}">Yes, leave anyway</button>
            <button class="btn big" style="flex:1" data-canceldepart="${s.outlet}">Cancel</button>
@@ -3607,6 +3840,7 @@ function stopJobList(s){
     // a still-open dosing job shows the dose the water test worked out.
     const detail = ((t.doneAt && t.reading) ? `<div class="job-row-read">${readingSummary(t.reading)}</div>`
                  : (t.doneAt && t.dosed) ? `<div class="job-row-read">${dosedSummary(t.dosed)}</div>`
+                 : (t.vac && t.vac.photos) ? `<div class="job-row-read">${vacSummaryHtml(s.outlet || s.code || t.outlet, t)}</div>`
                  : (!t.doneAt && t.plannedDose && isDosingTask(t)) ? `<div class="job-row-read">${plannedDoseSummary(t.plannedDose)}</div>`
                  : "") + (t.photos && t.photos.length ? `<div class="job-row-read">${photoStripHtml(t.photos, (x, i) => "Job photo " + (i+1))}</div>` : "");
     return `<div class="job-row">
@@ -3655,7 +3889,7 @@ function outletStatusGrid(rounds){
     const expanded = !!state.expandedOutlets[o.code];
     const toggle = `<button type="button" class="link mono" data-toggleoutlet="${esc(o.code)}" aria-expanded="${expanded}">${expanded?"▲ hide details":"▼ show jobs & issues"}</button>`;
     const jobsPart = stops.length
-      ? stopJobList({tasks: mergeStopTasks(stops.map(x => x.s))})
+      ? stopJobList({outlet: stops[0] && stops[0].s.outlet, tasks: mergeStopTasks(stops.map(x => x.s))})
       : `<p class="note" style="margin:0">Not started yet tonight.</p>`;
     const issuesPart = issueN
       ? `<div class="issue-list">${issues.map(issueSummaryRow).join("")}</div>`
@@ -4785,6 +5019,12 @@ function wire(){
     d.jugFills = Math.max(0, (Number(d.jugFills) || 0) + Number(delta)); render();
   });
   each("[data-dmsave]", b => { const [o,t] = two(b.dataset.dmsave); finishDosing(o,t); });
+  // Manual vacuum photo proof: one camera input per slot, only the next slot live.
+  const splitLast = v => { const k = v.lastIndexOf("|"); return [v.slice(0, k), v.slice(k+1)]; };
+  each("[data-vacbtn]", b => { const i = document.querySelector(`[data-vacin="${b.dataset.vacbtn}"]`); if(i){ i.value = ""; i.click(); } });
+  document.querySelectorAll("[data-vacin]").forEach(i => i.addEventListener("change", () => { const f = i.files && i.files[0]; const [key, id] = splitLast(i.dataset.vacin); if(f) onVacPhotoPicked(key, id, f); }));
+  each("[data-vacretry]", b => { const [key, id] = splitLast(b.dataset.vacretry); const ph = vacLocal(key)[id]; if(!ph || !ph.base64) return; ph.status = "uploading"; render(); uploadVacPhoto(key, id); });
+  each("[data-vacsave]", b => { const [o,t] = two(b.dataset.vacsave); finishVacuum(o,t); });
   each("[data-dmphotobtn]", b => { const i = document.querySelector(`[data-dmphoto="${b.dataset.dmphotobtn}"]`); if(i){ i.value = ""; i.click(); } });
   document.querySelectorAll("[data-dmphoto]").forEach(i => i.addEventListener("change", () => { const f = i.files && i.files[0]; if(f) onDosingPhotoPicked(i.dataset.dmphoto, f); }));
   each("[data-dmphotoretry]", b => {
