@@ -185,6 +185,25 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 .stop-name{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:23px;text-transform:uppercase;letter-spacing:.02em}
 .stop-times{margin-left:auto;font-size:13.5px;color:var(--ink-3);display:flex;gap:12px}
 .stop-body{margin-top:12px;display:flex;flex-direction:column;gap:10px}
+/* Where the phone actually was when Arrive / Leave was tapped. Shown, never
+   blocking -- a technician can still arrive anywhere; the record just says
+   where they were when they did. */
+.loc{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border-radius:9px;
+  background:var(--surface-2);border:1px solid var(--line-soft);font-size:13.5px;line-height:1.45}
+.loc .pin{flex:none;font-size:14px;line-height:1.3}
+.loc .lt{flex:1;min-width:0}
+.loc .lh{font-weight:600}
+.loc .la{color:var(--ink-3);font-size:12.5px;overflow-wrap:anywhere}
+.loc a{color:var(--accent);font-weight:600;text-decoration:none;white-space:nowrap}
+.loc.ok{background:var(--ok-soft);border-color:color-mix(in srgb,var(--ok) 30%,transparent)}
+.loc.ok .lh{color:var(--ok)}
+.loc.far{background:var(--urgent-soft);border-color:color-mix(in srgb,var(--urgent) 35%,transparent)}
+.loc.far .lh{color:var(--urgent)}
+.loc.rough{background:var(--warn-soft);border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
+.loc.rough .lh{color:var(--warn)}
+.loc.none .lh{color:var(--ink-3)}
+.crew-locs{display:flex;flex-direction:column;gap:6px}
+.crew-locs .loc{padding:7px 10px;font-size:13px}
 .travel-gap{display:flex;align-items:center;gap:8px;padding:2px 0 2px 50px;font:500 13px/1 "IBM Plex Mono",monospace;color:var(--travel)}
 .travel-gap .ln{flex:1;height:1px;background:var(--travel);opacity:.35}
 
@@ -919,14 +938,105 @@ function renderConn(){
 
 /* ================= location (recorded, never blocking) ================= */
 function getFix(){
+  // Always resolves with something worth keeping: a position, or the reason
+  // there isn't one (so "location off" shows as that, not as a silent blank).
   return new Promise(resolve => {
-    if(!navigator.geolocation) return resolve(null);
+    const at = () => new Date().toISOString();
+    if(!navigator.geolocation) return resolve({fail:"unsupported", at:at()});
     let settled=false; const done = v => { if(!settled){ settled=true; resolve(v); } };
-    setTimeout(()=>done(null), 8000);
+    setTimeout(()=>done({fail:"timeout", at:at()}), 9000);
     navigator.geolocation.getCurrentPosition(
-      p => done({lat:+p.coords.latitude.toFixed(5), lng:+p.coords.longitude.toFixed(5), acc:Math.round(p.coords.accuracy)}),
-      () => done(null), {enableHighAccuracy:true, timeout:7500, maximumAge:20000});
-  });
+      p => done({lat:+p.coords.latitude.toFixed(5), lng:+p.coords.longitude.toFixed(5), acc:Math.round(p.coords.accuracy), at:at()}),
+      e => done({fail: e && e.code === 1 ? "denied" : (e && e.code === 3 ? "timeout" : "unavailable"), at:at()}),
+      {enableHighAccuracy:true, timeout:8000, maximumAge:20000});
+  }).then(fix => fix.fail ? fix : addAddress(fix));
+}
+
+/* Turn the coordinates into a street address once, at capture time, so every
+   later viewer reads the stored text instead of asking the map service again.
+   OpenStreetMap's free lookup; if it's slow or down the fix is kept without. */
+function addAddress(fix){
+  const url = "https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&accept-language=en&lat="
+    + fix.lat + "&lon=" + fix.lng;
+  const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const t = setTimeout(() => { try{ ctl && ctl.abort(); }catch(e){} }, 6000);
+  return fetch(url, ctl ? {signal:ctl.signal} : {})
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { const a = j ? shortAddress(j) : ""; if(a) fix.addr = a; return fix; })
+    .catch(() => fix)
+    .finally(() => clearTimeout(t));
+}
+function shortAddress(j){
+  const a = j.address || {};
+  const street = a.road ? (a.house_number ? a.house_number + " " + a.road : a.road) : "";
+  const place = a.building || a.amenity || a.leisure || a.shop || "";
+  const area = a.suburb || a.neighbourhood || a.quarter || a.city_district || "";
+  const abroad = a.country_code && a.country_code !== "sg"
+    ? [a.city || a.town || a.village || a.state || "", a.country || ""].filter(Boolean).join(", ") : "";
+  const parts = [place, street, area, abroad].filter(Boolean);
+  const seen = new Set(); const out = [];
+  parts.forEach(x => { const k = x.toLowerCase(); if(!seen.has(k)){ seen.add(k); out.push(x); } });
+  return (out.join(", ") || String(j.display_name || "").split(",").slice(0,3).join(",")).slice(0, 140);
+}
+
+/* ---- reading a fix against the outlet that was claimed ---- */
+function kmBetween(a, b){
+  const R = 6371, rad = x => x * Math.PI / 180;
+  const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat/2)**2 + Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function fmtDist(km){ return km < 1 ? Math.round(km*1000) + " m" : (km < 10 ? km.toFixed(1) : Math.round(km)) + " km"; }
+function placeOf(s){
+  if(s.custom) return (s.lat != null && s.lng != null) ? {lat:s.lat, lng:s.lng} : null;
+  const o = OUTLETS.find(x => x.code === s.outlet);
+  return o ? {lat:o.lat, lng:o.lng} : null;
+}
+// "Near enough" allows for GPS wobble indoors: at least 300 m, or the phone's
+// own stated accuracy (capped, so a useless ±5 km fix can't count as "here").
+function nearLimitKm(fix){ return Math.max(0.3, Math.min(fix.acc || 0, 1000) / 1000); }
+function locVerdict(s, which){
+  const fix = which === "out" ? s.fixOut : s.fixIn;
+  const tapAt = which === "out" ? s.departAt : s.arriveAt;
+  const label = stopLabel(s);
+  if(!fix){
+    const fresh = tapAt && (Date.now() - new Date(tapAt).getTime()) < 20000;
+    return fresh ? {k:"none", head:"Capturing location…", sub:""}
+                 : {k:"none", head:"Location not recorded", sub:""};
+  }
+  if(fix.fail){
+    const why = fix.fail === "denied" ? "Location permission is off for this app"
+              : fix.fail === "unsupported" ? "This phone/browser doesn't give a location"
+              : "The phone couldn't get a GPS fix in time";
+    return {k:"rough", head:"Location not captured", sub:why, fail:true};
+  }
+  const late = tapAt && (new Date(fix.at || tapAt).getTime() - new Date(tapAt).getTime()) > 120000
+    ? " · captured " + dur(mins(tapAt, fix.at)) + " after the tap" : "";
+  const map = `https://www.google.com/maps?q=${fix.lat},${fix.lng}`;
+  const sub = (fix.addr || (fix.lat + ", " + fix.lng)) + (fix.acc ? " · ±" + fmtDist(fix.acc/1000) : "") + late;
+  const here = placeOf(s);
+  if(!here) return {k:"none", head:"Location captured", sub, map};
+  const d = kmBetween(fix, here), lim = nearLimitKm(fix);
+  if(d <= lim) return {k:"ok", head:"At " + label + " ✓", sub, map};
+  // Farther than that: say where they actually seem to be, if it's another outlet.
+  let near = null;
+  OUTLETS.forEach(o => { const k = kmBetween(fix, o); if(!near || k < near.km) near = {code:o.code, km:k}; });
+  const atOther = near && near.code !== s.outlet && near.km <= lim;
+  const rough = (fix.acc || 0) > 1000;
+  const head = fmtDist(d) + " from " + label + (atOther ? " — at " + near.code : "");
+  return {k: rough ? "rough" : "far", head: head + (rough ? " (weak GPS)" : ""), sub, map};
+}
+function locHtml(s, which, opts){
+  opts = opts || {};
+  const v = locVerdict(s, which);
+  const pin = v.k === "ok" ? "📍" : v.k === "far" ? "⚠️" : "📍";
+  const what = opts.prefix ? `<span style="color:var(--ink-3);font-weight:500">${esc(opts.prefix)} · </span>` : "";
+  const retry = v.fail && opts.canRetry
+    ? ` <button class="link" data-relocate="${esc(s.outlet)}" style="font-size:12.5px">Try again</button>` : "";
+  return `<div class="loc ${v.k}"><span class="pin">${pin}</span><span class="lt">
+      <span class="lh">${what}${esc(v.head)}</span>${retry}
+      ${v.sub ? `<br><span class="la">${esc(v.sub)}</span>` : ""}
+    </span>${v.map ? `<a href="${esc(v.map)}" target="_blank" rel="noopener">Map</a>` : ""}</div>`;
 }
 
 /* ================= round mechanics ================= */
@@ -1285,9 +1395,19 @@ function arrive(code){
     s.arriveAt = new Date().toISOString();
     r.headingTo = null;   // "next" is resolved the moment you actually arrive somewhere
   }, "Couldn't record the arrival. Try again.").then(async () => {
-    const fix = await getFix(); if(!fix) return;
-    withRound(r => { const s = r.stops.find(x=>x.outlet===code); if(!s || s.fixIn) return false; s.fixIn = fix; });
+    const fix = await getFix();
+    withRoundKeepingForm(r => { const s = r.stops.find(x=>x.outlet===code); if(!s || (s.fixIn && !s.fixIn.fail)) return false; s.fixIn = fix; });
   });
+}
+// Only offered when the first try failed (permission off, no GPS). The retry
+// is stamped with its own time, so a location taken later is shown as late.
+async function relocate(code){
+  const r0 = myRound(); const s0 = r0 && r0.stops.find(x => x.outlet === code);
+  if(!s0 || !s0.arriveAt || s0.departAt || (s0.fixIn && !s0.fixIn.fail)) return;
+  flash("Getting your location…");
+  const fix = await getFix();
+  withRoundKeepingForm(r => { const s = r.stops.find(x=>x.outlet===code); if(!s || (s.fixIn && !s.fixIn.fail)) return false; s.fixIn = fix; });
+  if(fix.fail) flash("Still no location. Check that location is allowed for Telegram / your browser.");
 }
 function depart(code){
   let autoClosed = [], stopOutlet = null;
@@ -1307,8 +1427,8 @@ function depart(code){
     stopOutlet = s.outlet;
   }, "Couldn't record the departure. Try again.").then(async () => {
     for(const task of autoClosed) await syncTaskToOtherRounds(stopOutlet, task, {doneAt:task.doneAt});
-    const fix = await getFix(); if(!fix) return;
-    withRound(r => { const s = r.stops.find(x=>x.outlet===code); if(!s || s.fixOut) return false; s.fixOut = fix; });
+    const fix = await getFix();
+    withRoundKeepingForm(r => { const s = r.stops.find(x=>x.outlet===code); if(!s || (s.fixOut && !s.fixOut.fail)) return false; s.fixOut = fix; });
   });
 }
 function skipStop(code){ withRound(r => { r.stops = r.stops.filter(s => s.outlet !== code); if(r.headingTo === code) r.headingTo = null; }); }
@@ -1524,20 +1644,25 @@ function reopenStop(code){
 function claimTask(code, tid){
   const rt = runningTask(myRound());
   if(rt && rt.task.id !== tid){ flash("Finish “"+rt.task.name+"” first — one job at a time keeps the timings honest."); return; }
-  let claimed = null, stopOutlet = null;
+  let claimed = null, stopOutlet = null, autoArrived = false;
   withRound(r => {
     const s = r.stops.find(x=>x.outlet===code); if(!s) return false;
     const t = s.tasks.find(x=>x.id===tid); if(!t || t.startedAt) return false;
     if(!s.arriveAt){
       if(r.stops.some(x => x.arriveAt && !x.departAt)) return false;
       s.arriveAt = new Date().toISOString();
+      autoArrived = true;   // claiming here counts as arriving, so it records location the same way
     }
     t.startedAt = new Date().toISOString();
     t.claimedBy = state.me;
     claimed = {name:t.name, kind:t.kind, pool:t.pool||null, startedAt:t.startedAt, claimedBy:t.claimedBy};
     stopOutlet = s.outlet;
-  }, "Couldn't claim that job. Try again.").then(() => {
+  }, "Couldn't claim that job. Try again.").then(async () => {
     if(claimed) syncTaskToOtherRounds(stopOutlet, claimed, {startedAt:claimed.startedAt, claimedBy:claimed.claimedBy});
+    if(autoArrived){
+      const fix = await getFix();
+      withRoundKeepingForm(r => { const s = r.stops.find(x=>x.outlet===code); if(!s || (s.fixIn && !s.fixIn.fail)) return false; s.fixIn = fix; });
+    }
   });
 }
 // The X shown next to a job the technician just claimed -- undoes an
@@ -2490,6 +2615,17 @@ function formPhotosHtml(scope, what){
 // rebuilds the form from state, and the text isn't in state until Send -- so
 // carry the fields across the redraw by hand.
 const FORM_FIELDS = ["#issue-desc", "#issue-priority", "#newtask", "#addissue-outlet", "#addissue-desc", "#addissue-priority", "#quick-purpose", "#quick-note"];
+// Same courtesy for a save nobody tapped for -- the location fix landing a few
+// seconds after Arrive/Leave. It redraws the screen like any save, so whatever
+// someone is halfway through typing is carried across it.
+function withRoundKeepingForm(fn){
+  const kept = {}; let focused = null, caret = null;
+  FORM_FIELDS.forEach(sel => { const el = $(sel); if(el){ kept[sel] = el.value; if(document.activeElement === el){ focused = sel; caret = el.selectionStart; } } });
+  return withRound(fn).then(() => {
+    FORM_FIELDS.forEach(sel => { const el = $(sel); if(el && sel in kept) el.value = kept[sel]; });
+    if(focused){ const el = $(focused); if(el){ el.focus(); try{ if(caret !== null) el.setSelectionRange(caret, caret); }catch(e){} } }
+  });
+}
 function renderKeepingForm(){
   const kept = {}; let focused = null, caret = null;
   FORM_FIELDS.forEach(sel => { const el = $(sel); if(el){ kept[sel] = el.value; if(document.activeElement === el){ focused = sel; caret = el.selectionStart; } } });
@@ -3376,6 +3512,13 @@ function stopCard(s, i, r, isHeading){
       <button class="link" data-skip="${s.outlet}" style="align-self:center">Remove from round</button>
     </div>`;
   }
+  // Arrival location sits at the top of the stop once it's been reached, and
+  // the leaving one joins it after Leave -- same idea as a clock-in app.
+  if(s.arriveAt && body){
+    const locs = locHtml(s, "in", {prefix:"Arrived", canRetry: active && !!r && !!myRound() && r.id === myRound().id})
+               + (done ? locHtml(s, "out", {prefix:"Left"}) : "");
+    body = body.replace('<div class="stop-body">', '<div class="stop-body">' + locs);
+  }
   // A not-yet-visited stop only gets a real sequence number once it's actually
   // been reached (i is its position among visited stops, -1 otherwise); the
   // declared "heading to" stop shows an arrow instead of a number it hasn't
@@ -3768,12 +3911,15 @@ function crewRow(r, isToday, opts){
   const delBtn = opts.deletable
     ? `<button type="button" class="btn sm" data-delround="${esc(r.id)}" title="Delete this round" aria-label="Delete ${esc(r.person)}'s round" style="margin-left:auto;color:var(--urgent);border-color:var(--urgent);padding:4px 10px">Delete</button>`
     : "";
+  const visited = r.stops.filter(s => s.arriveAt).sort((a,b) => a.arriveAt < b.arriveAt ? -1 : 1);
+  const locs = visited.length ? `<div class="crew-locs">${visited.map(s =>
+      locHtml(s, "in", {prefix: stopLabel(s) + " · in " + clockOf(s.arriveAt)})).join("")}</div>` : "";
   return `<div class="crew-row"><div class="crew-top">
       <span class="crew-name">${esc(r.person)}</span>
       ${chip}
       <span class="crew-where mono">${t.tasksDone} jobs · ${dur(t.onSite)} on site · ${dur(t.travel)} travel</span>
       ${delBtn}
-    </div>${bar}</div>`;
+    </div>${bar}${locs}</div>`;
 }
 
 function mgrView(){
@@ -4511,6 +4657,7 @@ function wire(){
   });
 
   each("[data-arrive]", b => arrive(b.dataset.arrive));
+  each("[data-relocate]", b => relocate(b.dataset.relocate));
   each("[data-heading]", b => setHeading(b.dataset.heading));
   on("#open-addoutlet",   () => { state.pickingExtra = true; state.pickingExtraFor = null; render(); });
   on("#cancel-addoutlet", () => { state.pickingExtra = false; state.pickingExtraFor = null; render(); });
