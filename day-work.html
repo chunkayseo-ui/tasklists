@@ -113,6 +113,12 @@ label.chk input{width:20px;height:20px}
 .loc.rough{background:var(--warn-soft);border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
 .loc.rough .lh{color:var(--warn)}
 .loc.none .lh{color:var(--ink-3)}
+.liveloc{display:flex;flex-direction:column;gap:6px;margin-top:-2px}
+.loc.travel{background:var(--travel-soft);border-color:color-mix(in srgb,var(--travel) 30%,transparent)}
+.loc.travel .lh{color:var(--travel)}
+.ll-help{font-size:13px;line-height:1.5;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line-soft);border-radius:9px;padding:8px 11px}
+.ll-help summary{cursor:pointer;font-weight:600;color:var(--accent)}
+.ll-help div{margin-top:6px}
 .travel-gap{display:flex;align-items:center;gap:8px;padding:2px 0 2px 50px;font:500 13px/1 "IBM Plex Mono",monospace;color:var(--travel)}
 .travel-gap .ln{flex:1;height:1px;background:var(--travel);opacity:.35}
 .tasks{display:flex;flex-direction:column;gap:1px;background:var(--line-soft);border:1px solid var(--line);border-radius:9px;overflow:hidden}
@@ -431,6 +437,10 @@ function getFix(){
   return new Promise(resolve => {
     const at = () => nowIso();
     if(!navigator.geolocation) return resolve({fail:"unsupported", at:at()});
+    // The live check under Arrive already has a fresh position: use it, no
+    // second wait for the GPS (and no clash with the running watch).
+    const lf = typeof liveLoc !== "undefined" && liveLoc.fix;
+    if(lf && Date.now() - lf.t < 15000) return resolve({lat:lf.lat, lng:lf.lng, acc:lf.acc, at:at()});
     let settled=false; const done = v => { if(!settled){ settled=true; resolve(v); } };
     setTimeout(()=>done({fail:"timeout", at:at()}), 9000);
     navigator.geolocation.getCurrentPosition(
@@ -518,6 +528,78 @@ async function geocodePlace(p){
   return null;
 }
 const dirLink = place => place.lat != null ? `https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}` : (place.addr ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(place.addr)}` : null);
+
+
+/* ================= live location under the Arrive button =================
+ * Before a technician taps Arrive, show where the phone says they are right
+ * now, measured against the stop: "You're at DR ✓", "3.2 km from DR", or
+ * "Location is blocked" with how to switch it on -- so a blocked permission is
+ * found and fixed BEFORE the arrival, not discovered afterwards on the record.
+ * Watches the GPS only while such a line is on screen; paints just the line,
+ * never the whole page, so nothing typed elsewhere is disturbed.
+ */
+const liveLoc = {watch:null, fix:null, err:null, perm:null};
+function liveLocStart(){
+  if(liveLoc.watch !== null || !navigator.geolocation) return;
+  liveLoc.watch = navigator.geolocation.watchPosition(
+    p => { liveLoc.fix = {lat:+p.coords.latitude.toFixed(5), lng:+p.coords.longitude.toFixed(5), acc:Math.round(p.coords.accuracy), t:Date.now()}; liveLoc.err = null; liveLocPaint(); },
+    e => { liveLoc.err = e && e.code === 1 ? "denied" : (e && e.code === 3 ? "timeout" : "unavailable"); liveLocPaint(); },
+    {enableHighAccuracy:true, maximumAge:10000, timeout:20000});
+}
+function liveLocStop(){ if(liveLoc.watch !== null){ try{ navigator.geolocation.clearWatch(liveLoc.watch); }catch(e){} liveLoc.watch = null; } }
+try{
+  if(navigator.permissions && navigator.permissions.query) navigator.permissions.query({name:"geolocation"}).then(st => {
+    liveLoc.perm = st.state;
+    st.onchange = () => { liveLoc.perm = st.state; if(st.state !== "denied"){ liveLoc.err = null; liveLocStop(); liveLocSync(); } liveLocPaint(); };
+    liveLocPaint();
+  }).catch(() => {});
+}catch(e){}
+const LIVELOC_HELP = `<b>Android · Chrome:</b> tap the icon left of the web address → Permissions → Location → Allow. Also: long-press Chrome → App info → Permissions → Location → Allow while using.<br>
+  <b>iPhone · Safari:</b> Settings → Privacy &amp; Security → Location Services → Safari Websites → While Using; then tap <b>AA</b> in the address bar → Website Settings → Location → Allow.<br>
+  <b>Opened from Telegram:</b> allow Location for the Telegram app in the phone's Settings.<br>
+  Check the phone's own Location switch is on, then reload this page.`;
+// target: {lat, lng} of the stop (or null when it isn't on the map yet)
+function liveLocHtml(target, label){
+  return `<div class="liveloc" data-liveloc data-lat="${target ? target.lat : ""}" data-lng="${target ? target.lng : ""}" data-label="${esc(label)}">
+    ${(() => { const v = liveLocState(target, label); return `<div class="loc ll-body ${v.k}">${liveLocInner(v)}</div>
+    <details class="ll-help"${v.help ? "" : " hidden"}>`; })()}<summary>How to turn location on</summary><div>${LIVELOC_HELP}</div></details>
+  </div>`;
+}
+const liveLocInner = v => `<span class="pin">📍</span><span class="lt"><span class="lh">${esc(v.head)}</span>${v.sub ? `<br><span class="la">${esc(v.sub)}</span>` : ""}</span>`;
+function liveLocState(target, label){
+  const lat = target ? parseFloat(target.lat) : NaN, lng = target ? parseFloat(target.lng) : NaN;
+  if(!navigator.geolocation) return {k:"rough", head:"This phone/browser doesn't give a location", sub:"Arrive still works — the record will say no location."};
+  if(liveLoc.perm === "denied" || liveLoc.err === "denied") return {k:"far", head:"⚠ Location is blocked for this page", sub:"Turn it on before you tap Arrive, or the arrival is recorded without a location.", help:true};
+  const f = liveLoc.fix;
+  if(!f){
+    if(liveLoc.err) return {k:"rough", head:"Can't get a GPS fix yet", sub:"Check the phone's Location switch is on; indoors it can take a moment.", help:liveLoc.err !== "timeout"};
+    return {k:"none", head:"Checking your location…", sub: liveLoc.perm === "prompt" ? "Tap Allow if the phone asks." : ""};
+  }
+  const age = Math.round((Date.now() - f.t) / 1000);
+  const acc = f.acc ? " · ±" + fmtDist(f.acc/1000) : "";
+  const stale = age > 60 ? ` · last fix ${age >= 120 ? Math.round(age/60) + " min" : age + " s"} ago` : "";
+  if(!isFinite(lat) || !isFinite(lng)) return {k:"none", head:"Location on ✓", sub:`${label} isn't on the map, so distance can't be checked${acc}${stale}`};
+  const d = kmBetween(f, {lat, lng}), lim = nearLimitKm(f);
+  if(d <= lim) return {k:"ok", head:`You're at ${label} ✓`, sub:`${fmtDist(d)} away${acc}${stale}`};
+  return {k:"travel", head:`${fmtDist(d)} from ${label}`, sub:`Location on ✓${acc}${stale}`};
+}
+function liveLocPaint(){
+  document.querySelectorAll("[data-liveloc]").forEach(el => {
+    const v = liveLocState({lat:el.dataset.lat, lng:el.dataset.lng}, el.dataset.label), body = el.querySelector(".ll-body"), help = el.querySelector(".ll-help");
+    const html = liveLocInner(v);
+    const cls = "loc ll-body " + v.k;
+    if(body.className !== cls) body.className = cls;
+    if(body.innerHTML !== html) body.innerHTML = html;
+    if(help.hidden !== !v.help) help.hidden = !v.help;
+  });
+}
+function liveLocSync(){
+  const any = !!document.querySelector("[data-liveloc]");
+  if(any && !document.hidden) liveLocStart(); else liveLocStop();
+  if(any) liveLocPaint();
+}
+setInterval(liveLocSync, 2000);
+document.addEventListener("visibilitychange", liveLocSync);
 
 /* ================= photos through the relay ================= */
 const PHOTO_MAX_AGE_MS = 10*60*1000, PHOTO_MAX_PX = 1280, RELAY_TRIES = 3;
@@ -939,7 +1021,7 @@ function stopCard(s, idx, opts){
     ${mine && state.ui.editPlaceFrom !== "settings" && state.ui.editPlace && state.ui.editPlace === (s.place && s.place.kind === "place" ? "place:" + s.place.id : "stop:" + s.id) ? editPlaceForm(state.ui.editPlace, s.place.kind === "place" ? (state.places[s.place.id] || s.place) : s.place) : ""}`;
   let body = "";
   if(!s.arriveAt){
-    body = `<div class="stop-body">${jobPreview(s)}${mine ? `<button class="btn primary big" data-arrive="${s.id}">Arrive at ${esc(stopLabel(s))}</button>` : ""}</div>`;
+    body = `<div class="stop-body">${jobPreview(s)}${mine ? `<button class="btn primary big" data-arrive="${s.id}">Arrive at ${esc(stopLabel(s))}</button>${liveLocHtml(placeOf(s), stopLabel(s))}` : ""}</div>`;
   } else if(active){
     const open = js.filter(jobOpen).length, run = runningJob(s.tech);
     const confirm = state.ui.confirmLeave === s.id;
