@@ -3150,38 +3150,58 @@ function vacMapSvg(card){
   vacMap.svgs[card] = out;
   return out;
 }
-// The card's drawing with only the next photo's badge and arrow at full
-// strength; the other photo points fade back. Badges are matched to their
+// The card's drawing with every photo point still readable: the NEXT one at
+// full strength with a yellow ring, ones still to come clearly visible, and
+// ones already taken dimmed with a green tick. Badges are matched to their
 // arrows by colour, which is how the card itself pairs them.
-function vacMapHtml(card, nextId){
-  const k = card + "|" + (nextId || "");
+function vacMapHtml(card, nextId, doneIds){
+  doneIds = doneIds || [];
+  const k = card + "|" + (nextId || "") + "|" + doneIds.join(",");
   if(k in vacMap.marked) return vacMap.marked[k];
   const src = vacMapSvg(card); if(!src){ return ""; }
   const svg = src.cloneNode(true);
   svg.classList.add("photos-on");
   svg.removeAttribute("width"); svg.removeAttribute("height");
   const layer = svg.querySelector(".photo-layer");
-  if(layer && nextId){
-    const texts = Array.from(layer.querySelectorAll("text"));
-    const isEnd = /^E/.test(nextId);
-    const t = texts.find(x => { const v = x.textContent.replace(/\s/g, ""); return v === nextId || (isEnd && /^E\d/.test(v)); });
-    const badge = t && t.previousElementSibling;
-    const col = badge && (badge.getAttribute("fill") || "").toLowerCase();
-    Array.from(layer.children).forEach(el => {
-      const c = ((el.getAttribute("fill") || "") + "|" + (el.getAttribute("stroke") || "")).toLowerCase();
-      const mine = el === badge || el === t || (!isEnd && col && c.includes(col) && el.tagName.toLowerCase() !== "rect" && el.tagName.toLowerCase() !== "text");
-      if(!mine) el.setAttribute("opacity", "0.18");
-      else if(el.tagName.toLowerCase() === "path") el.setAttribute("opacity", "0.75");
+  if(layer){
+    const NS = "http://www.w3.org/2000/svg";
+    const idOf = t => t.textContent.replace(/\s/g, "");
+    // colour -> the ids that badge stands for ("E1–3" covers E1, E2, E3)
+    const badges = Array.from(layer.querySelectorAll("text")).map(t => {
+      const label = idOf(t), rect = t.previousElementSibling;
+      const m = label.match(/^([PE])(\d+)(?:[–-](\d+))?$/);
+      const ids = m ? Array.from({length:(m[3] ? +m[3] : +m[2]) - +m[2] + 1}, (_, i) => m[1] + (+m[2] + i)) : [label];
+      return {t, rect, ids, col:((rect && rect.getAttribute("fill")) || "").toLowerCase()};
     });
-    if(badge){
-      const ring = badge.cloneNode(false);
-      ["x","y","width","height"].forEach(a => { const v = parseFloat(badge.getAttribute(a)); ring.setAttribute(a, a === "x" || a === "y" ? v - 5 : v + 10); });
-      ring.setAttribute("rx", (parseFloat(badge.getAttribute("rx")) || 9) + 5);
-      ring.setAttribute("fill", "none"); ring.setAttribute("stroke", "#FFD23F"); ring.setAttribute("stroke-width", "4"); ring.removeAttribute("opacity");
-      ring.setAttribute("class", "vm-ring");
-      layer.appendChild(ring);
-      layer.appendChild(badge); layer.appendChild(t);   // keep the badge on top of its ring
-    }
+    const stateOf = b => b.ids.includes(nextId) ? "next" : (b.ids.every(id => doneIds.includes(id)) ? "done" : "todo");
+    const byCol = {}; badges.forEach(b => { if(b.col) byCol[b.col] = b; });
+    const fade = {next:1, todo:0.8, done:0.3};
+    Array.from(layer.children).forEach(el => {
+      const tag = el.tagName.toLowerCase();
+      let b = badges.find(x => x.t === el || x.rect === el);
+      if(!b){ const c = ((el.getAttribute("fill") || "") + "|" + (el.getAttribute("stroke") || "")).toLowerCase(); b = Object.values(byCol).find(x => x.col && c.includes(x.col)); }
+      if(!b) return;
+      const st = nextId ? stateOf(b) : "done";
+      const base = parseFloat(el.getAttribute("opacity") || "1");
+      if(st === "next" && tag === "path") el.setAttribute("opacity", "0.8");
+      else if(st !== "next") el.setAttribute("opacity", String(Math.round(base * fade[st] * 100) / 100));
+    });
+    badges.forEach(b => {
+      if(!b.rect) return;
+      const st = nextId ? stateOf(b) : "done";
+      const x = parseFloat(b.rect.getAttribute("x")), y = parseFloat(b.rect.getAttribute("y")), w = parseFloat(b.rect.getAttribute("width")), h = parseFloat(b.rect.getAttribute("height"));
+      if(st === "next"){
+        const ring = document.createElementNS(NS, "rect");
+        [["x", x - 5], ["y", y - 5], ["width", w + 10], ["height", h + 10], ["rx", (parseFloat(b.rect.getAttribute("rx")) || 9) + 5],
+         ["fill", "none"], ["stroke", "#FFD23F"], ["stroke-width", "4"], ["class", "vm-ring"]].forEach(([a, v]) => ring.setAttribute(a, v));
+        layer.appendChild(ring); layer.appendChild(b.rect); layer.appendChild(b.t);
+      } else if(st === "done"){
+        const tick = document.createElementNS(NS, "g");
+        tick.setAttribute("class", "vm-tick");
+        tick.innerHTML = `<circle cx="${x + w}" cy="${y}" r="7" fill="#256B4C" stroke="#fff" stroke-width="1.5"/><path d="M${x + w - 3.2} ${y} l2.2 2.4 l4 -4.6" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+        layer.appendChild(tick);
+      }
+    });
   }
   // The card hides its photo layer unless .photos-on is set by its own CSS;
   // here there is no such rule, so it simply shows.
@@ -3339,7 +3359,7 @@ function vacuumPanel(s, t){
   return `<div class="wt" data-vacpanel="${key}">
     <div class="wt-head"><span class="wt-title">Manual vacuum · ${esc(poolKey)} · photo proof</span></div>
     <p class="note" style="margin:0">Take each photo in order, from where the route card shows it. The time is printed on every photo.${card}${first ? ` First photo ${clockOf(first)} — ${liveDur(first)} so far.` : ""}</p>
-    ${(() => { vacMapLoad(); const m = spec.card ? vacMapHtml(spec.card, next && next.id) : ""; const p = next && spec.list.find(x => x.id === next.id);
+    ${(() => { vacMapLoad(); const m = spec.card ? vacMapHtml(spec.card, next && next.id, spec.list.filter(x => ["done","queued","failed"].includes(vacSlotState(key, t, x.id))).map(x => x.id)) : ""; const p = next && spec.list.find(x => x.id === next.id);
       if(m && vacMap.hidden) return `<button type="button" class="btn sm vac-map-show" data-vacmaptoggle>🗺️ Show route map${p ? ` · next ${esc(p.id)}` : ""}</button>`;
       return m ? `<figure class="vac-map" data-vacmap="${esc(spec.card)}"><button type="button" class="vac-map-hide" data-vacmaptoggle aria-label="Hide route map">Hide map ✕</button>${m}<figcaption>${p ? `<b>Next: ${esc(p.id)} · ${esc(p.label)}</b> — ${p.when === "end" ? "a close-up, taken at the ringed badge." : "stand at the ringed badge and point the camera along its arrow."}` : "All photos taken."}</figcaption></figure>`
                : (spec.card && !vacMap.tried ? `<p class="note" style="margin:0" data-vacmap="${esc(spec.card)}">Loading the route card…</p>` : ""); })()}
