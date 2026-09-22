@@ -3265,6 +3265,14 @@ const VAC_PHOTOS = {
     {id:"E3", when:"end", label:"Vacuum valve closed", hint:"Close-up of the valve handle in the closed position."},
     {id:"E4", when:"end", label:"Vacuum port closed", hint:"Close-up of the port with the cover on."}
   ]},
+  // DR -- hose goes on the skimmer port; no vacuum valve here.
+  DR: {card:"DR", normalMin:null, list:[
+    {id:"P1", when:"start", label:"Set-up", hint:"Hose, vacuum head and telescopic pole connected at the skimmer port. Stand at the start and look up at the port."},
+    {id:"P2", when:"start", label:"Corner 1 – right side, deep half", hint:"Stand on the right deck. Look left along the deep half of the pool."},
+    {id:"P3", when:"start", label:"Corner 2 – top left, shallow half", hint:"Stand at the left end of the top deck. Look right across the shallow half."},
+    {id:"E1", when:"end", label:"Skimmer cover put back", hint:"Close-up of the skimmer with its cover back on."},
+    {id:"E2", when:"end", label:"Vacuum head, pipe and telescopic pole kept", hint:"Vacuum head, pipe and telescopic pole put back in storage."}
+  ]},
   // JE Indoor Pool 1 -- hose goes on the skimmer port, not a vacuum port.
   JEIP1: {card:"JEIP1", normalMin:null, list:[
     {id:"P1", when:"start", label:"Set-up", hint:"Hose, vacuum head and telescopic pole connected at the skimmer port, left side."},
