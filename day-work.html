@@ -860,6 +860,38 @@ async function submitAddStop(scope, tech){
   ["pick","name","postal","addr","kind","note","save"].forEach(f => delete state.ui.keep[key+"."+f]);
   state.ui.addStop = null; render();
 }
+// Fix a place after the fact -- a postal code left out, a wrong name. A saved
+// place is corrected everywhere it is used; a one-off place only on its stop.
+function editPlaceForm(key, p){
+  const k = "ep."+key; const cur = f => state.ui.keep[k+"."+f] !== undefined ? state.ui.keep[k+"."+f] : (p[f] || "");
+  return `<div class="addbox">
+    <label class="f">Place name<input type="text" ${kv(k+".name")} value="${esc(cur("name"))}"></label>
+    <div class="row-2"><label class="f">Postal code<input type="text" inputmode="numeric" ${kv(k+".postal", 'placeholder="6 digits"')} value="${esc(cur("postal"))}"></label>
+      <label class="f">Type<select ${kv(k+".kind")}>${PLACE_KINDS.map(x => `<option ${cur("kind") === x ? "selected" : ""}>${x}</option>`).join("")}</select></label></div>
+    <label class="f">Address (optional)<input type="text" ${kv(k+".addr")} value="${esc(cur("addr"))}"></label>
+    <div class="row-2"><button class="btn sm primary" data-editplacesave="${esc(key)}">Save &amp; find on map</button><button class="btn sm" data-editplacecancel>Cancel</button></div>
+  </div>`;
+}
+async function submitEditPlace(key){
+  const k = "ep."+key; const [what, id] = key.split(":");
+  const src = what === "place" ? state.places[id] : (state.stops[id] && state.stops[id].place); if(!src) return;
+  const get = f => state.ui.keep[k+"."+f] !== undefined ? state.ui.keep[k+"."+f] : (src[f] || "");
+  const p = {name:String(get("name")).trim(), postal:String(get("postal")).trim() || null, addr:String(get("addr")).trim() || null, kind:get("kind") || src.kind || "Other"};
+  if(!p.name){ flash("Give the place a name."); return; }
+  flash("Finding it on the map…");
+  const pt = await geocodePlace(p);
+  if(pt){ p.lat = pt.lat; p.lng = pt.lng; if(!p.addr && pt.addr) p.addr = pt.addr; }
+  else { p.lat = null; p.lng = null; }
+  ["name","postal","addr","kind"].forEach(f => delete state.ui.keep[k+"."+f]); state.ui.editPlace = null;
+  if(what === "place"){
+    save("day_places/"+id, p);
+    const patch = {name:p.name, addr:p.addr, lat:p.lat, lng:p.lng};
+    [state.stops, state.prevStops].forEach(bag => Object.values(bag).forEach(s => { if(s.place && s.place.kind === "place" && s.place.id === id) save("day_stops/"+s.id, {place:patch}); }));
+  } else {
+    save("day_stops/"+id, {place:{name:p.name, addr:p.addr, lat:p.lat, lng:p.lng}});
+  }
+  flash(pt ? "Found it — location checks and Directions now work here." : "Saved, but still not found on the map — check the postal code.");
+}
 function submitAddJob(stopId){
   const key = "aj."+stopId; const type = keep(key+".type") || "other";
   const urgent = !!keep(key+".urgent") && isPlanner() && state.date === todayKey();
@@ -880,7 +912,8 @@ function stopCard(s, idx, opts){
   const dir = dirLink(s.place || {});
   const head = `<div class="stop-head"><span class="stop-name">${esc(stopLabel(s))}</span>${s.urgent ? `<span class="tag urg">Urgent</span>` : ""}${s.place && s.place.kind === "outlet" ? `<span class="tag type">Outlet</span>` : ""}
       <span class="stop-times mono">${s.arriveAt ? `in ${clockOf(s.arriveAt)}` : ""}${s.departAt ? ` · out ${clockOf(s.departAt)} · ${dur(mins(s.arriveAt, s.departAt))}` : (active ? ` · ${liveDur(s.arriveAt)} here` : "")}</span></div>
-    <div class="stop-addr">${s.place && s.place.addr ? esc(s.place.addr) + " · " : ""}${dir ? `<a href="${esc(dir)}" target="_blank" rel="noopener">Directions</a>` : ""}${s.note ? `<br>📝 ${esc(s.note)}` : ""}</div>`;
+    <div class="stop-addr">${s.place && s.place.addr ? esc(s.place.addr) + " · " : ""}${dir ? `<a href="${esc(dir)}" target="_blank" rel="noopener">Directions</a>` : ""}${s.place && s.place.lat == null && mine && !s.arriveAt ? ` <span class="dev">⚠ not on the map</span> · <button class="link" data-editplace="${s.place.kind === "place" ? "place:" + esc(s.place.id) : "stop:" + s.id}" style="padding:0;font-size:13px">Add postal code</button>` : ""}${s.note ? `<br>📝 ${esc(s.note)}` : ""}</div>
+    ${mine && state.ui.editPlaceFrom !== "settings" && state.ui.editPlace && state.ui.editPlace === (s.place && s.place.kind === "place" ? "place:" + s.place.id : "stop:" + s.id) ? editPlaceForm(state.ui.editPlace, s.place.kind === "place" ? (state.places[s.place.id] || s.place) : s.place) : ""}`;
   let body = "";
   if(!s.arriveAt){
     body = `<div class="stop-body">${jobPreview(s)}${mine ? `<button class="btn primary big" data-arrive="${s.id}">Arrive at ${esc(stopLabel(s))}</button>` : ""}</div>`;
@@ -972,8 +1005,9 @@ function planStopCard(s, i){
   return `<div class="stop ${s.urgent ? "is-urgent" : ""} ${s.departAt ? "is-done" : (s.arriveAt ? "is-active" : "")}"><span class="idx">${i}</span>
     <div class="stop-head"><span class="stop-name">${esc(stopLabel(s))}</span>${s.urgent ? `<span class="tag urg">Urgent</span>` : ""}
       <span class="stop-times mono">${s.arriveAt ? `in ${clockOf(s.arriveAt)}` : ""}${s.departAt ? ` · out ${clockOf(s.departAt)}` : ""}</span></div>
-    <div class="stop-addr">${s.place && s.place.addr ? esc(s.place.addr) : ""}${s.note ? `<br>📝 ${esc(s.note)}` : ""}</div>
+    <div class="stop-addr">${s.place && s.place.addr ? esc(s.place.addr) : ""}${s.place && s.place.lat == null ? ` <span class="dev">⚠ not on the map</span>` : ""}${s.place && s.place.kind !== "outlet" ? ` · <button class="link" data-editplace="${s.place.kind === "place" ? "place:" + esc(s.place.id) : "stop:" + s.id}" style="padding:0;font-size:13px">Edit place</button>` : ""}${s.note ? `<br>📝 ${esc(s.note)}` : ""}</div>
     <div class="stop-body">
+      ${state.ui.editPlaceFrom !== "settings" && state.ui.editPlace === (s.place && s.place.kind === "place" ? "place:" + s.place.id : "stop:" + s.id) ? editPlaceForm(state.ui.editPlace, s.place.kind === "place" ? (state.places[s.place.id] || s.place) : s.place) : ""}
       ${js.length ? js.map(j => `<div class="plan-job"><div class="pj-main"><b>${esc(j.title)}</b><div class="task-meta">${typeTag(j)}${urgentTag(j)}${carriedTag(j)}${j.doneAt ? `<span class="tag st-done">Done ${clockOf(j.doneAt)}</span>` : j.skipped ? `<span class="tag st-skip">Couldn't do</span>` : j.startedAt ? `<span class="tag st-prog">In progress</span>` : ""}</div>${j.note ? `<div class="task-note">${esc(j.note)}</div>` : ""}${j.urgent && j.notified ? `<div class="note" style="font-size:12.5px">${j.notified.ok ? "✓ Telegram sent " + clockOf(j.notified.at) : "Telegram not sent — " + esc(j.notified.err || "")} ${j.notified.ok ? "" : `<button class="link" data-renotify="${j.id}" style="font-size:12.5px;padding:0">send again</button>`}</div>` : ""}</div>
         <div class="pj-acts">${!j.startedAt ? `<button class="btn sm" data-rmjob="${j.id}" title="Remove">✕</button>` : ""}</div></div>`).join("") : `<p class="note" style="margin:0">No jobs here yet.</p>`}
       ${addJobBox(s.id)}
@@ -994,7 +1028,7 @@ function viewPlan(){
     ${settingsOpen ? `<span class="eyebrow">Who may plan</span><div class="sugg">${state.roster.map(n => `<button type="button" data-planner="${esc(n)}" aria-pressed="${state.planners.includes(n)}">${esc(n)}</button>`).join("")}</div>
       <p class="note" style="margin:0">Names come from the tracker's roster. With nobody selected, anyone can plan.</p>
       <span class="eyebrow" style="margin-top:6px">Saved places</span>
-      ${Object.values(state.places).length ? Object.values(state.places).sort((a,b) => String(a.name).localeCompare(String(b.name))).map(p => `<div class="plan-job"><div class="pj-main"><b>${esc(p.name)}</b> <span class="muted">· ${esc(p.kind || "")}${p.addr ? " · " + esc(p.addr) : ""}${p.lat == null ? ' · <span class="dev">not on map</span>' : ""}</span></div><div class="pj-acts">${p.lat == null ? `<button class="btn sm" data-regeo="${p.id}">Find on map</button>` : ""}<button class="btn sm" data-rmplace="${p.id}">✕</button></div></div>`).join("") : `<p class="note" style="margin:0">None yet — they're saved when you add a new place to a stop.</p>`}
+      ${Object.values(state.places).length ? Object.values(state.places).sort((a,b) => String(a.name).localeCompare(String(b.name))).map(p => `<div class="plan-job"><div class="pj-main"><b>${esc(p.name)}</b> <span class="muted">· ${esc(p.kind || "")}${p.addr ? " · " + esc(p.addr) : ""}${p.lat == null ? ' · <span class="dev">not on map</span>' : ""}</span></div><div class="pj-acts"><button class="btn sm" data-editplace="place:${p.id}" data-from="settings">Edit</button><button class="btn sm" data-rmplace="${p.id}">✕</button></div></div>${state.ui.editPlace === "place:"+p.id && state.ui.editPlaceFrom === "settings" ? editPlaceForm("place:"+p.id, p) : ""}`).join("") : `<p class="note" style="margin:0">None yet — they're saved when you add a new place to a stop.</p>`}
       <p class="note" style="margin:0">Photo relay: ${relayCfg() ? "set ✓ (shared with the tracker)" : `<span class="dev">not set</span> — set it in the tracker's Task Setting → Photo proof; proof photos and Telegram need it.`}</p>` : ""}</div>`;
   return `<div class="stack">${dateBar}${setupBanner}${pills}
     ${state.planTech ? `<div class="sec-head"><h2 class="sec">${esc(state.planTech)}'s day</h2><span class="muted">${list.length ? list.length + " stop" + (list.length>1?"s":"") : "nothing planned yet"}</span></div>
@@ -1059,6 +1093,9 @@ function wire(){
   each("[data-togglesettings]", () => { state.ui.settings = !state.ui.settings; render(); });
   each("[data-planner]", b => { const n = b.dataset.planner; const list = state.planners.includes(n) ? state.planners.filter(x => x !== n) : state.planners.concat([n]); save("day_config/settings", {planners:list}); });
   each("[data-rmplace]", b => remove("day_places/"+b.dataset.rmplace));
+  each("[data-editplace]", b => { state.ui.editPlace = b.dataset.editplace; state.ui.editPlaceFrom = b.dataset.from || "stop"; render(); });
+  each("[data-editplacecancel]", () => { const k = "ep."+state.ui.editPlace; ["name","postal","addr","kind"].forEach(f => delete state.ui.keep[k+"."+f]); state.ui.editPlace = null; render(); });
+  each("[data-editplacesave]", b => submitEditPlace(b.dataset.editplacesave));
   each("[data-regeo]", async b => { const p = state.places[b.dataset.regeo]; if(!p) return; flash("Looking it up…"); const pt = await geocodePlace(p); if(pt) save("day_places/"+p.id, {lat:pt.lat, lng:pt.lng, addr:p.addr || pt.addr || null}); else flash("Still can't find it — add a postal code or address."); });
   each("[data-proofbtn]", b => { const i = document.querySelector(`[data-proofin="${b.dataset.proofbtn}"]`); if(i){ i.value = ""; i.click(); } });
   document.querySelectorAll("[data-proofin]").forEach(i => i.addEventListener("change", () => { const f = i.files && i.files[0]; const [jid, sid] = i.dataset.proofin.split("|"); if(f) onProofPicked(jid, sid, f); }));
