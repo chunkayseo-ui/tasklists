@@ -473,6 +473,8 @@ details.panel[open] summary::after{content:"▴"}
 .wt-photo .ph-status.ok{color:var(--ok);font-weight:600}
 .wt-photo .ph-status.err{color:var(--warn);font-weight:600}
 .wt-photo .ph-actions{display:flex;gap:8px;flex-wrap:wrap}
+.vac-pb{display:inline-block;font:700 11px/1.35 "IBM Plex Mono",monospace;color:#fff;border-radius:9px;padding:2px 7px;margin-right:7px;vertical-align:1px;letter-spacing:.02em}
+.wt-photo .ph-status.ok .vac-pb{font-weight:700}
 .wt-src{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-3)}
 .wt-src.photo{color:var(--ok)}
 .jug-row{display:flex;align-items:center;gap:10px}
@@ -3111,7 +3113,7 @@ function vacMapLoad(){
     .then(r => r.ok ? r.text() : null)
     .then(t => {
       if(t && t.includes('class="card"') && t !== vacMap.html){
-        vacMap.html = t; vacMap.svgs = {}; vacMap.marked = {};
+        vacMap.html = t; vacMap.svgs = {}; vacMap.marked = {}; vacMap.cols = {};
         try{ localStorage.setItem(VACMAP_KEY, JSON.stringify({html:t, at:Date.now()})); }catch(e){}
         if(document.querySelector("[data-vacmap]")) renderKeepingForm();
       }
@@ -3331,6 +3333,24 @@ async function attachVacPhoto(code, tid, id, rec){
   }, "Couldn't save that photo onto the job. Try again.");
   if(patch) syncTaskToOtherRounds(code, task, patch);
 }
+// Photo badge colours, matched to the route card's own labels.
+const VAC_BADGE_FALLBACK = {P1:"#0B6E61", P2:"#F59E0B", P3:"#DC2626", P4:"#16A34A", P5:"#4F46E5", P6:"#DB2777", E:"#0F2430"};
+function vacBadgeColors(card){
+  vacMap.cols = vacMap.cols || {};
+  if(card && vacMap.cols[card]) return vacMap.cols[card];
+  const out = {}, src = card ? vacMapSvg(card) : null;
+  if(src) src.querySelectorAll(".photo-layer text").forEach(t => {
+    const m = t.textContent.replace(/\s/g, "").match(/^([PE])(\d+)(?:[–-](\d+))?$/), rect = t.previousElementSibling, col = rect && rect.getAttribute("fill");
+    if(!m || !col) return;
+    for(let i = +m[2]; i <= (m[3] ? +m[3] : +m[2]); i++) out[m[1] + i] = col;
+  });
+  if(src && card) vacMap.cols[card] = out;
+  return out;
+}
+function vacBadge(card, id){
+  const col = vacBadgeColors(card)[id] || VAC_BADGE_FALLBACK[id] || (id[0] === "E" ? VAC_BADGE_FALLBACK.E : "#5A6B78");
+  return `<span class="vac-pb" style="background:${esc(col)}">${esc(id)}</span>`;
+}
 function vacuumPanel(s, t){
   const key = s.outlet+"|"+t.id, spec = vacSpec(s.outlet, t), poolKey = dosingKeyFor(s.outlet, t.pool);
   const next = vacNext(key, t, spec), first = vacTime(key, t, spec.list[0].id);
@@ -3341,16 +3361,17 @@ function vacuumPanel(s, t){
       : (saved && saved.fileId) ? `<img src="${driveImg(saved.fileId, 200)}" alt="" loading="lazy">`
       : `<div class="ph-empty" aria-hidden="true">📷</div>`;
     let status, actions = "";
-    if(st === "done") status = `<span class="ph-status ok">${p.id} · ${esc(p.label)} · ${clockOf(at)}</span>`;
-    else if(st === "queued") status = `<span class="ph-status ok">${p.id} · taken ${clockOf(at)}, uploads later</span>`;
-    else if(st === "preparing" || st === "uploading") status = `<span class="ph-status">${p.id} · ${st}…</span>`;
+    const pb = vacBadge(spec.card, p.id);
+    if(st === "done") status = `<span class="ph-status ok">${pb}${esc(p.label)} · ${clockOf(at)}</span>`;
+    else if(st === "queued") status = `<span class="ph-status ok">${pb}taken ${clockOf(at)}, uploads later</span>`;
+    else if(st === "preparing" || st === "uploading") status = `<span class="ph-status">${pb}${st}…</span>`;
     else if(st === "failed"){
-      status = `<span class="ph-status err">${p.id} · ${esc((loc && loc.error) || "Upload failed.")}</span>`;
+      status = `<span class="ph-status err">${pb}${esc((loc && loc.error) || "Upload failed.")}</span>`;
       actions = `<button class="btn sm" type="button" data-vacretry="${key}|${p.id}">Retry upload</button>`;
     } else if(isNext){
-      status = `<span class="ph-status"><b>${p.id} · ${esc(p.label)}</b><br>${esc(p.hint)}</span>`;
+      status = `<span class="ph-status">${pb}<b>${esc(p.label)}</b><br>${esc(p.hint)}</span>`;
       actions = `<button class="btn sm primary" type="button" data-vacbtn="${key}|${p.id}">📷 Take ${p.id}</button><input type="file" accept="image/*" capture="environment" hidden data-vacin="${key}|${p.id}">`;
-    } else status = `<span class="ph-status" style="color:var(--ink-3)">${p.id} · ${esc(p.label)}</span>`;
+    } else status = `<span class="ph-status" style="color:var(--ink-3)">${pb}${esc(p.label)}</span>`;
     return `<div class="wt-photo${st === "todo" && !isNext ? "" : " has"}">${img}<div class="ph-main">${status}<div class="ph-actions">${actions}</div></div></div>`;
   };
   const group = (when, title) => `<span class="wt-lbl" style="margin-top:4px">${title}</span>${spec.list.filter(p => p.when === when).map(slotHtml).join("")}`;
