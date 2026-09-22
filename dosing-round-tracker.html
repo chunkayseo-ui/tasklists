@@ -641,7 +641,7 @@ function normalizeAssigned(assigned){
 function assignedFor(outlet, dayIdx){
   return ((state.cfg.assigned[outlet] || {})[dayIdx]) || [];
 }
-const SUGGESTIONS = ["Fix door","Soap dispenser","Replace light","Clear drain","Top up chemicals","Report to office"];
+const SUGGESTIONS = ["Manual vacuum","Fix door","Soap dispenser","Replace light","Clear drain","Top up chemicals","Report to office"];
 
 /* ================= helpers ================= */
 const $ = s => document.querySelector(s);
@@ -1860,7 +1860,28 @@ function undoTask(code, tid){
 // Reuses syncExtraToLiveRounds, which already does exactly this: push into
 // any other round already open for this outlet today that hasn't departed,
 // matched by name+kind so it's never duplicated.
-function addTask(code, name, photos){
+// Adding a vacuum job at an outlet with several pools (JE): the photo list
+// depends on the pool, so take it from the name ("vacuum JEIP1") or ask.
+function tryAddTask(code, name, photos){
+  const n = (name || "").trim(); if(!n) return;
+  const pools = (OUTLETS.find(o => o.code === code) || {}).pools;
+  if(pools && isVacuumTask({name:n})){
+    const hit = pools.find(p => new RegExp("\\b" + p + "\\b", "i").test(n));
+    if(!hit){ state.askPool = {code, name:n, photos:photos || []}; render(); return; }
+    return addTask(code, n, photos, hit);
+  }
+  addTask(code, n, photos);
+}
+function askPoolHtml(code){
+  const a = state.askPool; if(!a || a.code !== code) return "";
+  const pools = (OUTLETS.find(o => o.code === code) || {}).pools || [];
+  return `<div class="addbox" data-askpool="${esc(code)}">
+    <p class="note" style="margin:0"><strong>Which pool is “${esc(a.name)}” for?</strong> Each pool has its own vacuum photos.</p>
+    <div class="sugg">${pools.map(p => `<button data-addpool="${esc(p)}">${esc(p)}</button>`).join("")}</div>
+    <button class="btn sm" data-askpoolcancel="1" style="align-self:flex-start">Cancel</button>
+  </div>`;
+}
+function addTask(code, name, photos, pool){
   const n = (name||"").trim(); if(!n) return;
   state.adding = null;
   const pics = (photos || []).filter(x => x && x.fileId);
@@ -1870,9 +1891,9 @@ function addTask(code, name, photos){
   const addedBy = state.me || null;
   withRound(r => {
     const s = r.stops.find(x=>x.outlet===code); if(!s) return false;
-    s.tasks.push(Object.assign({id:uid(), name:n, kind:"adhoc", startedAt:null, doneAt:null, claimedBy:null, addedBy}, pics.length ? {photos:pics} : {}));
+    s.tasks.push(Object.assign({id:uid(), name:n, kind:"adhoc", startedAt:null, doneAt:null, claimedBy:null, addedBy}, pool ? {pool} : {}, pics.length ? {photos:pics} : {}));
   }, "Couldn't add that job. Try again.").then(() => {
-    syncExtraToLiveRounds(code, Object.assign({name:n, kind:"adhoc", addedBy}, pics.length ? {photos:pics} : {}), "add");
+    syncExtraToLiveRounds(code, Object.assign({name:n, kind:"adhoc", addedBy}, pool ? {pool} : {}, pics.length ? {photos:pics} : {}), "add");
   });
 }
 function removeTask(code, tid){
@@ -3283,7 +3304,9 @@ const VAC_PHOTOS = {
     {id:"E3", when:"end", label:"Vacuum valve closed", hint:"Close-up of the valve handle in the closed position."}
   ]}
 };
-const isVacuumTask = t => /vacuum/i.test((t && t.name) || "");
+// Any job whose name reads as a vacuum -- including the usual misspellings
+// ("vaccum", "vacum") and the Malay "vakum" -- gets the photo-proof panel.
+const isVacuumTask = t => /va+c+u+u?m|\bvac\b|vakum/i.test((t && t.name) || "");
 const vacSpecFor = (code, t) => (t && isVacuumTask(t)) ? (VAC_PHOTOS[dosingKeyFor(code, t.pool)] || null) : null;
 const vacSpec = (code, t) => relayCfg() ? vacSpecFor(code, t) : null;
 state.vac = state.vac || {};
@@ -3931,7 +3954,7 @@ function stopCard(s, i, r, isHeading){
       body = `<div class="stop-body">
         ${customStopNote(s)}
         ${s.tasks.length ? `<div class="tasks">${taskListHtml(s)}</div>` : ""}
-        ${adding ? `
+        ${adding ? askPoolHtml(s.outlet) || `
         <div class="addbox">
           <input type="text" id="newtask" placeholder="What did you do here?" autocomplete="off">
           <div class="sugg">${SUGGESTIONS.map(x=>`<button data-sugg="${esc(x)}">${esc(x)}</button>`).join("")}</div>
@@ -4025,7 +4048,7 @@ function stopCard(s, i, r, isHeading){
     body = `<div class="stop-body">
       <div class="tasks">${taskListHtml(s)}</div>
       ${state.quickForm === s.outlet ? quickFormHtml(s.outlet, s.outlet, "data-quicksave") : ""}
-      ${adding ? `
+      ${adding ? askPoolHtml(s.outlet) || `
       <div class="addbox">
         <input type="text" id="newtask" placeholder="What else did you do here?" autocomplete="off">
         <div class="sugg">${SUGGESTIONS.map(x=>`<button data-sugg="${esc(x)}">${esc(x)}</button>`).join("")}</div>
@@ -5292,10 +5315,12 @@ function wire(){
   each("[data-fpretry]", b => { const [scope, pid] = b.dataset.fpretry.split(/\|(?=[^|]*$)/); const ph = fpList(scope).find(x => x.id === pid); if(!ph || !ph.base64) return; ph.status = "uploading"; renderKeepingForm(); uploadFormPhoto(scope, ph, fpMeta(scope)); });
   each("[data-fprm]", b => { const [scope, pid] = b.dataset.fprm.split(/\|(?=[^|]*$)/); state.fp[scope] = fpList(scope).filter(x => x.id !== pid); state.fp[scope].forEach((x, i) => x.n = i+1); renderKeepingForm(); });
   each("[data-sugg]",   b => { const i=$("#newtask"); if(i){ i.value = b.dataset.sugg; i.focus(); } });
-  each("[data-addtask]",b => { const i=$("#newtask"); const scope = "job|"+b.dataset.addtask; if(fpBusy(scope)) return; addTask(b.dataset.addtask, i ? i.value : "", fpDone(scope)); delete state.fp[scope]; });
+  each("[data-addtask]",b => { const i=$("#newtask"); const scope = "job|"+b.dataset.addtask; if(fpBusy(scope)) return; tryAddTask(b.dataset.addtask, i ? i.value : "", fpDone(scope)); delete state.fp[scope]; });
+  each("[data-addpool]", b => { const a = state.askPool; if(!a) return; state.askPool = null; addTask(a.code, a.name, a.photos, b.dataset.addpool); });
+  on("[data-askpoolcancel]", () => { state.askPool = null; render(); });
   const nt = $("#newtask");
   if(nt) nt.addEventListener("keydown", e => {
-    if(e.key === "Enter"){ const b = document.querySelector("[data-addtask]"); if(b) addTask(b.dataset.addtask, nt.value); }
+    if(e.key === "Enter"){ const b = document.querySelector("[data-addtask]"); if(b) tryAddTask(b.dataset.addtask, nt.value); }
   });
 
   // Water test panel: every chip tap lands in state.wt (never only in the
