@@ -172,9 +172,13 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 
 /* route */
 .route{display:flex;flex-direction:column;gap:8px}
-.stop{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:13px 14px 13px 50px}
-.stop .idx{position:absolute;left:13px;top:13px;width:25px;height:25px;border-radius:50%;display:grid;place-items:center;
-  font:600 12px/1 "IBM Plex Mono",monospace;background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
+/* No left gutter: technicians are on phones, and the 50px column that only
+   held the sequence bubble was the most expensive space on the card. The
+   number / tick / arrow now sits inline beside the outlet name. */
+.stop{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:13px 14px}
+.stop .idx{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;flex:none;
+  font:600 11.5px/1 "IBM Plex Mono",monospace;background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
+.stop .idx:empty{display:none}
 .stop.is-done{background:var(--surface-2)}
 .stop.is-done .idx{background:var(--ok-soft);color:var(--ok);border-color:transparent}
 .stop.is-active{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft),var(--shadow)}
@@ -210,7 +214,7 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 .ll-help div{margin-top:6px}
 .crew-locs{display:flex;flex-direction:column;gap:6px}
 .crew-locs .loc{padding:7px 10px;font-size:13px}
-.travel-gap{display:flex;align-items:center;gap:8px;padding:2px 0 2px 50px;font:500 13px/1 "IBM Plex Mono",monospace;color:var(--travel)}
+.travel-gap{display:flex;align-items:center;gap:8px;padding:2px 0 2px 14px;font:500 13px/1 "IBM Plex Mono",monospace;color:var(--travel)}
 .travel-gap .ln{flex:1;height:1px;background:var(--travel);opacity:.35}
 
 /* tasks */
@@ -245,10 +249,7 @@ span.btn.act.inprogress{background:var(--warn-soft);color:var(--warn);border-col
    did never looks like something worth (or possible) to tap. */
 span.btn.act.done.locked{background:var(--surface-2);color:var(--ink-3);border-color:var(--line)}
 .task-conflict{display:block;width:100%;font-size:12px;line-height:1.4;color:var(--warn);margin-top:2px}
-.mark{width:20px;height:20px;border-radius:50%;flex:none;display:grid;place-items:center;font:600 11px/1 "IBM Plex Mono",monospace;
-  border:1px solid var(--line);background:var(--surface-2);color:var(--ink-3)}
-.task.finished .mark{background:var(--ok);border-color:var(--ok);color:#fff}
-.task.running .mark{background:var(--warn);border-color:var(--warn);color:#fff}
+.task.finished .task-name::before{content:"✓ ";color:var(--ok)}
 
 .addbox{background:var(--surface-2);border:1px dashed var(--line);border-radius:9px;padding:11px 12px;display:flex;flex-direction:column;gap:9px}
 .sugg{display:flex;gap:6px;flex-wrap:wrap}
@@ -570,9 +571,7 @@ details.panel[open] summary::after{content:"▴"}
 
 @media(max-width:520px){
   .brand h1{font-size:23px}
-  .stop{padding-left:44px}
-  .stop .idx{left:10px}
-  .travel-gap{padding-left:44px}
+  .travel-gap{padding-left:14px}
 }
 </style>
 </head>
@@ -4040,7 +4039,6 @@ function taskRow(s, t){
               : "";
 
   return `<div class="task ${running?"running":""} ${finished?"finished":""}">
-    <span class="mark">${finished?"✓":(running?"▶":"")}</span>
     <span class="task-main">
       <span class="task-name">${esc(t.name)}</span>
       <span class="task-meta">${status}${tag}${del}</span>
@@ -4286,8 +4284,8 @@ function stopCard(s, i, r, isHeading){
   // earned yet.
   const idxLabel = done ? "✓" : (i >= 0 ? i+1 : (isHeading ? "→" : ""));
   return `<div class="stop ${cls}">
-    <div class="idx mono">${idxLabel}</div>
     <div class="stop-head">
+      <span class="idx mono">${idxLabel}</span>
       <span class="stop-name">${esc(label)}</span>
       ${s.custom?'<span class="tag add">Stop</span>':""}
       ${active?'<span class="chip onsite"><span class="dot"></span>On site</span>':""}
