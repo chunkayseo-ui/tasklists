@@ -386,6 +386,12 @@ details.panel[open] summary::after{content:"▴"}
 .aj-chips{display:flex;flex-wrap:wrap;gap:6px}
 .aj-row input[type=date]{font:500 15px "IBM Plex Sans",sans-serif;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
 .tag.once.late{background:#FDECEA;color:#B42318;border-color:#F5B5AD}
+.sched summary{cursor:pointer;font-size:13.5px;color:var(--ink-2);list-style:none}
+.sched summary::before{content:"▸ ";color:var(--ink-3)}
+.sched[open] summary::before{content:"▾ "}
+.sched-t{border-collapse:collapse;margin-top:6px;font-size:13.5px}
+.sched-t th{font-family:"IBM Plex Mono",monospace;font-weight:600;text-align:left;padding:3px 10px 3px 0;color:var(--ink-3)}
+.sched-t td{padding:3px 0;color:var(--ink-2)}
 .chk input{width:16px;height:16px;accent-color:var(--accent)}
 .tog{font:500 13.5px/1 "IBM Plex Sans",sans-serif;padding:7px 11px;border-radius:999px;
   border:1px solid var(--line);background:var(--surface);color:var(--ink-2);cursor:pointer}
@@ -5134,6 +5140,17 @@ function routesView(){
 }
 
 /* ---------- config panels ---------- */
+// Which branches the night round covers on each night (Sun=0 .. Sat=6).
+// Reference only -- shown on the "Add a job" panel so a job isn't set for a
+// night when nobody visits that branch. Fri/Sat/Sun: every branch.
+const NIGHT_SCHEDULE = {
+  1:["JE","TENGAH","BK","LENTOR","HB","CC"],
+  2:["WWW","HB","CC","BK","LENTOR","JE"],
+  3:["HB","CC","TPY","JE","TENGAH"],
+  4:["HB","CC","HS","DR","JE"]
+};
+const nightBranches = dow => NIGHT_SCHEDULE[dow] || OUTLETS.map(o => o.code);
+const dowOfKey = key => { const [y,m,d] = key.split("-").map(Number); return new Date(y, m-1, d).getDay(); };
 const addJobBlank = () => ({name:"", branches:[], pool:{}, req:false, mode:"once", date:todayKey(), days:[]});
 function addJobState(){ if(!state.addJob) state.addJob = addJobBlank(); return state.addJob; }
 // "Add a job" -- one panel at the top of Task Setting, instead of a form under
@@ -5149,6 +5166,8 @@ function addJobPanel(){
   const n = a.branches.length, ready = a.name.trim() && n;
   const when = a.mode === "once"
     ? `<label class="aj-row"><span class="aj-lbl">From the night of</span><input type="date" id="aj-date" value="${esc(a.date || today)}"></label>
+       ${(() => { const d = a.date || today, dow = dowOfKey(d), on = nightBranches(dow), off = a.branches.filter(c => !on.includes(c));
+         return `<p class="note" style="margin:0">${DAYNAME_FULL[dow]} round: <strong>${NIGHT_SCHEDULE[dow] ? on.join(", ") : "all branches"}</strong>.${off.length ? ` <span class="dev">${off.join(", ")} ${off.length > 1 ? "aren't" : "isn't"} visited that night — the job waits for the next visit there.</span>` : ""}</p>`; })()}
        <p class="note" style="margin:0">${a.date && a.date > today ? `Shows on the list from <strong>${fmtDate(a.date)}</strong>` : "Shows on the list <strong>tonight</strong>"}, and stays there every night until a technician marks it done. Then it drops off by itself.</p>`
     : `<div class="aj-row"><span class="aj-lbl">Which nights</span><div class="aj-chips">${dayChips}</div></div>
        <p class="note" style="margin:0">${a.days.length ? "Only on " + a.days.map(d => DAYNAME[d]).join(", ") : "None ticked = every night"}. Stays on the list until you remove it below.</p>`;
@@ -5161,6 +5180,9 @@ function addJobPanel(){
     ${when}
     <label class="chk"><input type="checkbox" id="aj-req" ${a.req ? "checked" : ""}> Must do — the technician can't leave the outlet until it's done</label>
     <button class="btn primary" id="aj-add" ${ready ? "" : "disabled"}>${n > 1 ? `Add to ${n} branches` : n === 1 ? `Add to ${esc(a.branches[0])}` : "Add job"}</button>
+    <details class="sched"><summary>Night dosing schedule — which branches each night</summary>
+      <table class="sched-t">${[1,2,3,4,5,6,0].map(d => `<tr><th>${DAYNAME[d]}</th><td>${NIGHT_SCHEDULE[d] ? NIGHT_SCHEDULE[d].join(", ") : "All branches"}</td></tr>`).join("")}</table>
+    </details>
   </div>`;
 }
 function branchJobsList(){
