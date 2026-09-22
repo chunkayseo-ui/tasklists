@@ -459,7 +459,9 @@ details.panel[open] summary::after{content:"▴"}
 .wt-field .num span{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--ink-3);padding:0 10px;border-left:1px solid var(--line-soft)}
 .wt-field .plan{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-3)}
 .dev{color:var(--warn);font-weight:600}
-.vac-map{margin:0;background:#fff;border:1px solid var(--line);border-radius:9px;padding:6px 6px 8px}
+.vac-map{position:relative;margin:0;background:#fff;border:1px solid var(--line);border-radius:9px;padding:6px 6px 8px}
+.vac-map-hide{position:absolute;top:6px;right:6px;z-index:1;font:600 12.5px/1 "IBM Plex Sans",sans-serif;padding:7px 10px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.92);color:var(--ink-2);cursor:pointer}
+.vac-map-show{align-self:flex-start}
 .vac-map svg{display:block;width:100%;height:auto;max-height:70vh}
 .vac-map figcaption{font-size:13.5px;line-height:1.4;color:var(--ink-2);padding:6px 4px 0}
 .wt-photo{display:flex;gap:12px;align-items:center;border:1px dashed var(--line);border-radius:9px;padding:10px 12px;background:var(--surface-2)}
@@ -3093,6 +3095,14 @@ const VAC_ROUTE_URL = "https://chunkayseo-ui.github.io/dosing-app/vacuum-route-m
  * weak signal on the pool deck; it is refreshed quietly in the background. */
 const VACMAP_KEY = "drt.vaccard.v1";
 const vacMap = {html:null, loading:false, tried:false, svgs:{}, marked:{}};
+// Whether the map is folded away is remembered on the phone -- a technician
+// who knows the pool by heart hides it once and it stays hidden.
+vacMap.hidden = (() => { try{ return localStorage.getItem("drt.vacmap.hidden") === "1"; }catch(e){ return false; } })();
+function vacMapToggle(){
+  vacMap.hidden = !vacMap.hidden;
+  try{ localStorage.setItem("drt.vacmap.hidden", vacMap.hidden ? "1" : "0"); }catch(e){}
+  renderKeepingForm();
+}
 try{ const c = JSON.parse(localStorage.getItem(VACMAP_KEY) || "null"); if(c && c.html) vacMap.html = c.html; }catch(e){}
 function vacMapLoad(){
   if(vacMap.loading || vacMap.tried) return;
@@ -3330,7 +3340,8 @@ function vacuumPanel(s, t){
     <div class="wt-head"><span class="wt-title">Manual vacuum · ${esc(poolKey)} · photo proof</span></div>
     <p class="note" style="margin:0">Take each photo in order, from where the route card shows it. The time is printed on every photo.${card}${first ? ` First photo ${clockOf(first)} — ${liveDur(first)} so far.` : ""}</p>
     ${(() => { vacMapLoad(); const m = spec.card ? vacMapHtml(spec.card, next && next.id) : ""; const p = next && spec.list.find(x => x.id === next.id);
-      return m ? `<figure class="vac-map" data-vacmap="${esc(spec.card)}">${m}<figcaption>${p ? `<b>Next: ${esc(p.id)} · ${esc(p.label)}</b> — ${p.when === "end" ? "a close-up, taken at the ringed badge." : "stand at the ringed badge and point the camera along its arrow."}` : "All photos taken."}</figcaption></figure>`
+      if(m && vacMap.hidden) return `<button type="button" class="btn sm vac-map-show" data-vacmaptoggle>🗺️ Show route map${p ? ` · next ${esc(p.id)}` : ""}</button>`;
+      return m ? `<figure class="vac-map" data-vacmap="${esc(spec.card)}"><button type="button" class="vac-map-hide" data-vacmaptoggle aria-label="Hide route map">Hide map ✕</button>${m}<figcaption>${p ? `<b>Next: ${esc(p.id)} · ${esc(p.label)}</b> — ${p.when === "end" ? "a close-up, taken at the ringed badge." : "stand at the ringed badge and point the camera along its arrow."}` : "All photos taken."}</figcaption></figure>`
                : (spec.card && !vacMap.tried ? `<p class="note" style="margin:0" data-vacmap="${esc(spec.card)}">Loading the route card…</p>` : ""); })()}
     <div class="stack" style="gap:8px">${group("start", "At the start and each corner")}${group("end", "Close down")}</div>
     <button class="btn primary big" data-vacsave="${key}" ${sst.ok ? "" : "disabled"}>${esc(sst.label)}</button>
@@ -5235,6 +5246,7 @@ function wire(){
   each("[data-dmsave]", b => { const [o,t] = two(b.dataset.dmsave); finishDosing(o,t); });
   // Manual vacuum photo proof: one camera input per slot, only the next slot live.
   const splitLast = v => { const k = v.lastIndexOf("|"); return [v.slice(0, k), v.slice(k+1)]; };
+  each("[data-vacmaptoggle]", () => vacMapToggle());
   each("[data-vacbtn]", b => { const i = document.querySelector(`[data-vacin="${b.dataset.vacbtn}"]`); if(i){ i.value = ""; i.click(); } });
   document.querySelectorAll("[data-vacin]").forEach(i => i.addEventListener("change", () => { const f = i.files && i.files[0]; const [key, id] = splitLast(i.dataset.vacin); if(f) onVacPhotoPicked(key, id, f); }));
   each("[data-vacretry]", b => { const [key, id] = splitLast(b.dataset.vacretry); const ph = vacLocal(key)[id]; if(!ph || !ph.base64) return; ph.status = "uploading"; render(); uploadVacPhoto(key, id); });
