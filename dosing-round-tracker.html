@@ -359,9 +359,10 @@ details.panel[open] summary::after{content:"▴"}
 .fc-strip .fc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px}
 .fc-strip .fc-head b{font-family:"Barlow Condensed",sans-serif;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
 .fc-strip .fc-head .muted{font-size:11.5px}
-.fc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:3px 18px}
+.fc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:3px 18px}
 .fc-row{display:flex;align-items:baseline;gap:6px;font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.6;white-space:nowrap;overflow:hidden}
 .fc-row .fc-k{font-weight:700;min-width:52px;color:var(--ink)}
+.fc-row .fc-v,.fc-line .fc-v{white-space:nowrap}
 .fc-row .fc-v{color:var(--ink-3)}
 .fc-row .fc-v b{color:var(--ink);font-weight:700}
 .fc-row .fc-none{color:var(--ink-3);font-style:italic;font-family:inherit;font-size:12px}
@@ -2342,14 +2343,14 @@ function fcToday(key){
   const rec = recs.find(r => r.date === todayKey());
   if(!rec) return {k:"none"};
   const v = x => (x === null || x === undefined || x === "") ? null : x;
-  return {k:"ok", am:v(rec.fc && rec.fc.morning), pm:v(rec.fc && rec.fc.afternoon)};
+  return {k:"ok", am:v(rec.fc && rec.fc.morning), pm:v(rec.fc && rec.fc.afternoon), night:v(rec.fc && rec.fc.night)};
 }
 function fcValsHtml(t){
   if(t.k === "loading") return '<span class="fc-none">loading…</span>';
   if(t.k === "error") return '<span class="fc-err">couldn\'t load</span>';
   if(t.k === "none") return '<span class="fc-none">not tested yet</span>';
   const f = x => x === null ? "–" : `<b>${esc(String(x))}</b>`;
-  return `<span class="fc-v">AM ${f(t.am)}</span> <span class="fc-v">· PM ${f(t.pm)}</span>`;
+  return `<span class="fc-v">AM ${f(t.am)}</span> <span class="fc-v">· PM ${f(t.pm)}</span> <span class="fc-v">· Night ${f(t.night)}</span>`;
 }
 function fcStripHtml(codes){
   const rows = [], keys = [];
@@ -2362,7 +2363,7 @@ function fcStripHtml(codes){
   return `<div class="fc-strip">
     <div class="fc-head"><b>Today's water tests · FC</b>${when}<button class="link" data-fcrefresh="${esc(keys.join(","))}">Refresh</button></div>
     <div class="fc-grid">${rows.join("")}</div>
-    <p class="note">Morning (AM) and afternoon (PM) free chlorine from the water-test sheet. A pool that tested fine all day may not need dosing tonight — check with your supervisor before skipping one.</p>
+    <p class="note">Morning (AM), afternoon (PM) and night free chlorine from the water-test sheet. A pool that tested fine all day may not need dosing tonight — check with your supervisor before skipping one.</p>
   </div>`;
 }
 function fcLineHtml(code){
