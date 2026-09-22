@@ -361,7 +361,7 @@ details.panel[open] summary::after{content:"▴"}
 .tonight .sched{margin-top:4px}
 .tonight .sched summary{font-size:12px}
 .sched-t tr.is-today th,.sched-t tr.is-today td{font-weight:700;color:var(--accent)}
-.fc-strip{margin-top:14px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface)}
+.fc-strip{margin:0 0 14px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface)}
 .fc-strip .fc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px}
 .fc-strip .fc-head b{font-family:"Barlow Condensed",sans-serif;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
 .fc-strip .fc-head .muted{font-size:11.5px}
@@ -3765,6 +3765,7 @@ function buildRound(){
     <div class="sec-head" style="margin-bottom:4px"><h2 class="sec">Today's round</h2><span class="eyebrow">${esc(state.me)}</span></div>
     <p class="note" style="margin:0 0 10px">Tap the outlets you're covering today, then Start round.${anyTaken ? " Outlets someone else has already covered or picked up are marked — you can still take them too." : ""}</p>
     ${tonightScheduleHtml()}
+    ${fcStripHtml(OUTLETS.map(o => o.code))}
     <div class="pill-grid">${pills}</div>
     ${anyTaken ? `<div class="pill-key">
       <span><i class="k-done"></i>done tonight${doneN?` (${doneN})`:""}</span>
@@ -3772,7 +3773,6 @@ function buildRound(){
       <span><i class="k-onsite"></i>someone on site</span>
       <span><i class="k-taken"></i>in someone's round</span>
     </div>` : ""}
-    ${fcStripHtml(OUTLETS.map(o => o.code))}
     <div class="row-2" style="margin-top:16px">
       <button class="btn" id="pick-all" style="flex:1">Select all</button>
       <button class="btn" id="pick-none" style="flex:1">Clear</button>
@@ -4257,6 +4257,7 @@ function stopCard(s, i, r, isHeading){
         </div>
       </div>`
       : `<button class="btn sm" data-openadd="${s.outlet}" style="align-self:flex-start">+ Add another job</button>`}
+      ${issueBlock(s)}
       ${leaveBlock}
       ${s.tasks.some(t=>t.startedAt) || state.quickForm === s.outlet ? "" : `<button class="link" data-quickopen="${s.outlet}" style="align-self:center">Just a drop-off / delivery — no duty here</button>`}
       ${s.tasks.some(t=>t.startedAt) ? "" : `<button class="link" data-unarrive="${s.outlet}" style="align-self:center">Wrong outlet — undo arrival</button>`}
@@ -4295,7 +4296,7 @@ function stopCard(s, i, r, isHeading){
     </div>
     ${s.covering ? coveringNoteBlock(s) : ""}
     ${(s.custom || done) ? "" : fcLineHtml(s.outlet)}
-    ${s.custom ? "" : issueBlock(s)}
+    ${(s.custom || (active && !isQuick(s))) ? "" : issueBlock(s)}
     ${body}</div>`;
 }
 
