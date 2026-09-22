@@ -3092,9 +3092,42 @@ const VAC_PHOTOS = {
     {id:"P3", when:"start", label:"Corner 2 – bottom of the leg", hint:"Stand at the bottom right of the leg. Look diagonally up across the leg."},
     {id:"P4", when:"start", label:"Corner 3 – inner corner", hint:"Stand at the inner corner by the stairs. Look diagonally down across the leg."},
     {id:"P5", when:"start", label:"Corner 4 – right side", hint:"Stand on the right side below the port. Look left along the lower half of the arm."},
-    {id:"E1", when:"end", label:"Tools packed away", hint:"Hose, vacuum head and pole stored."},
-    {id:"E2", when:"end", label:"Vacuum port closed", hint:"The port with its cover on."},
-    {id:"E3", when:"end", label:"Vacuum valve closed", hint:"The valve handle in the closed position."}
+    {id:"E1", when:"end", label:"Vacuum head, pipe and telescopic pole kept", hint:"Vacuum head, pipe and telescopic pole put back in storage."},
+    {id:"E2", when:"end", label:"Vacuum port closed", hint:"Close-up of the port with the cover on."},
+    {id:"E3", when:"end", label:"Vacuum valve closed", hint:"Close-up of the valve handle in the closed position."}
+  ]},
+  // Same order as the photo badges on the route card (vacuum-route-maps.html#WWW).
+  WWW: {card:"WWW", normalMin:null, list:[
+    {id:"P1", when:"start", label:"Set-up", hint:"Hose, vacuum head and telescopic pole connected at the vacuum port, left side."},
+    {id:"P2", when:"start", label:"Corner 1 – bottom", hint:"Stand on the bottom deck. Look up the left half towards the port."},
+    {id:"P3", when:"start", label:"Corner 2 – top right", hint:"Stand on the top deck at the right. Look down the right half of the pool."},
+    {id:"P4", when:"start", label:"Corner 3 – left side", hint:"Stand on the left deck just above the port. Look diagonally up across the left half and the ledge."},
+    {id:"E1", when:"end", label:"Vacuum head, pipe and telescopic pole kept", hint:"Vacuum head, pipe and telescopic pole put back in storage."},
+    {id:"E2", when:"end", label:"Vacuum port closed", hint:"Close-up of the port with the cover on."},
+    {id:"E3", when:"end", label:"Vacuum valve closed", hint:"Close-up of the valve handle in the closed position."}
+  ]},
+  // CC has a skimmer control valve: half-closed for suction while vacuuming,
+  // so opening it again is the last close-down photo.
+  CC: {card:"CC", normalMin:null, list:[
+    {id:"P1", when:"start", label:"Set-up", hint:"Hose, vacuum head and telescopic pole connected at the vacuum port, on the wide ledge."},
+    {id:"P2", when:"start", label:"Corner 1 – Loop A, bottom", hint:"Stand on the bottom deck below the port. Look up the right half of the left pool."},
+    {id:"P3", when:"start", label:"Corner 2 – Loop A, top left", hint:"Stand on the top deck at the left. Look down the left half of the left pool."},
+    {id:"P4", when:"start", label:"Corner 3 – top arm", hint:"Stand at the top of the wide ledge. Look up the top arm."},
+    {id:"P5", when:"start", label:"Corner 4 – Loop B, bottom", hint:"Stand on the bottom deck near the stairs. Look up the left half of the right pool."},
+    {id:"P6", when:"start", label:"Corner 5 – Loop B, top right", hint:"Stand on the top deck at the right. Look down the right half of the right pool."},
+    {id:"E1", when:"end", label:"Vacuum head, pipe and telescopic pole kept", hint:"Vacuum head, pipe and telescopic pole put back in storage."},
+    {id:"E2", when:"end", label:"Vacuum port closed", hint:"Close-up of the port with the cover on."},
+    {id:"E3", when:"end", label:"Vacuum valve closed", hint:"Close-up of the valve handle in the closed position."},
+    {id:"E4", when:"end", label:"Skimmer control valve opened", hint:"Close-up of the skimmer control valve handle in the open position."}
+  ]},
+  // JE Indoor Pool 1 -- hose goes on the skimmer port, not a vacuum port.
+  JEIP1: {card:"JEIP1", normalMin:null, list:[
+    {id:"P1", when:"start", label:"Set-up", hint:"Hose, vacuum head and telescopic pole connected at the skimmer port, left side."},
+    {id:"P2", when:"start", label:"Corner 1 – top end", hint:"Stand on the top deck. Look down the left half of the pool."},
+    {id:"P3", when:"start", label:"Corner 2 – bottom end", hint:"Stand on the bottom deck. Look up the right half of the pool."},
+    {id:"E1", when:"end", label:"Vacuum head, pipe and telescopic pole kept", hint:"Vacuum head, pipe and telescopic pole put back in storage."},
+    {id:"E2", when:"end", label:"Skimmer port closed", hint:"Close-up of the skimmer port with the cover on."},
+    {id:"E3", when:"end", label:"Vacuum valve closed", hint:"Close-up of the valve handle in the closed position."}
   ]}
 };
 const isVacuumTask = t => /vacuum/i.test((t && t.name) || "");
