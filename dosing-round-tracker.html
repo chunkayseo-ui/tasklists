@@ -355,6 +355,11 @@ details.panel[open] summary::after{content:"▴"}
 /* Today's FC readings (morning / afternoon water tests) on the outlet picker,
    so a technician can see at a glance which pools are already fine and put
    the night's dosing time where it's actually needed. */
+.tonight{margin:0 0 12px;padding:8px 12px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 8px 8px 0;font-size:13px}
+.tonight b{font-family:"Barlow Condensed",sans-serif;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-right:6px}
+.tonight .sched{margin-top:4px}
+.tonight .sched summary{font-size:12px}
+.sched-t tr.is-today th,.sched-t tr.is-today td{font-weight:700;color:var(--accent)}
 .fc-strip{margin-top:14px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface)}
 .fc-strip .fc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px}
 .fc-strip .fc-head b{font-family:"Barlow Condensed",sans-serif;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
@@ -3709,6 +3714,21 @@ function pickPerson(){
   ${rosterPanel()}`;
 }
 
+// The night dosing schedule (which branches are due which night) sits on the
+// Task Setting tab too, but a technician picking outlets is the one who needs
+// it in front of them -- so tonight's line goes right above the pills, with
+// the full week a tap away.
+function tonightScheduleHtml(){
+  const dow = operationalNow().getDay();
+  const tonight = NIGHT_SCHEDULE[dow] ? NIGHT_SCHEDULE[dow].join(", ") : "All branches";
+  return `<div class="tonight">
+    <div><b>Tonight (${DAYNAME_FULL[dow]})</b> ${esc(tonight)}</div>
+    <details class="sched"><summary>Full week's night dosing schedule</summary>
+      <table class="sched-t">${[1,2,3,4,5,6,0].map(d => `<tr class="${d === dow ? "is-today" : ""}"><th>${DAYNAME[d]}</th><td>${NIGHT_SCHEDULE[d] ? NIGHT_SCHEDULE[d].join(", ") : "All branches"}</td></tr>`).join("")}</table>
+    </details>
+  </div>`;
+}
+
 function buildRound(){
   const sel = state.picking || [];
   const pills = OUTLETS.map(o => {
@@ -3732,7 +3752,8 @@ function buildRound(){
   return `
   <div class="card" style="padding:20px">
     <div class="sec-head" style="margin-bottom:4px"><h2 class="sec">Today's round</h2><span class="eyebrow">${esc(state.me)}</span></div>
-    <p class="note" style="margin:0 0 14px">Tap the outlets you're covering today, then Start round.${anyTaken ? " Outlets someone else has already covered or picked up are marked — you can still take them too." : ""}</p>
+    <p class="note" style="margin:0 0 10px">Tap the outlets you're covering today, then Start round.${anyTaken ? " Outlets someone else has already covered or picked up are marked — you can still take them too." : ""}</p>
+    ${tonightScheduleHtml()}
     <div class="pill-grid">${pills}</div>
     ${anyTaken ? `<div class="pill-key">
       <span><i class="k-done"></i>done tonight${doneN?` (${doneN})`:""}</span>
