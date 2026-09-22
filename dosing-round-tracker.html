@@ -376,6 +376,8 @@ details.panel[open] summary::after{content:"▴"}
 .fc-row .fc-v{color:var(--ink-3)}
 .fc-row .fc-v b{color:var(--ink);font-weight:700}
 .fc-row .fc-none{color:var(--ink-3);font-style:italic;font-family:inherit;font-size:12px}
+.fc-row.fc-low .fc-k,.fc-row.fc-low .fc-v b{color:var(--warn)}
+.fc-row .fc-flag{font:700 10.5px/1.6 "Barlow Condensed",sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:var(--warn);border-radius:4px;padding:0 5px;margin-left:2px}
 .fc-row .fc-err{color:var(--warn);font-style:italic;font-family:inherit;font-size:12px}
 .fc-strip .note{margin:8px 0 0}
 .fc-line{display:flex;flex-wrap:wrap;gap:2px 14px;font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-3);line-height:1.5}
@@ -2364,14 +2366,25 @@ function fcValsHtml(t){
 // FC, so a low reading there is not automatically a dosing visit -- the panel
 // keeps them in their own group so the two decisions don't get mixed up.
 const SALT_CHLORINATOR = ["BK", "LENTOR", "TENGAH", "TPY", "DR", "HS", "WWW"];
+// Same trigger level the Telegram alert (salt-chlorinator-alert.gs) uses:
+// a salt-chlorinator pool whose latest reading today is below this should
+// have its chlorinator switched ON. Keep the two numbers in step.
+const SALT_FC_TRIGGER = 1.5;
+function fcLatest(t){
+  if(t.k !== "ok") return null;
+  const v = [t.night, t.pm, t.am].find(x => x !== null && x !== undefined && !isNaN(Number(x)));
+  return v === undefined ? null : Number(v);
+}
 function fcStripHtml(codes){
   const keys = [];
-  const rowsFor = list => list.flatMap(c => fcKeysFor(c).map(({label, key}) => {
+  const rowsFor = (list, salt) => list.flatMap(c => fcKeysFor(c).map(({label, key}) => {
     keys.push(key);
-    return `<div class="fc-row" data-fckey="${esc(key)}"><span class="fc-k">${esc(label)}</span>${fcValsHtml(fcToday(key))}</div>`;
+    const t = fcToday(key), last = fcLatest(t);
+    const low = salt && last !== null && last < SALT_FC_TRIGGER;
+    return `<div class="fc-row${low ? " fc-low" : ""}" data-fckey="${esc(key)}"><span class="fc-k">${esc(label)}</span>${fcValsHtml(t)}${low ? '<span class="fc-flag">switch ON</span>' : ""}</div>`;
   }));
-  const salt = rowsFor(SALT_CHLORINATOR.filter(c => codes.includes(c)));
-  const manual = rowsFor(codes.filter(c => !SALT_CHLORINATOR.includes(c)));
+  const salt = rowsFor(SALT_CHLORINATOR.filter(c => codes.includes(c)), true);
+  const manual = rowsFor(codes.filter(c => !SALT_CHLORINATOR.includes(c)), false);
   if(!salt.length && !manual.length) return "";
   const when = fcCheckedAt ? `<span class="muted">as of ${clockOf(fcCheckedAt)}</span>` : "";
   const group = (title, hint, rows) => rows.length ? `<div class="fc-group"><div class="fc-gh">${title} <span class="muted">${hint}</span></div><div class="fc-grid">${rows.join("")}</div></div>` : "";
