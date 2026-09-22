@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Day Work</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Same fixed light theme as the Dosing Round Tracker: read outdoors, in the van, at a shop counter. */
+:root{
+  --ground:#EEF3F3; --surface:#FFFFFF; --surface-2:#F6F9F9;
+  --line:#C7D6D6; --line-soft:#DCE6E6;
+  --ink:#0A1417; --ink-2:#33474D; --ink-3:#5B7378;
+  --accent:#00676F; --accent-soft:#DCEEEE;
+  --travel:#42509B; --travel-soft:#E3E5F5;
+  --ok:#256B4C; --ok-soft:#DDEEE5;
+  --warn:#8A590D; --warn-soft:#F6EAD4;
+  --urgent:#B23A2E; --urgent-soft:#F8DEDA;
+  --shadow:0 1px 2px rgba(14,26,31,.08),0 6px 18px -8px rgba(14,26,31,.22);
+  --r:10px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:16.5px;line-height:1.5;-webkit-text-size-adjust:100%}
+.wrap{max-width:960px;margin:0 auto;padding:0 14px 64px}
+.top{position:sticky;top:0;z-index:20;background:var(--ground);border-bottom:1px solid var(--line);margin-bottom:18px}
+.top-in{max-width:960px;margin:0 auto;padding:12px 14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:9px;margin-right:auto;min-width:0}
+.brand h1{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:27px;margin:0;text-transform:uppercase;letter-spacing:.01em}
+.brand .dt{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--ink-3);white-space:nowrap}
+.seg{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:2px;gap:2px}
+.seg button{font:600 13px/1 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.09em;padding:8px 13px;border:0;border-radius:6px;background:transparent;color:var(--ink-2);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.eyebrow{font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.13em;color:var(--ink-3)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.pad{padding:14px}
+.mono{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+.stack{display:flex;flex-direction:column;gap:14px}
+.muted{color:var(--ink-3)}
+.note{font-size:14.5px;color:var(--ink-3);line-height:1.55}
+h2.sec{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:21px;text-transform:uppercase;letter-spacing:.04em;margin:0}
+.sec-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.row-2{display:flex;gap:8px;flex-wrap:wrap}
+.row-2>*{flex:1}
+button.btn,a.btn,span.btn{font:600 15.5px/1 "IBM Plex Sans",sans-serif;padding:13px 18px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;display:inline-block;text-align:center}
+a.btn{text-decoration:none}
+button.btn.primary,a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.btn.big,a.btn.big{width:100%;padding:16px;font-size:17.5px}
+button.btn.sm,a.btn.sm,span.btn.sm{padding:9px 14px;font-size:14.5px}
+button.btn.inprogress{background:var(--warn-soft);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
+button.btn.warn{background:var(--warn);border-color:var(--warn);color:#fff}
+button.btn.urgent{background:var(--urgent);border-color:var(--urgent);color:#fff}
+button.btn.done,span.btn.done{background:var(--ok-soft);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 35%,transparent)}
+button.btn:disabled{opacity:.4;cursor:not-allowed}
+button.link{border:0;background:transparent;color:var(--ink-3);padding:4px;font:400 14.5px/1.4 "IBM Plex Sans",sans-serif;cursor:pointer;text-decoration:underline}
+select,input[type=text],input[type=date],textarea{font-family:"IBM Plex Sans",sans-serif;font-size:16.5px;padding:11px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);width:100%}
+textarea{min-height:64px;resize:vertical;line-height:1.4}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+label.f{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--ink-3);font-weight:600;text-transform:uppercase;letter-spacing:.06em;font-family:"Barlow Condensed",sans-serif}
+label.chk{display:flex;align-items:center;gap:10px;font-size:15.5px;font-weight:500}
+label.chk input{width:20px;height:20px}
+.banner{border-radius:var(--r);padding:11px 14px;font-size:14.5px;line-height:1.5;margin-bottom:14px;background:var(--warn-soft);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent)}
+.banner.urgent{background:var(--urgent-soft);color:var(--urgent);border-color:color-mix(in srgb,var(--urgent) 35%,transparent)}
+.banner.info{background:var(--accent-soft);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
+.banner.ok{background:var(--ok-soft);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 30%,transparent)}
+#toast{position:fixed;left:0;right:0;bottom:0;z-index:1000;display:flex;flex-direction:column;align-items:center;gap:8px;padding:0 14px calc(14px + env(safe-area-inset-bottom,0px));pointer-events:none}
+#toast .bubble{pointer-events:auto;max-width:480px;width:100%;border-radius:var(--r);padding:12px 16px;font-size:15px;line-height:1.45;font-weight:600;background:var(--warn-soft);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);box-shadow:0 6px 20px rgba(0,0,0,.18)}
+.chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;font:600 12px/1.4 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.09em;white-space:nowrap}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.chip.onsite{background:var(--accent-soft);color:var(--accent)}
+.chip.travel{background:var(--travel-soft);color:var(--travel)}
+.chip.done{background:var(--ok-soft);color:var(--ok)}
+.chip.idle{background:var(--surface-2);color:var(--ink-3)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.chip.onsite .dot,.chip.travel .dot{animation:pulse 2s ease-in-out infinite}
+.tag{font:700 13px/1.5 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.05em;padding:3px 8px;border-radius:4px;white-space:nowrap}
+.tag.type{background:var(--travel-soft);color:var(--travel)}
+.tag.urg{background:var(--urgent);color:#fff}
+.tag.carried{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
+.tag.st-prog{background:var(--warn-soft);color:var(--warn)}
+.tag.st-done{background:var(--ok-soft);color:var(--ok)}
+.tag.st-skip{background:var(--urgent-soft);color:var(--urgent)}
+.tag.st-open{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
+.dev{color:var(--warn);font-weight:600}
+.route{display:flex;flex-direction:column;gap:8px}
+.stop{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:13px 14px 13px 50px}
+.stop .idx{position:absolute;left:13px;top:13px;width:25px;height:25px;border-radius:50%;display:grid;place-items:center;font:600 12px/1 "IBM Plex Mono",monospace;background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
+.stop.is-done{background:var(--surface-2)}
+.stop.is-done .idx{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.stop.is-active{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft),var(--shadow)}
+.stop.is-active .idx{background:var(--accent);color:#fff;border-color:transparent}
+.stop.is-urgent{border-color:var(--urgent)}
+.stop.is-urgent .idx{background:var(--urgent);color:#fff;border-color:transparent}
+.stop-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.stop-name{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:23px;text-transform:uppercase;letter-spacing:.02em;line-height:1.1}
+.stop-times{margin-left:auto;font-size:13.5px;color:var(--ink-3);display:flex;gap:12px}
+.stop-addr{font-size:13.5px;color:var(--ink-3);margin-top:2px;overflow-wrap:anywhere}
+.stop-addr a{color:var(--accent);font-weight:600;text-decoration:none}
+.stop-body{margin-top:12px;display:flex;flex-direction:column;gap:10px}
+.loc{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border-radius:9px;background:var(--surface-2);border:1px solid var(--line-soft);font-size:13.5px;line-height:1.45}
+.loc .pin{flex:none;font-size:14px;line-height:1.3}
+.loc .lt{flex:1;min-width:0}
+.loc .lh{font-weight:600}
+.loc .la{color:var(--ink-3);font-size:12.5px;overflow-wrap:anywhere}
+.loc a{color:var(--accent);font-weight:600;text-decoration:none;white-space:nowrap}
+.loc.ok{background:var(--ok-soft);border-color:color-mix(in srgb,var(--ok) 30%,transparent)}
+.loc.ok .lh{color:var(--ok)}
+.loc.far{background:var(--urgent-soft);border-color:color-mix(in srgb,var(--urgent) 35%,transparent)}
+.loc.far .lh{color:var(--urgent)}
+.loc.rough{background:var(--warn-soft);border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
+.loc.rough .lh{color:var(--warn)}
+.loc.none .lh{color:var(--ink-3)}
+.travel-gap{display:flex;align-items:center;gap:8px;padding:2px 0 2px 50px;font:500 13px/1 "IBM Plex Mono",monospace;color:var(--travel)}
+.travel-gap .ln{flex:1;height:1px;background:var(--travel);opacity:.35}
+.tasks{display:flex;flex-direction:column;gap:1px;background:var(--line-soft);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.task{background:var(--surface);padding:11px 12px;display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap}
+.task.running{background:var(--warn-soft)}
+.task.finished{background:var(--surface-2)}
+.task.skipped{background:var(--surface-2)}
+.task-main{display:flex;flex-direction:column;gap:4px;min-width:140px;flex:1}
+.task-name{font-weight:600;font-size:16px;line-height:1.35;overflow-wrap:anywhere}
+.task-note{font-size:14px;color:var(--ink-2);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.45}
+.task-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:13px;color:var(--ink-3)}
+.task .act{flex:none;display:flex;gap:6px;align-items:center}
+.mark{width:20px;height:20px;border-radius:50%;flex:none;display:grid;place-items:center;font:600 11px/1 "IBM Plex Mono",monospace;border:1px solid var(--line);background:var(--surface-2);color:var(--ink-3);margin-top:3px}
+.task.finished .mark{background:var(--ok);border-color:var(--ok);color:#fff}
+.task.running .mark{background:var(--warn);border-color:var(--warn);color:#fff}
+.task.skipped .mark{background:var(--urgent);border-color:var(--urgent);color:#fff}
+.wt{background:var(--surface);padding:12px;display:flex;flex-direction:column;gap:12px;border-top:1px solid var(--line-soft);width:100%}
+.wt-title{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:15px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-2)}
+.wt-photo{display:flex;gap:12px;align-items:center;border:1px dashed var(--line);border-radius:9px;padding:10px 12px;background:var(--surface-2)}
+.wt-photo.has{border-style:solid;background:var(--surface)}
+.wt-photo img{width:72px;height:72px;object-fit:cover;border-radius:7px;flex:none;background:#000}
+.wt-photo .ph-empty{width:72px;height:72px;border-radius:7px;flex:none;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;font-size:26px;color:var(--ink-3)}
+.wt-photo .ph-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.wt-photo .ph-status{font-size:13.5px;color:var(--ink-2);line-height:1.4}
+.wt-photo .ph-status.ok{color:var(--ok);font-weight:600}
+.wt-photo .ph-status.err{color:var(--warn);font-weight:600}
+.wt-photo .ph-actions{display:flex;gap:8px;flex-wrap:wrap}
+.photos{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.photos button{padding:0;border:1px solid var(--line);border-radius:9px;background:#000;overflow:hidden;line-height:0;cursor:zoom-in;position:relative;width:112px;height:112px;flex:none}
+.photos img{width:100%;height:100%;object-fit:cover;display:block}
+.photos .cap{position:absolute;left:0;right:0;bottom:0;padding:3px 6px;font:600 11px/1.2 "IBM Plex Sans",sans-serif;color:#fff;background:rgba(0,0,0,.55);text-align:left}
+.addbox{background:var(--surface-2);border:1px dashed var(--line);border-radius:9px;padding:11px 12px;display:flex;flex-direction:column;gap:9px}
+.sugg{display:flex;gap:6px;flex-wrap:wrap}
+.sugg button{font:500 13.5px/1 "IBM Plex Sans",sans-serif;padding:7px 11px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);cursor:pointer}
+.sugg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.pill-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:7px}
+.pill{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:10px 6px;text-align:center;font:600 14px/1.2 "IBM Plex Sans",sans-serif;cursor:pointer;color:var(--ink)}
+.pill[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.pill small{display:block;font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:400;opacity:.7;margin-top:3px}
+.datebar{display:flex;align-items:center;gap:8px}
+.datebar .dmid{flex:1;text-align:center;font-weight:600;font-size:15.5px}
+.datebar button.btn{padding:10px 14px}
+.crew{display:flex;flex-direction:column;gap:1px;background:var(--line-soft);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.crew-row{background:var(--surface);padding:12px 14px;display:flex;flex-direction:column;gap:9px}
+.crew-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.crew-name{font-weight:600;font-size:16.5px}
+.crew-where{margin-left:auto;font-size:14px;color:var(--ink-2);text-align:right}
+.prog{display:flex;height:9px;border-radius:5px;overflow:hidden;background:var(--surface-2)}
+.prog span{display:block;height:100%}
+.prog .p-done{background:var(--ok)}
+.prog .p-skip{background:var(--urgent);opacity:.7}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.kpi{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:8px;padding:9px 10px}
+.kpi .v{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:22px;line-height:1}
+.kpi .k{font:600 11px/1.3 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);margin-top:3px}
+.plan-job{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line-soft)}
+.plan-job:first-child{border-top:0}
+.plan-job .pj-main{flex:1;min-width:0}
+.plan-job .pj-acts{display:flex;gap:4px;flex:none}
+.plan-job .pj-acts button{padding:7px 9px;font-size:13px}
+.leftover{border-left:4px solid var(--warn)}
+#lightbox{position:fixed;inset:0;z-index:1200;display:none;flex-direction:column;background:rgba(12,18,20,.94);padding:calc(10px + env(safe-area-inset-top,0px)) 10px calc(10px + env(safe-area-inset-bottom,0px))}
+#lightbox.open{display:flex}
+#lightbox .lb-bar{display:flex;align-items:center;gap:10px;color:#fff;font-size:14px;font-weight:600;padding:4px 4px 10px}
+#lightbox .lb-cap{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#lightbox .lb-bar button,#lightbox .lb-bar a{background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:10px;padding:9px 14px;font:inherit;font-size:14px;font-weight:700;cursor:pointer;text-decoration:none;white-space:nowrap}
+#lightbox .lb-body{flex:1;display:flex;align-items:center;justify-content:center;overflow:auto}
+#lightbox img{max-width:100%;max-height:100%;border-radius:10px;background:#fff}
+#lightbox .lb-msg{color:#e7eef0;font-size:15px;line-height:1.5;text-align:center;padding:20px;max-width:340px}
+@media(max-width:480px){.stop-name{font-size:20px}.kpis{grid-template-columns:repeat(3,1fr)}.kpi .v{font-size:18px}}
+</style>
+</head>
+<body>
+<header class="top"><div class="top-in">
+  <div class="brand"><h1>Day Work</h1><span class="dt mono" id="hdr-date"></span></div>
+  <div class="seg" role="tablist" id="tabs">
+    <button id="btn-tech" aria-pressed="true">My day</button>
+    <button id="btn-team" aria-pressed="false">Team</button>
+    <button id="btn-plan" aria-pressed="false">Plan</button>
+  </div>
+</div></header>
+<main class="wrap">
+  <div id="conn"></div>
+  <div id="view"></div>
+</main>
+<div id="toast" aria-live="polite"></div>
+<div id="lightbox" role="dialog" aria-modal="true" aria-label="Photo">
+  <div class="lb-bar"><span class="lb-cap"></span><a class="lb-drive" href="#" target="_blank" rel="noopener">Open in Drive</a><button type="button" class="lb-close">Close</button></div>
+  <div class="lb-body"></div>
+</div>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+"use strict";
+/*
+ * Day Work — plan a technician's daytime run (deliveries, collections, sending
+ * things for repair, purchases, repair/improvement work at a branch, an urgent
+ * vacuum) and follow it as it happens: Arrive / Leave with the phone's
+ * location, one job at a time, proof photos fixed by job type, travel time
+ * between stops. Same Firebase project, roster and photo relay as the Dosing
+ * Round Tracker; its own collections (day_stops, day_jobs, day_places,
+ * day_config) so night and day data never mix.
+ */
+const firebaseConfig = {
+  apiKey: "AIzaSyANFCZbvRGO9aMRtG9MF_qONO3FL85CzSo",
+  authDomain: "maintenance-board-f931a.firebaseapp.com",
+  projectId: "maintenance-board-f931a",
+  storageBucket: "maintenance-board-f931a.firebasestorage.app",
+  messagingSenderId: "169864970579",
+  appId: "1:169864970579:web:bfb7490d0aebcfed17e1a6",
+  measurementId: "G-HYG264NKP4"
+};
+const PAGE_URL = "https://chunkayseo-ui.github.io/tasklists/day-work.html";
+const TRACKER_URL = "https://chunkayseo-ui.github.io/tasklists/dosing-round-tracker.html";
+const VAC_ROUTE_URL = "https://chunkayseo-ui.github.io/dosing-app/vacuum-route-maps.html";
+const OUTLETS = [
+  {code:"CC",addr:"750A Chai Chee Road, Viva Business Park, #01-02, Singapore 469001",lat:1.322978,lng:103.922125},
+  {code:"DR",addr:"8 Duke's Road, Singapore",lat:1.322166,lng:103.811588},
+  {code:"LENTOR",addr:"1 Kalidasa Avenue, Teacher's Housing Estate, Singapore 789381",lat:1.381713,lng:103.830166},
+  {code:"TENGAH",addr:"126B Tengah Drive, #01-321 Plantation Village, Singapore 692126",lat:1.358959,lng:103.735645},
+  {code:"JE",addr:"2 Jurong Gateway Road Indoor Pool, #01-05, Singapore 608512",lat:1.336640,lng:103.744772},
+  {code:"HB",addr:"750 Chai Chee Road, ESR BizPark @ Chai Chee, #01-07, Singapore 469000",lat:1.323652,lng:103.922103},
+  {code:"HS",addr:"28 Stevens Road, #01-10 Swimming Pool, Singapore 257878",lat:1.313869,lng:103.828606},
+  {code:"BK",addr:"18 Jalan Kelulut, Seletar Hills Estate, Singapore 809035",lat:1.383452,lng:103.875847},
+  {code:"WWW",addr:"1 Pasir Ris Close, E!Hub@Downtown East, Singapore 519599",lat:1.379127,lng:103.955445},
+  {code:"TPY",addr:"85 Lorong 4 Toa Payoh, #01-336, Singapore 310085",lat:1.336285,lng:103.848429}
+];
+const VAC_CARDS = {TENGAH:"TENGAH", JE:"JEIP1", HS:"HS", WWW:"WWW", LENTOR:"LENTOR", TPY:"TPY", BK:"BK", CC:"CC", HB:"HB", DR:"DR"};
+// What finishes each kind of job. The photos are the proof; the type decides
+// which ones are asked for, so the planner never has to spell it out.
+const JOB_TYPES = {
+  deliver:{label:"Deliver",  icon:"📦", proof:[{id:"handover", label:"Items handed over", hint:"The items at the place — with whoever received them, if you can."}],
+    sugg:["Deliver chemicals","Deliver items to office","Deliver spare parts"]},
+  collect:{label:"Collect",  icon:"🛒", proof:[{id:"items", label:"Items collected", hint:"Everything you are taking, together."}],
+    sugg:["Collect items for pools","Collect from warehouse","Collect repaired item"]},
+  repair: {label:"Send for repair", icon:"🔧", proof:[{id:"item", label:"The item at the repair shop", hint:"The item on the counter."},{id:"receipt", label:"Repair shop receipt / job sheet", hint:"Whatever the shop gives you — receipt, job sheet or tag."}],
+    sugg:["Send hairdryer for repair","Send pump for repair","Send heater controller for repair"]},
+  buy:    {label:"Buy",      icon:"🧾", proof:[{id:"invoice", label:"Invoice or receipt", hint:"Readable — the total and the shop name."},{id:"items", label:"What was bought", hint:"The items themselves."}],
+    sugg:["Buy plumbing parts","Buy cleaning supplies","Buy electrical parts"]},
+  work:   {label:"Repair / improvement work", icon:"🛠️", proof:[{id:"before", label:"Before", hint:"How it looked before you started."},{id:"after", label:"After", hint:"The finished work."}],
+    sugg:["Replace shower head","Fix leaking tap","Repaint plant room door","Replace pool light"]},
+  vacuum: {label:"Manual vacuum", icon:"🌀", proof:[{id:"before", label:"Pool before", hint:"The pool and where the dirt is."},{id:"after", label:"Pool after · tools packed", hint:"Clean pool, vacuum hose and pole packed, valves back to normal."}],
+    sugg:["Manual vacuum — poop incident","Manual vacuum — vomit incident","Manual vacuum"]},
+  other:  {label:"Other",    icon:"📝", proof:[], sugg:["Site check","Meet contractor","Hand over keys"]}
+};
+const TYPE_ORDER = ["deliver","collect","repair","buy","work","vacuum","other"];
+const PLACE_KINDS = ["Office","Warehouse","Repair shop","Supplier / shop","Other"];
+
+/* ================= small helpers ================= */
+const $ = s => document.querySelector(s);
+const pad = n => String(n).padStart(2,"0");
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const clone = o => JSON.parse(JSON.stringify(o));
+const uid = () => Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(-3);
+const dateKey = d => d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const todayKey = () => dateKey(new Date());
+const shiftDate = (key, days) => { const [y,m,d]=key.split("-").map(Number); const dt=new Date(y,m-1,d); dt.setDate(dt.getDate()+days); return dateKey(dt); };
+const DAYNAME = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"], MONTH_ABBR = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const fmtDate = key => { const [y,m,d]=key.split("-").map(Number); const dt=new Date(y,m-1,d); const yr = y===new Date().getFullYear() ? "" : " "+y; return DAYNAME[dt.getDay()]+", "+d+" "+MONTH_ABBR[m-1]+yr; };
+const clockOf = iso => { const d=new Date(iso); return pad(d.getHours())+":"+pad(d.getMinutes()); };
+const nowIso = () => new Date().toISOString();
+function mins(a,b){ return Math.max(0, Math.round((new Date(b) - new Date(a))/60000)); }
+function dur(m){ if(m==null) return "—"; if(m < 60) return m+"m"; return Math.floor(m/60)+"h "+pad(m%60)+"m"; }
+const liveDur = iso => dur(mins(iso, nowIso()));
+const slug = s => String(s||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,40) || "x";
+const naptime = ms => new Promise(r => setTimeout(r, ms));
+let toastTimer = null;
+function flash(msg){ const el = $("#toast"); if(!el) return; el.innerHTML = '<div class="bubble" role="alert">'+esc(msg)+'</div>'; clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.innerHTML = ""; }, 4500); }
+const each = (sel, fn) => document.querySelectorAll(sel).forEach(el => el.addEventListener("click", e => fn(el, e)));
+
+/* ================= state ================= */
+const state = {
+  db:null, dbTried:false, pending:{},
+  me: (()=>{ try{ return localStorage.getItem("dw.me") || ""; }catch(e){ return ""; } })(),
+  view:"tech", date: todayKey(), planTech:"",
+  roster:[], relay:null, planners:[], places:{},
+  stops:{}, jobs:{},                 // the day being looked at (state.date)
+  prevDate:null, prevJobs:{}, prevStops:{},   // the day before, for carry-over
+  ui:{}, ph:{}, unsub:[]
+};
+const relayCfg = () => (state.relay && state.relay.relayUrl) ? state.relay : null;
+const isPlanner = () => !!state.me && (!state.planners.length || state.planners.includes(state.me));
+
+/* ================= storage =================
+ * Every doc is small and written on its own (a stop, a job, a place), so two
+ * phones touching the same day never overwrite each other's fields — the
+ * planner adding an urgent job while a technician taps Arrive both land.
+ * Writes go local first, then to the shared store, retrying on their own. */
+const local = {
+  read(){ try{ return JSON.parse(localStorage.getItem("dw.local") || "{}"); }catch(e){ return {}; } },
+  write(o){ try{ localStorage.setItem("dw.local", JSON.stringify(o)); }catch(e){} }
+};
+function localSet(path, data, merge){
+  const all = local.read(); const cur = all[path] || {};
+  all[path] = (merge && data) ? Object.assign(cur, data) : data;
+  if(data === null) delete all[path];
+  local.write(all);
+}
+function applyLocal(path, data, merge){
+  const [col, id] = path.split("/");
+  let bag = col === "day_places" ? state.places : null;
+  if(col === "day_stops" || col === "day_jobs"){
+    // A doc belongs to the day it is dated -- a leftover from yesterday being
+    // marked "carried" must land in yesterday's bag, not appear as today's.
+    const cur = col === "day_stops" ? state.stops : state.jobs, prev = col === "day_stops" ? state.prevStops : state.prevJobs;
+    bag = prev[id] ? prev : cur[id] ? cur : (data && data.date === state.prevDate) ? prev : (data && data.date === state.date) ? cur : null;
+  }
+  if(bag){
+    if(data === null){ delete bag[id]; }
+    else {
+      const cur = bag[id] || {id};
+      bag[id] = merge ? deepMerge(cur, data) : Object.assign({id}, data);
+    }
+  } else if(path === "day_config/settings" && data){ state.planners = data.planners || state.planners; }
+}
+function deepMerge(a, b){
+  const out = Object.assign({}, a);
+  Object.keys(b).forEach(k => {
+    const v = b[k];
+    if(v && typeof v === "object" && !Array.isArray(v) && out[k] && typeof out[k] === "object" && !Array.isArray(out[k])) out[k] = deepMerge(out[k], v);
+    else out[k] = v;
+  });
+  return out;
+}
+async function save(path, data, merge){
+  merge = merge !== false;
+  applyLocal(path, data, merge); localSet(path, data, merge); render();
+  if(!state.db) return;
+  const prior = state.pending[path];
+  state.pending[path] = {data, merge, del: data === null, tries: prior ? prior.tries : 0};
+  try{
+    if(data === null) await state.db.doc(path).delete();
+    else await state.db.doc(path).set(data, merge ? {merge:true} : {});
+    delete state.pending[path]; renderConn();
+  }catch(e){ state.pending[path].tries++; renderConn(); setTimeout(flushPending, 2500); }
+}
+const remove = path => save(path, null);
+async function flushPending(){
+  if(!state.db) return;
+  for(const p of Object.keys(state.pending)){
+    const it = state.pending[p]; if(!it) continue;
+    try{ if(it.del) await state.db.doc(p).delete(); else await state.db.doc(p).set(it.data, it.merge ? {merge:true} : {}); delete state.pending[p]; }
+    catch(e){ it.tries++; }
+  }
+  renderConn();
+  if(Object.keys(state.pending).length) setTimeout(flushPending, 5000);
+}
+function renderConn(){
+  const el = $("#conn"); if(!el) return;
+  const n = Object.keys(state.pending).length;
+  if(state.dbTried && !state.db) el.innerHTML = '<div class="banner"><strong>Local mode.</strong> Shared storage isn\'t reachable, so what you enter stays on this phone for now.</div>';
+  else if(n){ const stuck = Object.values(state.pending).some(p => p.tries >= 3);
+    el.innerHTML = '<div class="banner"><strong>'+(stuck ? "Still trying to sync." : "Saving…")+'</strong> '+(stuck ? "Kept on this phone; it retries on its own — check your signal." : "One moment.")+'</div>'; }
+  else el.innerHTML = "";
+}
+
+function loadLocalDay(){
+  const all = local.read();
+  state.stops = {}; state.jobs = {}; state.places = {}; state.prevStops = {}; state.prevJobs = {};
+  Object.keys(all).forEach(p => {
+    const [col, id] = p.split("/"); const d = all[p]; if(!d) return;
+    if(col === "day_places") state.places[id] = Object.assign({id}, d);
+    else if(col === "day_stops"){ if(d.date === state.date) state.stops[id] = Object.assign({id}, d); else if(d.date === state.prevDate) state.prevStops[id] = Object.assign({id}, d); }
+    else if(col === "day_jobs"){ if(d.date === state.date) state.jobs[id] = Object.assign({id}, d); else if(d.date === state.prevDate) state.prevJobs[id] = Object.assign({id}, d); }
+    else if(p === "day_config/settings") state.planners = d.planners || [];
+  });
+}
+function listenDay(){
+  state.unsub.forEach(u => { try{ u(); }catch(e){} }); state.unsub = [];
+  state.prevDate = shiftDate(state.date, -1);
+  if(!state.db){ loadLocalDay(); render(); return; }
+  const db = state.db;
+  const sub = (col, date, into) => db.collection(col).where("date","==",date).onSnapshot(s => {
+    const next = {};
+    s.docs.forEach(d => { const p = col+"/"+d.id; if(!state.pending[p]) next[d.id] = Object.assign({id:d.id}, d.data()); });
+    Object.keys(state.pending).forEach(p => { if(p.startsWith(col+"/")){ const id = p.slice(col.length+1); const cur = (into === "stops" ? state.stops : into === "jobs" ? state.jobs : into === "prevStops" ? state.prevStops : state.prevJobs)[id]; if(cur) next[id] = cur; } });
+    state[into] = next; render();
+  }, () => {});
+  state.unsub.push(sub("day_stops", state.date, "stops"), sub("day_jobs", state.date, "jobs"),
+                   sub("day_stops", state.prevDate, "prevStops"), sub("day_jobs", state.prevDate, "prevJobs"));
+}
+function initDb(){
+  let db = null;
+  try{ if(window.firebase && firebase.initializeApp){ const app = (firebase.apps && firebase.apps.length) ? firebase.apps[0] : firebase.initializeApp(firebaseConfig); db = firebase.firestore(app); } }catch(e){ db = null; }
+  state.db = db; state.dbTried = true;
+  // Roster and photo relay come from the tracker's own settings, so there is
+  // one place to add a technician or set the relay, not two.
+  try{ state.roster = JSON.parse(localStorage.getItem("drt.roster") || "[]"); }catch(e){}
+  try{ const c = JSON.parse(localStorage.getItem("drt.cfg") || "null"); if(c && c.photo) state.relay = c.photo; }catch(e){}
+  if(!db){ listenDay(); return; }
+  db.doc("dosing_config/roster").onSnapshot(s => { const d = s.exists ? s.data() : null; if(d && Array.isArray(d.members)) state.roster = clone(d.members); render(); }, ()=>{});
+  db.doc("dosing_config/tasks").onSnapshot(s => { const d = s.exists ? s.data() : null; state.relay = (d && d.photo && typeof d.photo === "object") ? clone(d.photo) : null; render(); }, ()=>{});
+  db.doc("day_config/settings").onSnapshot(s => { if(state.pending["day_config/settings"]) return; const d = s.exists ? s.data() : null; state.planners = (d && Array.isArray(d.planners)) ? clone(d.planners) : []; render(); }, ()=>{});
+  db.collection("day_places").onSnapshot(s => { const next = {}; s.docs.forEach(d => { const p = "day_places/"+d.id; if(!state.pending[p]) next[d.id] = Object.assign({id:d.id}, d.data()); }); Object.keys(state.pending).forEach(p => { if(p.startsWith("day_places/")){ const id = p.slice(11); if(state.places[id]) next[id] = state.places[id]; } }); state.places = next; render(); }, ()=>{});
+  listenDay();
+}
+
+/* ================= location (recorded, never blocking) ================= */
+function getFix(){
+  return new Promise(resolve => {
+    const at = () => nowIso();
+    if(!navigator.geolocation) return resolve({fail:"unsupported", at:at()});
+    let settled=false; const done = v => { if(!settled){ settled=true; resolve(v); } };
+    setTimeout(()=>done({fail:"timeout", at:at()}), 9000);
+    navigator.geolocation.getCurrentPosition(
+      p => done({lat:+p.coords.latitude.toFixed(5), lng:+p.coords.longitude.toFixed(5), acc:Math.round(p.coords.accuracy), at:at()}),
+      e => done({fail: e && e.code === 1 ? "denied" : (e && e.code === 3 ? "timeout" : "unavailable"), at:at()}),
+      {enableHighAccuracy:true, timeout:8000, maximumAge:5000});
+  }).then(fix => fix.fail ? fix : addAddress(fix));
+}
+function addAddress(fix){
+  const url = "https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&accept-language=en&lat="+fix.lat+"&lon="+fix.lng;
+  const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const t = setTimeout(() => { try{ ctl && ctl.abort(); }catch(e){} }, 6000);
+  return fetch(url, ctl ? {signal:ctl.signal} : {}).then(r => r.ok ? r.json() : null)
+    .then(j => { const a = j ? shortAddress(j) : ""; if(a) fix.addr = a; return fix; }).catch(() => fix).finally(() => clearTimeout(t));
+}
+function shortAddress(j){
+  const a = j.address || {};
+  const street = a.road ? (a.house_number ? a.house_number + " " + a.road : a.road) : "";
+  const place = a.building || a.amenity || a.leisure || a.shop || "";
+  const area = a.suburb || a.neighbourhood || a.quarter || a.city_district || "";
+  const abroad = a.country_code && a.country_code !== "sg" ? [a.city || a.town || a.village || a.state || "", a.country || ""].filter(Boolean).join(", ") : "";
+  const seen = new Set(); const out = [];
+  [place, street, area, abroad].filter(Boolean).forEach(x => { const k = x.toLowerCase(); if(!seen.has(k)){ seen.add(k); out.push(x); } });
+  return (out.join(", ") || String(j.display_name || "").split(",").slice(0,3).join(",")).slice(0, 140);
+}
+function kmBetween(a, b){
+  const R = 6371, rad = x => x * Math.PI / 180;
+  const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat/2)**2 + Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function fmtDist(km){ return km < 1 ? Math.round(km*1000) + " m" : (km < 10 ? km.toFixed(1) : Math.round(km)) + " km"; }
+const nearLimitKm = fix => Math.max(0.3, Math.min(fix.acc || 0, 1000) / 1000);
+function placeOf(s){ const p = s.place || {}; return (p.lat != null && p.lng != null) ? {lat:p.lat, lng:p.lng} : null; }
+const stopLabel = s => (s.place && s.place.name) || "?";
+function locVerdict(s, which){
+  const fix = which === "out" ? s.fixOut : s.fixIn, tapAt = which === "out" ? s.departAt : s.arriveAt, label = stopLabel(s);
+  if(!fix){ const fresh = tapAt && (Date.now() - new Date(tapAt).getTime()) < 20000; return fresh ? {k:"none", head:"Capturing location…", sub:""} : {k:"none", head:"Location not recorded", sub:""}; }
+  if(fix.fail){
+    const why = fix.fail === "denied" ? "Location permission is off for this app" : fix.fail === "unsupported" ? "This phone/browser doesn't give a location" : "The phone couldn't get a GPS fix in time";
+    return {k:"rough", head:"Location not captured", sub:why, fail:true};
+  }
+  const late = tapAt && (new Date(fix.at || tapAt).getTime() - new Date(tapAt).getTime()) > 120000 ? " · captured " + dur(mins(tapAt, fix.at)) + " after the tap" : "";
+  const map = `https://www.google.com/maps?q=${fix.lat},${fix.lng}`;
+  const sub = (fix.addr || (fix.lat + ", " + fix.lng)) + (fix.acc ? " · ±" + fmtDist(fix.acc/1000) : "") + late;
+  const here = placeOf(s);
+  if(!here) return {k:"none", head:"Location captured", sub, map};
+  const d = kmBetween(fix, here), lim = nearLimitKm(fix);
+  if(d <= lim) return {k:"ok", head:"At " + label + " ✓", sub, map};
+  let near = null;
+  OUTLETS.forEach(o => { const k = kmBetween(fix, o); if(!near || k < near.km) near = {code:o.code, km:k}; });
+  Object.values(state.places).forEach(p => { if(p.lat != null){ const k = kmBetween(fix, p); if(!near || k < near.km) near = {code:p.name, km:k}; } });
+  const atOther = near && near.code !== label && near.km <= lim, rough = (fix.acc || 0) > 1000;
+  return {k: rough ? "rough" : "far", head: fmtDist(d) + " from " + label + (atOther ? " — at " + near.code : "") + (rough ? " (weak GPS)" : ""), sub, map};
+}
+function locHtml(s, which, opts){
+  opts = opts || {}; const v = locVerdict(s, which);
+  const pin = v.k === "ok" ? "📍" : v.k === "far" ? "⚠️" : "📍";
+  const what = opts.prefix ? `<span style="color:var(--ink-3);font-weight:500">${esc(opts.prefix)} · </span>` : "";
+  const retry = v.fail && opts.canRetry ? ` <button class="link" data-relocate="${esc(s.id)}|${which}" style="font-size:12.5px">Try again</button>` : "";
+  return `<div class="loc ${v.k}"><span class="pin">${pin}</span><span class="lt"><span class="lh">${what}${esc(v.head)}</span>${retry}${v.sub ? `<br><span class="la">${esc(v.sub)}</span>` : ""}</span>${v.map ? `<a href="${esc(v.map)}" target="_blank" rel="noopener">Map</a>` : ""}</div>`;
+}
+async function relocate(stopId, which){
+  const s = state.stops[stopId]; if(!s) return;
+  const cur = which === "out" ? s.fixOut : s.fixIn; if(cur && !cur.fail) return;
+  flash("Getting your location…");
+  const fix = await getFix();
+  const s2 = state.stops[stopId]; const now = which === "out" ? s2.fixOut : s2.fixIn; if(now && !now.fail) return;
+  save("day_stops/"+stopId, which === "out" ? {fixOut:fix} : {fixIn:fix});
+  if(fix.fail) flash("Still no location. Check that location is allowed for Telegram / your browser.");
+}
+// Where a place is, for "Directions" and for reading a fix against it.
+async function geocodeSG(query){
+  if(!query || !query.trim()) return null;
+  try{
+    const res = await fetch("https://www.onemap.gov.sg/api/common/elastic/search?searchVal="+encodeURIComponent(query.trim())+"&returnGeom=Y&getAddrDetails=Y&pageNum=1");
+    if(!res.ok) return null; const data = await res.json(); const hit = data && Array.isArray(data.results) && data.results[0]; if(!hit) return null;
+    const lat = parseFloat(hit.LATITUDE), lng = parseFloat(hit.LONGITUDE);
+    return (isFinite(lat) && isFinite(lng)) ? {lat, lng, addr: hit.ADDRESS ? String(hit.ADDRESS).replace(/\s+/g," ").trim() : null} : null;
+  }catch(e){ return null; }
+}
+async function geocodePlace(p){
+  const qs = []; if(/^\d{6}$/.test(p.postal||"")) qs.push(p.postal); if(p.addr) qs.push(p.addr); if(p.name) qs.push(p.name + " Singapore");
+  for(const q of qs){ const pt = await geocodeSG(q); if(pt) return pt; }
+  return null;
+}
+const dirLink = place => place.lat != null ? `https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}` : (place.addr ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(place.addr)}` : null);
+
+/* ================= photos through the relay ================= */
+const PHOTO_MAX_AGE_MS = 10*60*1000, PHOTO_MAX_PX = 1280, RELAY_TRIES = 3;
+const driveImg = (fileId, w) => "https://drive.google.com/thumbnail?id=" + encodeURIComponent(fileId) + "&sz=w" + (w || 1600);
+async function loadPhoto(file){
+  try{ return await createImageBitmap(file, {imageOrientation:"from-image"}); }
+  catch(e){ return await new Promise((res, rej) => { const img = new Image(); img.onload = () => res(img); img.onerror = rej; img.src = URL.createObjectURL(file); }); }
+}
+async function preparePhoto(file, lines){
+  const img = await loadPhoto(file);
+  const iw = img.width, ih = img.height, sc = Math.min(1, PHOTO_MAX_PX / Math.max(iw, ih));
+  const W = Math.round(iw*sc), H = Math.round(ih*sc);
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d"); g.drawImage(img, 0, 0, W, H);
+  const fs = Math.max(14, Math.round(W/40)), padv = Math.round(fs*0.6), bandH = padv*2 + lines.length*Math.round(fs*1.3);
+  g.fillStyle = "rgba(0,0,0,0.55)"; g.fillRect(0, H-bandH, W, bandH);
+  g.fillStyle = "#fff"; g.font = `600 ${fs}px "IBM Plex Mono", monospace`; g.textBaseline = "top";
+  lines.forEach((ln, i) => g.fillText(ln, padv, H-bandH+padv+i*Math.round(fs*1.3)));
+  const dataUrl = c.toDataURL("image/jpeg", 0.82);
+  return {dataUrl, base64: dataUrl.split(",")[1]};
+}
+let relayChain = Promise.resolve();
+function relayUpload(payload){ const run = () => relayTry(payload); const next = relayChain.then(run, run); relayChain = next.catch(() => {}); return next; }
+async function relayTry(payload){
+  let last;
+  for(let i = 0; i < RELAY_TRIES; i++){
+    try{ return await relayPost(payload); }
+    catch(e){ last = e; if(e && e.relay && !e.transient) throw e; if(i < RELAY_TRIES - 1) await naptime(900 * Math.pow(2, i)); }
+  }
+  throw last;
+}
+async function relayPost(payload){
+  const rc = relayCfg(); if(!rc) throw new Error("no relay");
+  let res;
+  try{ res = await fetch(rc.relayUrl, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body: JSON.stringify(Object.assign({key: rc.key || ""}, payload))}); }
+  catch(e){ const err = new Error("No answer from the relay — check the signal."); err.network = true; throw err; }
+  if(!res.ok){ const transient = res.status === 404 || res.status === 429 || res.status >= 500; const err = new Error("The relay answered HTTP "+res.status+"."); err.relay = true; err.transient = transient; throw err; }
+  let j = null; try{ j = await res.json(); }catch(e){ const err = new Error("The relay sent something unexpected back."); err.relay = true; err.transient = true; throw err; }
+  if(!j || !j.ok){ const err = new Error(String((j && j.error) || "The relay refused it.")); err.relay = true; throw err; }
+  return j;
+}
+const photoQ = {
+  read(){ try{ return JSON.parse(localStorage.getItem("dw.photoq") || "[]"); }catch(e){ return []; } },
+  write(q){ try{ localStorage.setItem("dw.photoq", JSON.stringify(q)); }catch(e){} },
+  add(item){ const q = this.read(); q.push(item); this.write(q); }
+};
+let photoFlushing = false;
+async function flushPhotoQueue(){
+  if(photoFlushing || !relayCfg()) return;
+  const q = photoQ.read(); if(!q.length) return;
+  photoFlushing = true;
+  try{
+    for(const item of q.slice()){
+      try{
+        const j = await relayUpload(item.payload);
+        photoQ.write(photoQ.read().filter(x => x.id !== item.id));
+        save("day_jobs/"+item.jobId, {photos:{[item.slot]:{fileId:j.fileId, url:j.url, takenAt:item.payload.takenAt, pending:false, queueId:null}}});
+      }catch(e){ /* next pass */ }
+    }
+  } finally { photoFlushing = false; }
+}
+setInterval(flushPhotoQueue, 30000); setTimeout(flushPhotoQueue, 6000);
+
+// Proof photos for the job that is running. Each one is written onto the job
+// as soon as it is up, so nothing is lost to a dead battery or a reload.
+const phLocal = jobId => (state.ph[jobId] = state.ph[jobId] || {});
+const proofOf = j => (JOB_TYPES[j.type] || JOB_TYPES.other).proof;
+function slotState(j, id){
+  const loc = phLocal(j.id)[id], saved = (j.photos || {})[id];
+  if(loc && (loc.status === "preparing" || loc.status === "uploading" || loc.status === "failed")) return loc.status;
+  if(saved && (saved.fileId || saved.pending)) return saved.pending ? "queued" : "done";
+  return "todo";
+}
+const nextSlot = j => proofOf(j).find(p => slotState(j, p.id) === "todo") || null;
+function finishState(j){
+  const proof = proofOf(j);
+  if(!relayCfg() || !proof.length) return {ok:true, label:"Done"};
+  const st = proof.map(p => slotState(j, p.id));
+  if(st.some(x => x === "preparing" || x === "uploading")) return {ok:false, label:"Wait for the photo…"};
+  const nx = nextSlot(j); if(nx) return {ok:false, label:`Take “${nx.label}” first`};
+  if(st.some(x => x === "failed")) return {ok:true, label:"Done · photo uploads later", queue:true};
+  return {ok:true, label:"Done ✓"};
+}
+function stampLines(j, slot){
+  const s = state.stops[j.stopId]; const n = new Date();
+  return [`${stopLabel(s || {})} · ${j.title}`, slot.label, `${state.me || "?"} · ${n.getDate()} ${MONTH_ABBR[n.getMonth()]} ${n.getFullYear()} ${pad(n.getHours())}:${pad(n.getMinutes())}`];
+}
+function photoPayload(j, slot, ph, n){
+  const s = state.stops[j.stopId] || {}; const place = stopLabel(s);
+  return {kind:"job", root:"day", outlet:place, pool:place, job:`${j.title} · ${slot.label}`, person:state.me, takenAt:ph.takenAt, date:state.date, tool:"none", wantReading:false, imageBase64:ph.base64, photoNo:n};
+}
+async function onProofPicked(jobId, slotId, file){
+  const j = state.jobs[jobId]; if(!j) return;
+  const slot = proofOf(j).find(p => p.id === slotId); if(!slot) return;
+  const nx = nextSlot(j); if(!nx || nx.id !== slotId){ flash("Take the photos in order."); return; }
+  if(file.lastModified && Date.now() - file.lastModified > PHOTO_MAX_AGE_MS){ flash("That photo isn't from just now — take a fresh one."); return; }
+  const loc = phLocal(jobId); const ph = loc[slotId] = {status:"preparing", takenAt:nowIso()}; render();
+  let prepared;
+  try{ prepared = await preparePhoto(file, stampLines(j, slot)); }
+  catch(e){ delete loc[slotId]; flash("Couldn't read that image. Try again."); render(); return; }
+  Object.assign(ph, {status:"uploading", dataUrl:prepared.dataUrl, base64:prepared.base64}); render();
+  await uploadProof(jobId, slotId);
+}
+async function uploadProof(jobId, slotId){
+  const j = state.jobs[jobId]; const ph = phLocal(jobId)[slotId]; if(!j || !ph) return;
+  const i = proofOf(j).findIndex(p => p.id === slotId), slot = proofOf(j)[i];
+  try{
+    const r = await relayUpload(photoPayload(j, slot, ph, i+1));
+    ph.status = "done"; delete ph.base64;
+    save("day_jobs/"+jobId, {photos:{[slotId]:{fileId:r.fileId, url:r.url, takenAt:ph.takenAt}}});
+  }catch(e){
+    ph.status = "failed";
+    ph.error = (e && e.relay && !e.transient) ? String(e.message) : "Upload didn't go through (signal?). Retry, or carry on — it uploads when you tap Done.";
+    render();
+  }
+}
+
+/* ================= what a technician can do ================= */
+const myStops = (who) => Object.values(state.stops).filter(s => s.tech === (who || state.me));
+const jobsAt = stopId => Object.values(state.jobs).filter(j => j.stopId === stopId).sort((a,b) => (a.order||0)-(b.order||0) || String(a.addedAt||"").localeCompare(String(b.addedAt||"")));
+const activeStop = who => myStops(who).find(s => s.arriveAt && !s.departAt) || null;
+const runningJob = who => Object.values(state.jobs).find(j => j.tech === (who || state.me) && j.startedAt && !j.doneAt && !j.skipped) || null;
+const jobOpen = j => !j.doneAt && !j.skipped;
+function orderedStops(who){
+  const list = myStops(who);
+  const visited = list.filter(s => s.arriveAt).sort((a,b) => a.arriveAt.localeCompare(b.arriveAt));
+  const planned = list.filter(s => !s.arriveAt).sort((a,b) => (b.urgent?1:0)-(a.urgent?1:0) || (a.order||0)-(b.order||0) || String(a.addedAt||"").localeCompare(String(b.addedAt||"")));
+  return visited.concat(planned);
+}
+function arrive(stopId){
+  const s = state.stops[stopId]; if(!s || s.arriveAt) return;
+  const act = activeStop(); if(act){ flash(`Tap Leave at ${stopLabel(act)} first.`); return; }
+  save("day_stops/"+stopId, {arriveAt:nowIso(), fixIn:null});
+  getFix().then(fix => { const cur = state.stops[stopId]; if(cur && !(cur.fixIn && !cur.fixIn.fail)) save("day_stops/"+stopId, {fixIn:fix}); });
+}
+function undoArrive(stopId){
+  const s = state.stops[stopId]; if(!s || !s.arriveAt || s.departAt) return;
+  if(jobsAt(stopId).some(j => j.startedAt)){ flash("A job here was already started — can't undo the arrival."); return; }
+  save("day_stops/"+stopId, {arriveAt:null, fixIn:null});
+}
+function leave(stopId){
+  const s = state.stops[stopId]; if(!s || !s.arriveAt || s.departAt) return;
+  const run = runningJob(); if(run && run.stopId === stopId){ flash(`Finish “${run.title}” first, or mark it “Couldn't do”.`); return; }
+  state.ui.confirmLeave = null;
+  save("day_stops/"+stopId, {departAt:nowIso(), fixOut:null});
+  getFix().then(fix => { const cur = state.stops[stopId]; if(cur && !(cur.fixOut && !cur.fixOut.fail)) save("day_stops/"+stopId, {fixOut:fix}); });
+}
+function reopenStop(stopId){ const s = state.stops[stopId]; if(!s || !s.departAt) return; if(activeStop()){ flash("Leave your current stop first."); return; } save("day_stops/"+stopId, {departAt:null, fixOut:null}); }
+function startJob(jobId){
+  const j = state.jobs[jobId]; if(!j || j.startedAt) return;
+  const s = state.stops[j.stopId]; if(!s || !s.arriveAt || s.departAt){ flash("Tap Arrive at this stop first."); return; }
+  const run = runningJob(); if(run){ flash(`Finish “${run.title}” first — one job at a time.`); return; }
+  save("day_jobs/"+jobId, {startedAt:nowIso(), startedBy:state.me, skipped:null});
+}
+function unstartJob(jobId){ const j = state.jobs[jobId]; if(!j || !j.startedAt || j.doneAt) return; if(Object.keys(j.photos||{}).length){ flash("Photos were already taken for this job."); return; } save("day_jobs/"+jobId, {startedAt:null, startedBy:null}); }
+function finishJob(jobId){
+  const j = state.jobs[jobId]; if(!j || !j.startedAt || j.doneAt) return;
+  const fs = finishState(j); if(!fs.ok){ flash(fs.label); return; }
+  const loc = phLocal(jobId); const photos = {};
+  proofOf(j).forEach((p, i) => { const l = loc[p.id]; if(l && l.status === "failed" && l.base64){ const qid = uid(); photos[p.id] = {pending:true, queueId:qid, takenAt:l.takenAt}; photoQ.add({id:qid, jobId, slot:p.id, payload:photoPayload(j, p, l, i+1)}); } });
+  const remark = (state.ui.remark && state.ui.remark[jobId]) || "";
+  save("day_jobs/"+jobId, Object.assign({doneAt:nowIso(), doneBy:state.me, remark: remark || null}, Object.keys(photos).length ? {photos} : {}));
+  delete state.ph[jobId]; if(state.ui.remark) delete state.ui.remark[jobId];
+}
+function undoFinish(jobId){ const j = state.jobs[jobId]; if(!j || !j.doneAt) return; const s = state.stops[j.stopId]; if(!s || s.departAt){ flash("You've already left this stop."); return; } if(runningJob()){ flash("Finish the job you're on first."); return; } save("day_jobs/"+jobId, {doneAt:null, doneBy:null}); }
+function skipJob(jobId, why){
+  const j = state.jobs[jobId]; if(!j || j.doneAt) return;
+  if(!why || !why.trim()){ flash("Say briefly why it couldn't be done."); return; }
+  state.ui.skipForm = null;
+  save("day_jobs/"+jobId, {skipped:{at:nowIso(), by:state.me, why:why.trim()}, startedAt:j.startedAt || null});
+}
+function unskipJob(jobId){ const j = state.jobs[jobId]; if(!j || !j.skipped) return; save("day_jobs/"+jobId, {skipped:null}); }
+function nextOrder(tech, date){ const list = Object.values(date === state.date ? state.stops : {}).filter(s => s.tech === tech); return list.length ? Math.max(...list.map(s => s.order || 0)) + 1 : 1; }
+// A stop is a place on someone's day; the place itself is one of the outlets,
+// a saved place (Office, Warehouse, a repair shop…) or typed in on the spot.
+function placeFromPick(pick){
+  if(!pick) return null;
+  if(pick.startsWith("outlet:")){ const o = OUTLETS.find(x => x.code === pick.slice(7)); return o ? {kind:"outlet", code:o.code, name:o.code, addr:o.addr, lat:o.lat, lng:o.lng} : null; }
+  if(pick.startsWith("place:")){ const p = state.places[pick.slice(6)]; return p ? {kind:"place", id:p.id, name:p.name, addr:p.addr || null, lat:p.lat ?? null, lng:p.lng ?? null} : null; }
+  return null;
+}
+function addStop(tech, place, extra){
+  const id = uid();
+  const doc = Object.assign({date:state.date, tech, order:nextOrder(tech, state.date), place, note:(extra && extra.note) || null, urgent:!!(extra && extra.urgent), addedBy:state.me, addedAt:nowIso(), arriveAt:null, departAt:null, fixIn:null, fixOut:null}, extra && extra.fields || {});
+  save("day_stops/"+id, doc, false);
+  return id;
+}
+function addJob(stopId, f){
+  const s = state.stops[stopId]; if(!s) return null;
+  const id = uid(); const type = JOB_TYPES[f.type] ? f.type : "other";
+  const title = (f.title || "").trim() || JOB_TYPES[type].label;
+  const n = jobsAt(stopId).length;
+  save("day_jobs/"+id, {date:state.date, tech:s.tech, stopId, order:n+1, type, title, note:(f.note||"").trim() || null, urgent:!!f.urgent, addedBy:state.me, addedAt:nowIso(), startedAt:null, doneAt:null, photos:{}, skipped:null, carriedFrom:f.carriedFrom || null}, false);
+  if(f.urgent && !s.urgent) save("day_stops/"+stopId, {urgent:true});
+  return id;
+}
+function removeJob(jobId){ const j = state.jobs[jobId]; if(!j) return; if(j.startedAt){ flash("Already started — can't remove it."); return; } remove("day_jobs/"+jobId); }
+function removeStop(stopId){ const s = state.stops[stopId]; if(!s) return; if(s.arriveAt){ flash("Already arrived — can't remove it."); return; } jobsAt(stopId).forEach(j => remove("day_jobs/"+j.id)); remove("day_stops/"+stopId); }
+function moveStop(stopId, dir){
+  const s = state.stops[stopId]; if(!s) return;
+  const list = myStops(s.tech).filter(x => !x.arriveAt).sort((a,b) => (a.order||0)-(b.order||0));
+  const i = list.findIndex(x => x.id === stopId), k = i + dir; if(i < 0 || k < 0 || k >= list.length) return;
+  list.forEach((x, n) => { x.order = n + 1; });
+  const a = list[i].order, b = list[k].order; save("day_stops/"+list[i].id, {order:b}); save("day_stops/"+list[k].id, {order:a});
+}
+// Yesterday's job that never got done comes back onto today, at the same place.
+function carryJob(prevJobId){
+  const j = state.prevJobs[prevJobId]; if(!j || j.carriedTo) return;
+  const ps = state.prevStops[j.stopId]; const place = ps ? ps.place : {kind:"place", name:"?"};
+  let stop = myStops(j.tech).find(s => !s.departAt && samePlace(s.place, place));
+  const stopId = stop ? stop.id : addStop(j.tech, place, {});
+  const newId = addJob(stopId, {type:j.type, title:j.title, note:j.note, urgent:j.urgent, carriedFrom:{date:j.date, jobId:j.id, why:(j.skipped && j.skipped.why) || null}});
+  save("day_jobs/"+prevJobId, {carriedTo:{date:state.date, jobId:newId}});
+}
+const samePlace = (a, b) => a && b && ((a.kind === "outlet" && b.kind === "outlet" && a.code === b.code) || (a.kind === "place" && b.kind === "place" && a.id === b.id) || (a.name && a.name === b.name));
+const leftovers = () => Object.values(state.prevJobs).filter(j => !j.doneAt && !j.carriedTo).sort((a,b) => String(a.tech).localeCompare(String(b.tech)));
+
+// Telegram, via the relay (the bot token lives in the script's properties,
+// never on this page). The group hears about an urgent job the moment it is
+// added; the job also sits at the top of the technician's day marked Urgent.
+async function notifyUrgent(jobId){
+  const j = state.jobs[jobId]; if(!j) return;
+  const s = state.stops[j.stopId] || {}; const t = JOB_TYPES[j.type] || JOB_TYPES.other;
+  const text = [`🔴 URGENT for ${j.tech}`, `${t.icon} ${t.label}: ${j.title}`, `📍 ${stopLabel(s)}${s.place && s.place.addr ? " — " + s.place.addr : ""}`, j.note ? `📝 ${j.note}` : null, `Added by ${state.me} at ${clockOf(nowIso())}`, PAGE_URL].filter(Boolean).join("\n");
+  if(!relayCfg()){ save("day_jobs/"+jobId, {notified:{at:nowIso(), ok:false, err:"No relay set up (Task Setting → Photo proof in the tracker)."}}); return; }
+  try{
+    const r = await relayPost({kind:"notify", text});
+    save("day_jobs/"+jobId, {notified:{at:nowIso(), ok:!!r.sent, err: r.sent ? null : (r.reason || "The relay has no Telegram bot token / chat id yet.")}});
+  }catch(e){
+    const msg = /no image/i.test(String(e && e.message)) ? "The relay script needs the Day Work update (paste the new photo-relay.gs and redeploy)." : String((e && e.message) || "Couldn't reach the relay.");
+    save("day_jobs/"+jobId, {notified:{at:nowIso(), ok:false, err:msg}});
+  }
+}
+
+/* ================= rendering ================= */
+state.ui.keep = state.ui.keep || {}; state.ui.expand = state.ui.expand || {}; state.ui.remark = state.ui.remark || {};
+const keep = id => state.ui.keep[id] || "";
+const kv = (id, attrs) => `data-keep="${esc(id)}" ${attrs || ""}`;
+const typeTag = j => { const t = JOB_TYPES[j.type] || JOB_TYPES.other; return `<span class="tag type">${t.icon} ${esc(t.label)}</span>`; };
+const urgentTag = j => j.urgent ? `<span class="tag urg">Urgent</span>` : "";
+const carriedTag = j => j.carriedFrom ? `<span class="tag carried" title="Left over from ${esc(j.carriedFrom.date)}">From ${esc(fmtDate(j.carriedFrom.date))}</span>` : "";
+function photosHtml(j, small){
+  const proof = proofOf(j); const ph = j.photos || {};
+  const order = proof.length ? proof.map(p => p.id) : Object.keys(ph);
+  const list = order.filter(id => ph[id] && ph[id].fileId).map(id => ({id, label:(proof.find(p => p.id === id) || {}).label || id, rec:ph[id]}));
+  const pending = order.filter(id => ph[id] && ph[id].pending).length;
+  if(!list.length && !pending) return "";
+  return `<div class="photos">${list.map(x => `<button type="button" data-photoview="${esc(x.rec.fileId)}" data-photocap="${esc(j.title + " · " + x.label)}"><img src="${driveImg(x.rec.fileId, 400)}" alt="" loading="lazy"><span class="cap">${esc(x.label)}${x.rec.takenAt ? " · " + clockOf(x.rec.takenAt) : ""}</span></button>`).join("")}</div>${pending ? `<div class="note">📷 ${pending} photo${pending>1?"s":""} still uploading — it goes up when there is signal.</div>` : ""}`;
+}
+function proofPanel(j){
+  const proof = proofOf(j); if(!relayCfg() || !proof.length) return "";
+  const nx = nextSlot(j);
+  const slotHtml = p => {
+    const st = slotState(j, p.id), loc = phLocal(j.id)[p.id], saved = (j.photos||{})[p.id], at = (saved && saved.takenAt) || (loc && loc.takenAt);
+    const isNext = st === "todo" && nx && nx.id === p.id;
+    const img = (loc && loc.dataUrl) ? `<img src="${loc.dataUrl}" alt="">` : (saved && saved.fileId) ? `<img src="${driveImg(saved.fileId, 200)}" alt="" loading="lazy">` : `<div class="ph-empty" aria-hidden="true">📷</div>`;
+    let status, actions = "";
+    if(st === "done") status = `<span class="ph-status ok">${esc(p.label)} · ${clockOf(at)}</span>`;
+    else if(st === "queued") status = `<span class="ph-status ok">${esc(p.label)} · taken ${clockOf(at)}, uploads later</span>`;
+    else if(st === "preparing" || st === "uploading") status = `<span class="ph-status">${esc(p.label)} · ${st}…</span>`;
+    else if(st === "failed"){ status = `<span class="ph-status err">${esc(p.label)} · ${esc((loc && loc.error) || "Upload failed.")}</span>`; actions = `<button class="btn sm" type="button" data-proofretry="${j.id}|${p.id}">Retry upload</button>`; }
+    else if(isNext){ status = `<span class="ph-status"><b>${esc(p.label)}</b><br>${esc(p.hint || "")}</span>`; actions = `<button class="btn sm primary" type="button" data-proofbtn="${j.id}|${p.id}">📷 Take photo</button><input type="file" accept="image/*" capture="environment" hidden data-proofin="${j.id}|${p.id}">`; }
+    else status = `<span class="ph-status" style="color:var(--ink-3)">${esc(p.label)}</span>`;
+    return `<div class="wt-photo${st === "todo" && !isNext ? "" : " has"}">${img}<div class="ph-main">${status}<div class="ph-actions">${actions}</div></div></div>`;
+  };
+  const s = state.stops[j.stopId]; const vac = j.type === "vacuum" && s && s.place && s.place.kind === "outlet" && VAC_CARDS[s.place.code];
+  return `<div class="wt"><span class="wt-title">Proof · ${esc((JOB_TYPES[j.type]||JOB_TYPES.other).label)}</span>
+    ${vac ? `<p class="note" style="margin:0"><a href="${VAC_ROUTE_URL}#${encodeURIComponent(vac)}" target="_blank" rel="noopener">Open the vacuum route card</a> for this pool.</p>` : ""}
+    <div class="stack" style="gap:8px">${proof.map(slotHtml).join("")}</div></div>`;
+}
+function taskRow(j, s, opts){
+  opts = opts || {}; const mine = opts.mine, active = s.arriveAt && !s.departAt;
+  const running = j.startedAt && !j.doneAt && !j.skipped, finished = !!j.doneAt, skipped = !!j.skipped && !j.doneAt;
+  const cls = running ? "running" : finished ? "finished" : skipped ? "skipped" : "";
+  const times = finished ? `${clockOf(j.startedAt || j.doneAt)}–${clockOf(j.doneAt)} · <b>${dur(mins(j.startedAt || j.doneAt, j.doneAt))}</b>` : running ? `started ${clockOf(j.startedAt)} · <span class="mono">${liveDur(j.startedAt)}</span>` : "";
+  const who = (j.doneBy && j.doneBy !== s.tech) ? ` · by ${esc(j.doneBy)}` : "";
+  const skipTxt = skipped ? `<div class="note" style="color:var(--urgent)">Couldn't do · ${esc(j.skipped.why)} · ${clockOf(j.skipped.at)}</div>` : "";
+  const remark = finished && j.remark ? `<div class="task-note">“${esc(j.remark)}”</div>` : "";
+  const notified = j.urgent && j.notified ? `<div class="note" style="font-size:12.5px">${j.notified.ok ? "✓ Telegram sent " + clockOf(j.notified.at) : "Telegram not sent — " + esc(j.notified.err || "")}</div>` : "";
+  let act = "";
+  if(mine && active){
+    if(running){
+      const fs = finishState(j);
+      act = `<button class="btn sm" data-unstart="${j.id}" title="Not started yet after all" style="color:var(--warn)">✕</button><button class="btn sm done" data-finish="${j.id}" ${fs.ok ? "" : "disabled"}>${esc(fs.label)}</button>`;
+    } else if(finished) act = `<button class="btn sm done" data-unfinish="${j.id}">Done · undo</button>`;
+    else if(skipped) act = `<button class="btn sm" data-unskip="${j.id}">Do it after all</button>`;
+    else act = `<button class="btn sm primary" data-start="${j.id}">Start</button>`;
+  } else if(finished) act = `<span class="tag st-done">Done</span>`;
+  else if(running) act = `<span class="tag st-prog">In progress</span>`;
+  else if(skipped) act = `<span class="tag st-skip">Couldn't do</span>`;
+  else if(!active && !s.departAt) act = `<span class="tag st-open">Planned</span>`;
+  else if(s.departAt) act = `<span class="tag st-skip">Not done</span>`;
+  const skipForm = state.ui.skipForm === j.id ? `<div class="addbox" style="width:100%"><label class="f">Why couldn't it be done?<input type="text" ${kv("skip."+j.id, 'placeholder="e.g. shop closed, part not in stock, no key"')}></label><div class="row-2"><button class="btn sm warn" data-skipsave="${j.id}">Mark “Couldn't do”</button><button class="btn sm" data-skipcancel="${j.id}">Cancel</button></div></div>` : "";
+  const remarkBox = running && mine ? `<label class="f" style="width:100%">Remark (optional)<input type="text" ${kv("remark."+j.id, 'placeholder="anything the office should know"')}></label>` : "";
+  return `<div class="task ${cls}"><span class="mark">${finished ? "✓" : running ? "▶" : skipped ? "!" : ""}</span>
+    <div class="task-main"><span class="task-name">${esc(j.title)}</span>
+      <div class="task-meta">${typeTag(j)}${urgentTag(j)}${carriedTag(j)}${times ? `<span class="mono">${times}${who}</span>` : ""}</div>
+      ${j.note ? `<div class="task-note">${esc(j.note)}</div>` : ""}${j.carriedFrom && j.carriedFrom.why ? `<div class="note">Yesterday: ${esc(j.carriedFrom.why)}</div>` : ""}${skipTxt}${remark}${notified}
+      ${finished || skipped || s.departAt ? photosHtml(j) : ""}
+      ${mine && active && !finished && !skipped && state.ui.skipForm !== j.id ? `<button class="link" data-skip="${j.id}" style="align-self:flex-start;padding:0;font-size:13px">Couldn't do this job?</button>` : ""}
+    </div>
+    <div class="act">${act}</div>
+    ${skipForm}
+    ${running && mine ? remarkBox + proofPanel(j) : (running ? photosHtml(j) : "")}
+  </div>`;
+}
+function jobPreview(s){
+  const js = jobsAt(s.id); if(!js.length) return `<p class="note" style="margin:0">No jobs listed here yet.</p>`;
+  return `<div class="tasks">${js.map(j => `<div class="task"><span class="mark"></span><div class="task-main"><span class="task-name">${esc(j.title)}</span><div class="task-meta">${typeTag(j)}${urgentTag(j)}${carriedTag(j)}</div>${j.note ? `<div class="task-note">${esc(j.note)}</div>` : ""}</div></div>`).join("")}</div>`;
+}
+function addJobBox(stopId, who){
+  const key = "aj."+stopId; const open = state.ui.addJob === stopId;
+  if(!open) return `<button class="btn sm" data-openaddjob="${stopId}" style="align-self:flex-start">+ Add a job here</button>`;
+  const type = keep(key+".type") || "other"; const t = JOB_TYPES[type];
+  return `<div class="addbox" data-ajbox="${stopId}">
+    <div class="sugg">${TYPE_ORDER.map(k => `<button type="button" data-ajtype="${stopId}|${k}" aria-pressed="${k === type}">${JOB_TYPES[k].icon} ${esc(JOB_TYPES[k].label)}</button>`).join("")}</div>
+    <label class="f">What<input type="text" ${kv(key+".title", `placeholder="${esc(t.sugg[0] || "Job")}"`)}></label>
+    <div class="sugg">${t.sugg.map(x => `<button type="button" data-ajsugg="${stopId}|${esc(x)}">${esc(x)}</button>`).join("")}</div>
+    <label class="f">Details for the technician (optional)<textarea ${kv(key+".note", 'placeholder="what exactly, for whom, quantity, who to look for…"')}></textarea></label>
+    ${isPlanner() && state.date === todayKey() ? `<label class="chk"><input type="checkbox" data-keepchk="${esc(key+".urgent")}" ${keep(key+".urgent") ? "checked" : ""}> Urgent — tell the Telegram group now</label>` : ""}
+    <div class="row-2"><button class="btn sm primary" data-addjob="${stopId}">Add job</button><button class="btn sm" data-closeaddjob="${stopId}">Cancel</button></div>
+  </div>`;
+}
+function placeOptions(sel){
+  const saved = Object.values(state.places).sort((a,b) => String(a.name).localeCompare(String(b.name)));
+  return `<option value="">Choose a place…</option><optgroup label="Saved places">${saved.map(p => `<option value="place:${esc(p.id)}" ${sel === "place:"+p.id ? "selected" : ""}>${esc(p.name)}${p.kind ? " · " + esc(p.kind) : ""}</option>`).join("")}</optgroup><optgroup label="Outlets">${OUTLETS.map(o => `<option value="outlet:${o.code}" ${sel === "outlet:"+o.code ? "selected" : ""}>${o.code}</option>`).join("")}</optgroup><option value="new" ${sel === "new" ? "selected" : ""}>+ New place…</option>`;
+}
+function addStopBox(tech, scope){
+  const key = "as."+scope; const open = state.ui.addStop === scope;
+  if(!open) return `<button class="btn sm" data-openaddstop="${esc(scope)}" style="align-self:flex-start">+ Add a stop</button>`;
+  const pick = keep(key+".pick");
+  return `<div class="addbox">
+    <label class="f">Where<select ${kv(key+".pick")}>${placeOptions(pick)}</select></label>
+    ${pick === "new" ? `<label class="f">Place name<input type="text" ${kv(key+".name", 'placeholder="e.g. Ah Seng Electrical, Toa Payoh"')}></label>
+      <div class="row-2"><label class="f">Postal code<input type="text" inputmode="numeric" ${kv(key+".postal", 'placeholder="6 digits"')}></label><label class="f">Type<select ${kv(key+".kind")}>${PLACE_KINDS.map(k => `<option ${keep(key+".kind") === k ? "selected" : ""}>${k}</option>`).join("")}</select></label></div>
+      <label class="f">Address (optional)<input type="text" ${kv(key+".addr")}></label>
+      <label class="chk"><input type="checkbox" data-keepchk="${esc(key+".save")}" ${keep(key+".save") !== "" ? (keep(key+".save") ? "checked" : "") : "checked"}> Save this place for next time</label>` : ""}
+    <label class="f">Note for this stop (optional)<input type="text" ${kv(key+".note", 'placeholder="e.g. ask for Mr Tan at the counter"')}></label>
+    <div class="row-2"><button class="btn sm primary" data-addstop="${esc(scope)}|${esc(tech)}">Add stop</button><button class="btn sm" data-closeaddstop="${esc(scope)}">Cancel</button></div>
+  </div>`;
+}
+async function submitAddStop(scope, tech){
+  const key = "as."+scope; const pick = keep(key+".pick");
+  let place = placeFromPick(pick);
+  if(pick === "new"){
+    const name = keep(key+".name").trim(); if(!name){ flash("Give the place a name."); return; }
+    const p = {name, postal: keep(key+".postal").trim() || null, addr: keep(key+".addr").trim() || null, kind: keep(key+".kind") || "Other"};
+    flash("Finding it on the map…");
+    const pt = await geocodePlace(p);
+    if(pt){ p.lat = pt.lat; p.lng = pt.lng; if(!p.addr && pt.addr) p.addr = pt.addr; }
+    const saveIt = keep(key+".save") === "" ? true : !!keep(key+".save");
+    if(saveIt){ const id = uid(); save("day_places/"+id, Object.assign({addedBy:state.me, addedAt:nowIso()}, p), false); place = {kind:"place", id, name:p.name, addr:p.addr, lat:p.lat ?? null, lng:p.lng ?? null}; }
+    else place = {kind:"adhoc", name:p.name, addr:p.addr, lat:p.lat ?? null, lng:p.lng ?? null};
+    if(!pt) flash("Added, but couldn't find it on the map — location checks here will be rough.");
+  }
+  if(!place){ flash("Choose where."); return; }
+  addStop(tech, place, {note: keep(key+".note").trim()});
+  ["pick","name","postal","addr","kind","note","save"].forEach(f => delete state.ui.keep[key+"."+f]);
+  state.ui.addStop = null; render();
+}
+function submitAddJob(stopId){
+  const key = "aj."+stopId; const type = keep(key+".type") || "other";
+  const urgent = !!keep(key+".urgent") && isPlanner() && state.date === todayKey();
+  const id = addJob(stopId, {type, title:keep(key+".title"), note:keep(key+".note"), urgent});
+  ["type","title","note","urgent"].forEach(f => delete state.ui.keep[key+"."+f]);
+  state.ui.addJob = null; render();
+  if(urgent && id) notifyUrgent(id);
+}
+function travelGapHtml(prev, s){
+  if(!prev || !prev.departAt || !s.arriveAt) return "";
+  const m = mins(prev.departAt, s.arriveAt);
+  return `<div class="travel-gap"><span class="ln"></span>🚐 ${dur(m)} travel${m < 2 ? ' <span class="dev">⚠ check timing</span>' : ""}<span class="ln"></span></div>`;
+}
+function stopCard(s, idx, opts){
+  opts = opts || {}; const mine = opts.mine;
+  const active = s.arriveAt && !s.departAt, done = !!s.departAt;
+  const js = jobsAt(s.id); const doneN = js.filter(j => j.doneAt).length, skipN = js.filter(j => j.skipped && !j.doneAt).length;
+  const dir = dirLink(s.place || {});
+  const head = `<div class="stop-head"><span class="stop-name">${esc(stopLabel(s))}</span>${s.urgent ? `<span class="tag urg">Urgent</span>` : ""}${s.place && s.place.kind === "outlet" ? `<span class="tag type">Outlet</span>` : ""}
+      <span class="stop-times mono">${s.arriveAt ? `in ${clockOf(s.arriveAt)}` : ""}${s.departAt ? ` · out ${clockOf(s.departAt)} · ${dur(mins(s.arriveAt, s.departAt))}` : (active ? ` · ${liveDur(s.arriveAt)} here` : "")}</span></div>
+    <div class="stop-addr">${s.place && s.place.addr ? esc(s.place.addr) + " · " : ""}${dir ? `<a href="${esc(dir)}" target="_blank" rel="noopener">Directions</a>` : ""}${s.note ? `<br>📝 ${esc(s.note)}` : ""}</div>`;
+  let body = "";
+  if(!s.arriveAt){
+    body = `<div class="stop-body">${jobPreview(s)}${mine ? `<button class="btn primary big" data-arrive="${s.id}">Arrive at ${esc(stopLabel(s))}</button>` : ""}</div>`;
+  } else if(active){
+    const open = js.filter(jobOpen).length, run = runningJob(s.tech);
+    const confirm = state.ui.confirmLeave === s.id;
+    const leaveBlock = !mine ? "" : (run && run.stopId === s.id)
+      ? `<p class="note" style="margin:0;color:var(--warn)">“${esc(run.title)}” is still running — finish it, or mark it “Couldn't do”, before you leave.</p><button class="btn big" disabled>Leave ${esc(stopLabel(s))}</button>`
+      : !open
+      ? `<p class="note" style="margin:0">All jobs here done. Tap <strong>Leave</strong> right when you head out — that starts the travel-time count.</p><button class="btn primary big" data-leave="${s.id}">Leave ${esc(stopLabel(s))}</button>`
+      : !confirm
+      ? `<p class="note" style="margin:0;color:var(--warn)">${open} job${open>1?"s":""} not done yet.</p><button class="btn big" data-askleave="${s.id}">Leave ${esc(stopLabel(s))}</button>`
+      : `<p class="note" style="margin:0;color:var(--warn)">${open} job${open>1?"s":""} not done — they'll show as <strong>not done</strong> and can be carried to tomorrow. Leave anyway?</p><div class="row-2"><button class="btn warn big" data-leave="${s.id}">Yes, leave anyway</button><button class="btn big" data-cancelleave="${s.id}">Cancel</button></div>`;
+    body = `<div class="stop-body">${locHtml(s, "in", {prefix:"Arrived", canRetry:mine})}
+      ${js.length ? `<div class="tasks">${js.map(j => taskRow(j, s, {mine})).join("")}</div>` : `<p class="note" style="margin:0">No jobs listed here.</p>`}
+      ${mine ? addJobBox(s.id) : ""}${leaveBlock}
+      ${mine && !js.some(j => j.startedAt) ? `<button class="link" data-unarrive="${s.id}" style="align-self:center">Wrong stop? Undo arrival</button>` : ""}</div>`;
+  } else {
+    body = `<div class="stop-body">${locHtml(s, "in", {prefix:"Arrived"})}${locHtml(s, "out", {prefix:"Left"})}
+      ${js.length ? `<div class="tasks">${js.map(j => taskRow(j, s, {mine:false})).join("")}</div>` : ""}
+      ${mine && !activeStop() ? `<button class="link" data-reopen="${s.id}" style="align-self:flex-start">Left by mistake? Reopen</button>` : ""}</div>`;
+  }
+  return `<div class="stop ${active ? "is-active" : done ? "is-done" : ""} ${s.urgent && !done ? "is-urgent" : ""}" data-stopid="${s.id}"><span class="idx">${idx}</span>${head}${body}</div>`;
+}
+function routeHtml(who, opts){
+  const list = orderedStops(who); if(!list.length) return "";
+  let prev = null;
+  return `<div class="route">${list.map((s, i) => { const gap = travelGapHtml(prev, s); if(s.arriveAt) prev = s; return gap + stopCard(s, i+1, opts); }).join("")}</div>`;
+}
+function leftoverHtml(tech, canCarry){
+  const list = leftovers().filter(j => !tech || j.tech === tech); if(!list.length) return "";
+  return `<div class="card pad leftover stack" style="gap:8px"><div class="sec-head"><h2 class="sec">Left over from ${esc(fmtDate(state.prevDate))}</h2></div>
+    ${list.map(j => { const ps = state.prevStops[j.stopId]; return `<div class="plan-job"><div class="pj-main"><b>${esc(j.title)}</b> <span class="muted">· ${esc(ps ? stopLabel(ps) : "?")}${tech ? "" : " · " + esc(j.tech)}</span><div class="task-meta">${typeTag(j)}${j.skipped ? `<span class="tag st-skip">Couldn't do · ${esc(j.skipped.why)}</span>` : `<span class="tag st-open">Not done</span>`}</div></div>
+      ${canCarry ? `<div class="pj-acts"><button class="btn sm primary" data-carry="${j.id}">Carry to ${state.date === todayKey() ? "today" : esc(fmtDate(state.date))}</button></div>` : ""}</div>`; }).join("")}</div>`;
+}
+
+/* ---- My day ---- */
+function namePicker(){
+  const names = state.roster.slice();
+  return `<div class="card pad stack" style="gap:10px"><span class="eyebrow">Who are you?</span>
+    ${names.length ? `<div class="pill-grid">${names.map(n => `<button class="pill" data-me="${esc(n)}">${esc(n)}</button>`).join("")}</div>`
+      : `<p class="note" style="margin:0">No names yet. The roster is shared with the <a href="${TRACKER_URL}" target="_blank" rel="noopener">Dosing Round Tracker</a> — add technicians there under Task Setting.</p>`}
+  </div>`;
+}
+function viewTech(){
+  if(!state.me) return namePicker();
+  const stops = orderedStops(); const jobs = Object.values(state.jobs).filter(j => j.tech === state.me);
+  const urg = jobs.filter(j => j.urgent && jobOpen(j)).length;
+  const doneN = jobs.filter(j => j.doneAt).length;
+  const isToday = state.date === todayKey();
+  const dateBar = `<div class="datebar card pad" style="padding:8px 10px"><button class="btn" data-date="-1">‹</button><span class="dmid">${esc(fmtDate(state.date))}${isToday ? "" : ' <button class="link" data-date="0">today</button>'}</span><button class="btn" data-date="1">›</button></div>`;
+  const hello = `<div class="sec-head"><h2 class="sec">${esc(state.me)}</h2><span class="muted">${stops.length ? `${stops.length} stop${stops.length>1?"s":""} · ${doneN}/${jobs.length} jobs done` : "nothing planned"}</span><button class="link" data-me="" style="margin-left:auto">not you?</button></div>`;
+  const urgBanner = urg ? `<div class="banner urgent"><strong>🔴 ${urg} urgent job${urg>1?"s":""}</strong> on your day — it's at the top of the list.</div>` : "";
+  const empty = !stops.length ? `<div class="card pad"><p class="note" style="margin:0">Nothing planned for you ${isToday ? "today" : "on this day"}${isPlanner() ? " — plan it on the <b>Plan</b> tab, or" : ". You can still"} add a stop below as you go.</p></div>` : "";
+  return `<div class="stack">${dateBar}${hello}${urgBanner}${state.date >= todayKey() ? leftoverHtml(state.me, true) : ""}${empty}${routeHtml(state.me, {mine:true})}${addStopBox(state.me, "tech")}</div>`;
+}
+/* ---- Team ---- */
+function techStatus(who){
+  const stops = orderedStops(who); const act = stops.find(s => s.arriveAt && !s.departAt);
+  const visited = stops.filter(s => s.departAt).sort((a,b) => a.departAt.localeCompare(b.departAt));
+  if(act) return {chip:"onsite", text:`At ${stopLabel(act)} since ${clockOf(act.arriveAt)}`};
+  const left = stops.filter(s => !s.arriveAt).length;
+  if(visited.length && left) return {chip:"travel", text:`Left ${stopLabel(visited[visited.length-1])} ${clockOf(visited[visited.length-1].departAt)} · ${left} to go`};
+  if(visited.length && !left) return {chip:"done", text:`Finished · last at ${stopLabel(visited[visited.length-1])} ${clockOf(visited[visited.length-1].departAt)}`};
+  return {chip:"idle", text: stops.length ? "Not started" : "No plan"};
+}
+function travelTotal(who){ const list = orderedStops(who).filter(s => s.arriveAt); let t = 0; for(let i = 1; i < list.length; i++) if(list[i-1].departAt) t += mins(list[i-1].departAt, list[i].arriveAt); return t; }
+function lastFix(who){ let best = null; myStops(who).forEach(s => [s.fixOut, s.fixIn].forEach(f => { if(f && !f.fail && (!best || f.at > best.at)) best = f; })); return best; }
+function viewTeam(){
+  const techs = Array.from(new Set(state.roster.concat(Object.values(state.stops).map(s => s.tech)))).filter(Boolean);
+  const isToday = state.date === todayKey();
+  const dateBar = `<div class="datebar card pad" style="padding:8px 10px"><button class="btn" data-date="-1">‹</button><span class="dmid">${esc(fmtDate(state.date))}${isToday ? "" : ' <button class="link" data-date="0">today</button>'}</span><button class="btn" data-date="1">›</button></div>`;
+  const rows = techs.filter(t => myStops(t).length).map(t => {
+    const st = techStatus(t); const jobs = Object.values(state.jobs).filter(j => j.tech === t);
+    const d = jobs.filter(j => j.doneAt).length, k = jobs.filter(j => j.skipped && !j.doneAt).length, n = jobs.length || 1;
+    const fx = lastFix(t); const exp = !!state.ui.expand[t];
+    return `<div class="crew-row"><div class="crew-top"><span class="crew-name">${esc(t)}</span><span class="chip ${st.chip}"><span class="dot"></span>${st.chip === "onsite" ? "On site" : st.chip === "travel" ? "Travelling" : st.chip === "done" ? "Done" : "—"}</span><span class="crew-where">${esc(st.text)}</span></div>
+      <div class="prog"><span class="p-done" style="width:${d/n*100}%"></span><span class="p-skip" style="width:${k/n*100}%"></span></div>
+      <div class="kpis"><div class="kpi"><div class="v">${d}/${jobs.length}</div><div class="k">jobs done${k ? ` · ${k} couldn't` : ""}</div></div><div class="kpi"><div class="v">${myStops(t).filter(s => s.departAt).length}/${myStops(t).length}</div><div class="k">stops</div></div><div class="kpi"><div class="v">${dur(travelTotal(t))}</div><div class="k">travel</div></div></div>
+      ${fx ? `<div class="loc none"><span class="pin">📍</span><span class="lt"><span class="lh">Last seen ${clockOf(fx.at)}</span><br><span class="la">${esc(fx.addr || (fx.lat+", "+fx.lng))}</span></span><a href="https://www.google.com/maps?q=${fx.lat},${fx.lng}" target="_blank" rel="noopener">Map</a></div>` : ""}
+      <button class="link" data-expand="${esc(t)}" style="align-self:flex-start;padding:0">${exp ? "▲ hide the day" : "▼ show the day"}</button>
+      ${exp ? routeHtml(t, {mine:false}) : ""}</div>`;
+  }).join("");
+  return `<div class="stack">${dateBar}${state.date >= todayKey() ? leftoverHtml(null, isPlanner()) : ""}${rows ? `<div class="crew">${rows}</div>` : `<div class="card pad"><p class="note" style="margin:0">No day work planned for ${esc(fmtDate(state.date))}.</p></div>`}</div>`;
+}
+/* ---- Plan ---- */
+function planStopCard(s, i){
+  const js = jobsAt(s.id); const locked = !!s.arriveAt;
+  return `<div class="stop ${s.urgent ? "is-urgent" : ""} ${s.departAt ? "is-done" : (s.arriveAt ? "is-active" : "")}"><span class="idx">${i}</span>
+    <div class="stop-head"><span class="stop-name">${esc(stopLabel(s))}</span>${s.urgent ? `<span class="tag urg">Urgent</span>` : ""}
+      <span class="stop-times mono">${s.arriveAt ? `in ${clockOf(s.arriveAt)}` : ""}${s.departAt ? ` · out ${clockOf(s.departAt)}` : ""}</span></div>
+    <div class="stop-addr">${s.place && s.place.addr ? esc(s.place.addr) : ""}${s.note ? `<br>📝 ${esc(s.note)}` : ""}</div>
+    <div class="stop-body">
+      ${js.length ? js.map(j => `<div class="plan-job"><div class="pj-main"><b>${esc(j.title)}</b><div class="task-meta">${typeTag(j)}${urgentTag(j)}${carriedTag(j)}${j.doneAt ? `<span class="tag st-done">Done ${clockOf(j.doneAt)}</span>` : j.skipped ? `<span class="tag st-skip">Couldn't do</span>` : j.startedAt ? `<span class="tag st-prog">In progress</span>` : ""}</div>${j.note ? `<div class="task-note">${esc(j.note)}</div>` : ""}${j.urgent && j.notified ? `<div class="note" style="font-size:12.5px">${j.notified.ok ? "✓ Telegram sent " + clockOf(j.notified.at) : "Telegram not sent — " + esc(j.notified.err || "")} ${j.notified.ok ? "" : `<button class="link" data-renotify="${j.id}" style="font-size:12.5px;padding:0">send again</button>`}</div>` : ""}</div>
+        <div class="pj-acts">${!j.startedAt ? `<button class="btn sm" data-rmjob="${j.id}" title="Remove">✕</button>` : ""}</div></div>`).join("") : `<p class="note" style="margin:0">No jobs here yet.</p>`}
+      ${addJobBox(s.id)}
+      <div class="row-2" style="justify-content:flex-start">${locked ? "" : `<button class="btn sm" data-movestop="${s.id}|-1" style="flex:0">↑</button><button class="btn sm" data-movestop="${s.id}|1" style="flex:0">↓</button><button class="btn sm" data-rmstop="${s.id}" style="flex:0;color:var(--urgent)">Remove stop</button>`}</div>
+    </div></div>`;
+}
+function viewPlan(){
+  if(!state.me) return namePicker();
+  if(!isPlanner()) return `<div class="card pad"><p class="note" style="margin:0">Only ${state.planners.map(esc).join(", ")} can plan the day. Ask them to add you under <b>Who may plan</b>.</p></div>`;
+  const isToday = state.date === todayKey();
+  const dateBar = `<div class="datebar card pad" style="padding:8px 10px"><button class="btn" data-date="-1">‹</button><span class="dmid">${esc(fmtDate(state.date))}${isToday ? "" : ' <button class="link" data-date="0">today</button>'}</span><button class="btn" data-date="1">›</button></div>`;
+  const techs = state.roster.slice(); if(!techs.includes(state.planTech)) state.planTech = techs[0] || "";
+  const pills = `<div class="pill-grid">${techs.map(t => { const n = myStops(t).length; return `<button class="pill" data-plantech="${esc(t)}" aria-pressed="${t === state.planTech}">${esc(t)}<small>${n ? n + " stop" + (n>1?"s":"") : "—"}</small></button>`; }).join("")}</div>`;
+  const list = orderedStops(state.planTech);
+  const setupBanner = !state.planners.length ? `<div class="banner info"><strong>No planners set yet</strong> — anyone can plan until you choose who may. Set it under <b>Who may plan</b> below.</div>` : "";
+  const settingsOpen = !!state.ui.settings;
+  const settings = `<div class="card pad stack" style="gap:10px"><div class="sec-head"><h2 class="sec">Settings</h2><button class="link" data-togglesettings style="margin-left:auto">${settingsOpen ? "hide" : "show"}</button></div>
+    ${settingsOpen ? `<span class="eyebrow">Who may plan</span><div class="sugg">${state.roster.map(n => `<button type="button" data-planner="${esc(n)}" aria-pressed="${state.planners.includes(n)}">${esc(n)}</button>`).join("")}</div>
+      <p class="note" style="margin:0">Names come from the tracker's roster. With nobody selected, anyone can plan.</p>
+      <span class="eyebrow" style="margin-top:6px">Saved places</span>
+      ${Object.values(state.places).length ? Object.values(state.places).sort((a,b) => String(a.name).localeCompare(String(b.name))).map(p => `<div class="plan-job"><div class="pj-main"><b>${esc(p.name)}</b> <span class="muted">· ${esc(p.kind || "")}${p.addr ? " · " + esc(p.addr) : ""}${p.lat == null ? ' · <span class="dev">not on map</span>' : ""}</span></div><div class="pj-acts">${p.lat == null ? `<button class="btn sm" data-regeo="${p.id}">Find on map</button>` : ""}<button class="btn sm" data-rmplace="${p.id}">✕</button></div></div>`).join("") : `<p class="note" style="margin:0">None yet — they're saved when you add a new place to a stop.</p>`}
+      <p class="note" style="margin:0">Photo relay: ${relayCfg() ? "set ✓ (shared with the tracker)" : `<span class="dev">not set</span> — set it in the tracker's Task Setting → Photo proof; proof photos and Telegram need it.`}</p>` : ""}</div>`;
+  return `<div class="stack">${dateBar}${setupBanner}${pills}
+    ${state.planTech ? `<div class="sec-head"><h2 class="sec">${esc(state.planTech)}'s day</h2><span class="muted">${list.length ? list.length + " stop" + (list.length>1?"s":"") : "nothing planned yet"}</span></div>
+    ${state.date >= todayKey() ? leftoverHtml(state.planTech, true) : ""}
+    ${list.length ? `<div class="route">${list.map((s, i) => planStopCard(s, i+1)).join("")}</div>` : ""}
+    ${addStopBox(state.planTech, "plan")}` : `<div class="card pad"><p class="note" style="margin:0">No technicians in the roster yet — add them in the tracker's Task Setting.</p></div>`}
+    ${settings}</div>`;
+}
+
+/* ---- render + wiring ---- */
+let renderQueued = false;
+function render(){ if(renderQueued) return; renderQueued = true; requestAnimationFrame(() => { renderQueued = false; paint(); }); }
+function paint(){
+  const focused = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.keep;
+  let caret = null; try{ caret = focused ? document.activeElement.selectionStart : null; }catch(e){}
+  $("#hdr-date").textContent = fmtDate(state.date);
+  ["tech","team","plan"].forEach(v => { const b = $("#btn-"+v); if(b) b.setAttribute("aria-pressed", String(state.view === v)); });
+  $("#btn-plan").style.display = (state.me && !isPlanner()) ? "none" : "";
+  $("#view").innerHTML = state.view === "team" ? viewTeam() : state.view === "plan" ? viewPlan() : viewTech();
+  renderConn();
+  document.querySelectorAll("[data-keep]").forEach(el => { const v = state.ui.keep[el.dataset.keep]; if(v !== undefined && el.value !== v) el.value = v; el.addEventListener("input", () => { state.ui.keep[el.dataset.keep] = el.value; if(el.tagName === "SELECT") render(); }); });
+  document.querySelectorAll("[data-keepchk]").forEach(el => el.addEventListener("change", () => { state.ui.keep[el.dataset.keepchk] = el.checked ? "1" : ""; }));
+  if(focused){ const el = document.querySelector(`[data-keep="${focused}"]`); if(el){ el.focus(); try{ if(caret !== null) el.setSelectionRange(caret, caret); }catch(e){} } }
+  wire();
+}
+function wire(){
+  each("#btn-tech", () => { state.view = "tech"; render(); });
+  each("#btn-team", () => { state.view = "team"; render(); });
+  each("#btn-plan", () => { state.view = "plan"; render(); });
+  each("[data-me]", b => { state.me = b.dataset.me; try{ localStorage.setItem("dw.me", state.me); }catch(e){} render(); });
+  each("[data-date]", b => { const d = +b.dataset.date; state.date = d === 0 ? todayKey() : shiftDate(state.date, d); state.ui.addStop = state.ui.addJob = null; listenDay(); render(); });
+  each("[data-arrive]", b => arrive(b.dataset.arrive));
+  each("[data-unarrive]", b => undoArrive(b.dataset.unarrive));
+  each("[data-askleave]", b => { state.ui.confirmLeave = b.dataset.askleave; render(); });
+  each("[data-cancelleave]", () => { state.ui.confirmLeave = null; render(); });
+  each("[data-leave]", b => leave(b.dataset.leave));
+  each("[data-reopen]", b => reopenStop(b.dataset.reopen));
+  each("[data-start]", b => startJob(b.dataset.start));
+  each("[data-unstart]", b => unstartJob(b.dataset.unstart));
+  each("[data-finish]", b => { const id = b.dataset.finish; state.ui.remark[id] = keep("remark."+id); delete state.ui.keep["remark."+id]; finishJob(id); });
+  each("[data-unfinish]", b => undoFinish(b.dataset.unfinish));
+  each("[data-skip]", b => { state.ui.skipForm = b.dataset.skip; render(); });
+  each("[data-skipcancel]", () => { state.ui.skipForm = null; render(); });
+  each("[data-skipsave]", b => { const id = b.dataset.skipsave; skipJob(id, keep("skip."+id)); delete state.ui.keep["skip."+id]; });
+  each("[data-unskip]", b => unskipJob(b.dataset.unskip));
+  each("[data-relocate]", b => { const [id, w] = b.dataset.relocate.split("|"); relocate(id, w); });
+  each("[data-openaddjob]", b => { state.ui.addJob = b.dataset.openaddjob; render(); });
+  each("[data-closeaddjob]", () => { state.ui.addJob = null; render(); });
+  each("[data-ajtype]", b => { const [sid, t] = b.dataset.ajtype.split("|"); state.ui.keep["aj."+sid+".type"] = t; render(); });
+  each("[data-ajsugg]", b => { const k = b.dataset.ajsugg.indexOf("|"); const sid = b.dataset.ajsugg.slice(0, k); state.ui.keep["aj."+sid+".title"] = b.dataset.ajsugg.slice(k+1); render(); });
+  each("[data-addjob]", b => submitAddJob(b.dataset.addjob));
+  each("[data-openaddstop]", b => { state.ui.addStop = b.dataset.openaddstop; render(); });
+  each("[data-closeaddstop]", () => { state.ui.addStop = null; render(); });
+  each("[data-addstop]", b => { const [scope, tech] = b.dataset.addstop.split("|"); submitAddStop(scope, tech); });
+  each("[data-rmjob]", b => removeJob(b.dataset.rmjob));
+  each("[data-rmstop]", b => removeStop(b.dataset.rmstop));
+  each("[data-movestop]", b => { const [id, d] = b.dataset.movestop.split("|"); moveStop(id, +d); });
+  each("[data-carry]", b => carryJob(b.dataset.carry));
+  each("[data-renotify]", b => notifyUrgent(b.dataset.renotify));
+  each("[data-expand]", b => { state.ui.expand[b.dataset.expand] = !state.ui.expand[b.dataset.expand]; render(); });
+  each("[data-plantech]", b => { state.planTech = b.dataset.plantech; state.ui.addStop = state.ui.addJob = null; render(); });
+  each("[data-togglesettings]", () => { state.ui.settings = !state.ui.settings; render(); });
+  each("[data-planner]", b => { const n = b.dataset.planner; const list = state.planners.includes(n) ? state.planners.filter(x => x !== n) : state.planners.concat([n]); save("day_config/settings", {planners:list}); });
+  each("[data-rmplace]", b => remove("day_places/"+b.dataset.rmplace));
+  each("[data-regeo]", async b => { const p = state.places[b.dataset.regeo]; if(!p) return; flash("Looking it up…"); const pt = await geocodePlace(p); if(pt) save("day_places/"+p.id, {lat:pt.lat, lng:pt.lng, addr:p.addr || pt.addr || null}); else flash("Still can't find it — add a postal code or address."); });
+  each("[data-proofbtn]", b => { const i = document.querySelector(`[data-proofin="${b.dataset.proofbtn}"]`); if(i){ i.value = ""; i.click(); } });
+  document.querySelectorAll("[data-proofin]").forEach(i => i.addEventListener("change", () => { const f = i.files && i.files[0]; const [jid, sid] = i.dataset.proofin.split("|"); if(f) onProofPicked(jid, sid, f); }));
+  each("[data-proofretry]", b => { const [jid, sid] = b.dataset.proofretry.split("|"); const ph = phLocal(jid)[sid]; if(!ph || !ph.base64) return; ph.status = "uploading"; render(); uploadProof(jid, sid); });
+}
+function openPhoto(fileId, caption){
+  const lb = $("#lightbox"); lb.querySelector(".lb-cap").textContent = caption || "Photo"; lb.querySelector(".lb-drive").href = "https://drive.google.com/file/d/" + fileId + "/view";
+  const body = lb.querySelector(".lb-body"); body.innerHTML = `<div class="lb-msg">Loading the photo…</div>`;
+  const img = new Image(); img.alt = caption || "Photo"; img.onload = () => { body.innerHTML = ""; body.appendChild(img); };
+  img.onerror = () => { body.innerHTML = `<div class="lb-msg">Couldn't load the photo here. Tap <b>Open in Drive</b> above.</div>`; }; img.src = driveImg(fileId, 1600); lb.classList.add("open");
+}
+document.addEventListener("click", e => {
+  const open = e.target.closest("[data-photoview]"); if(open){ e.preventDefault(); openPhoto(open.dataset.photoview, open.dataset.photocap); return; }
+  const lb = $("#lightbox"); if(lb.classList.contains("open") && (e.target.closest(".lb-close") || e.target === lb || e.target.classList.contains("lb-body"))){ lb.classList.remove("open"); lb.querySelector(".lb-body").innerHTML = ""; }
+});
+document.addEventListener("keydown", e => { if(e.key === "Escape"){ const lb = $("#lightbox"); lb.classList.remove("open"); } });
+setInterval(() => { if(Object.values(state.stops).some(s => s.arriveAt && !s.departAt) && !document.activeElement.dataset.keep) render(); }, 30000);
+initDb();
+render();
+</script>
+</body>
+</html>
