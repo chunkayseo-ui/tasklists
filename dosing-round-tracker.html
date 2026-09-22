@@ -3384,7 +3384,7 @@ function vacuumPanel(s, t){
       if(m && vacMap.hidden) return `<button type="button" class="btn sm vac-map-show" data-vacmaptoggle>🗺️ Show route map${p ? ` · next ${esc(p.id)}` : ""}</button>`;
       return m ? `<figure class="vac-map" data-vacmap="${esc(spec.card)}"><button type="button" class="vac-map-hide" data-vacmaptoggle aria-label="Hide route map">Hide map ✕</button>${m}<figcaption>${p ? `<b>Next: ${esc(p.id)} · ${esc(p.label)}</b> — ${p.when === "end" ? "a close-up, taken at the ringed badge." : "stand at the ringed badge and point the camera along its arrow."}` : "All photos taken."}</figcaption></figure>`
                : (spec.card && !vacMap.tried ? `<p class="note" style="margin:0" data-vacmap="${esc(spec.card)}">Loading the route card…</p>` : ""); })()}
-    <div class="stack" style="gap:8px">${group("start", "At the start and each corner")}${group("end", "Close down")}</div>
+    <div class="stack" style="gap:8px">${group("start", "At the start and each corner")}${group("end", "After vacuuming the pool")}</div>
     <button class="btn primary big" data-vacsave="${key}" ${sst.ok ? "" : "disabled"}>${esc(sst.label)}</button>
   </div>`;
 }
