@@ -504,6 +504,14 @@ details.panel[open] summary::after{content:"▴"}
 .wt-read{display:block;width:100%;font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.45;color:var(--ink-2);margin-top:1px}
 .wt-read b{color:var(--accent);font-weight:600}
 .job-row-read{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-2);margin-top:4px;line-height:1.45}
+.vac-tl{margin:8px 0 10px;max-width:460px;font:13px/1.35 "IBM Plex Sans",sans-serif;color:var(--ink)}
+.vac-tl .r{display:grid;grid-template-columns:40px 1fr auto;align-items:center;gap:8px;min-height:24px}
+.vac-tl .r .vac-pb{justify-self:center;margin:0}
+.vac-tl .r .lb{font-weight:600;min-width:0}
+.vac-tl .r .tm{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-3)}
+.vac-tl .g{display:grid;grid-template-columns:40px 1fr;align-items:stretch;gap:8px;min-height:22px}
+.vac-tl .g .ln{justify-self:center;width:3px;border-radius:2px;background:var(--ink-3);opacity:.55}
+.vac-tl .g .gt{align-self:center;font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;color:var(--accent)}
 /* The photos themselves, on the row -- so a supervisor checks picture against
    number by looking, not by opening each one. A tap still opens it full size. */
 .dose-photos{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
@@ -3248,6 +3256,15 @@ const VAC_PHOTOS = {
     {id:"E3", when:"end", label:"Vacuum valve closed", hint:"Close-up of the valve handle in the closed position."},
     {id:"E4", when:"end", label:"Vacuum port closed", hint:"Close-up of the port with the cover on."}
   ]},
+  BK: {card:"BK", normalMin:null, list:[
+    {id:"P1", when:"start", label:"Set-up", hint:"Hose, vacuum head and telescopic pole connected at the vacuum port, bottom left. Stand at the bottom-left corner of the deck."},
+    {id:"P2", when:"start", label:"Corner 1 – right half, bottom", hint:"After the right half. Stand on the bottom deck. Look up the right half of the pool."},
+    {id:"P3", when:"start", label:"Corner 2 – left half, top", hint:"After the left half. Stand at the top of the left deck. Look down the left half of the pool."},
+    {id:"E1", when:"end", label:"Vacuum head, pipe and telescopic pole kept", hint:"Vacuum head, pipe and telescopic pole put back in storage."},
+    {id:"E2", when:"end", label:"Skimmer control valve opened", hint:"Close-up of the skimmer control valve handle in the open position."},
+    {id:"E3", when:"end", label:"Vacuum valve closed", hint:"Close-up of the valve handle in the closed position."},
+    {id:"E4", when:"end", label:"Vacuum port closed", hint:"Close-up of the port with the cover on."}
+  ]},
   // JE Indoor Pool 1 -- hose goes on the skimmer port, not a vacuum port.
   JEIP1: {card:"JEIP1", normalMin:null, list:[
     {id:"P1", when:"start", label:"Set-up", hint:"Hose, vacuum head and telescopic pole connected at the skimmer port, left side."},
@@ -3444,6 +3461,20 @@ function vacOpenHere(s){
     return {t, n, of:spec.list.length};
   });
 }
+// Point-to-point times: each photo as its route-card badge, joined by a line
+// with the minutes it took to get from one photo to the next.
+function vacTimelineHtml(card, got){
+  const timed = got.filter(x => x.takenAt);
+  if(timed.length < 2) return "";
+  let prev = null;
+  const rows = timed.map(x => {
+    let gap = "";
+    if(prev){ const m = mins(prev.takenAt, x.takenAt); gap = `<div class="g"><span class="ln"></span><span class="gt">${m < 1 ? "under 1 min" : dur(m).replace(/m$/, " min")}</span></div>`; }
+    prev = x;
+    return `${gap}<div class="r">${vacBadge(card, x.id)}<span class="lb">${esc(x.label || "")}</span><span class="tm">${clockOf(x.takenAt)}</span></div>`;
+  }).join("");
+  return `<div class="vac-tl" aria-label="Time between vacuum photos">${rows}</div>`;
+}
 function vacSummaryHtml(code, t){
   const v = t.vac; if(!v || !v.photos) return "";
   const spec = vacSpecFor(code, t);
@@ -3456,7 +3487,7 @@ function vacSummaryHtml(code, t){
   const missing = spec && got.length < spec.list.length ? ` <span class="dev">⚠ ${spec.list.length - got.length} photo${spec.list.length - got.length > 1 ? "s" : ""} missing</span>` : "";
   const left = v.unfinished ? ` <span class="dev">⚠ left without finishing — ${got.length}${spec ? " of " + spec.list.length : ""} photos</span>` : "";
   return `Vacuum photo proof · ${got.length}${spec ? " of " + spec.list.length : ""} photos${len}${quick}${left}${v.unfinished ? "" : missing}${pending ? ` · <span class="muted">📷 ${pending} upload${pending > 1 ? "s" : ""} pending</span>` : ""}
-    ${photoStripHtml(up, x => `${x.id}${x.label ? " " + x.label : ""}${x.takenAt ? " · " + clockOf(x.takenAt) : ""}`)}`;
+    ${vacTimelineHtml(spec && spec.card, got)}${photoStripHtml(up, x => `${x.id}${x.label ? " " + x.label : ""}${x.takenAt ? " · " + clockOf(x.takenAt) : ""}`)}`;
 }
 
 /* ---------- technician ---------- */
