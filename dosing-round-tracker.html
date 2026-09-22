@@ -459,6 +459,9 @@ details.panel[open] summary::after{content:"▴"}
 .wt-field .num span{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--ink-3);padding:0 10px;border-left:1px solid var(--line-soft)}
 .wt-field .plan{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-3)}
 .dev{color:var(--warn);font-weight:600}
+.vac-map{margin:0;background:#fff;border:1px solid var(--line);border-radius:9px;padding:6px 6px 8px}
+.vac-map svg{display:block;width:100%;height:auto;max-height:70vh}
+.vac-map figcaption{font-size:13.5px;line-height:1.4;color:var(--ink-2);padding:6px 4px 0}
 .wt-photo{display:flex;gap:12px;align-items:center;border:1px dashed var(--line);border-radius:9px;padding:10px 12px;background:var(--surface-2)}
 .wt-photo.has{border-style:solid;background:var(--surface)}
 .wt-photo img{width:72px;height:72px;object-fit:cover;border-radius:7px;flex:none;background:#000}
@@ -3083,6 +3086,99 @@ function dosingPhotoHtml(key, d){
  * Pools not listed here, or no photo relay set up: the job works as before.
  */
 const VAC_ROUTE_URL = "https://chunkayseo-ui.github.io/dosing-app/vacuum-route-maps.html";
+/* The route card's own drawing, shown right inside the photo panel with the
+ * photo points switched on and the NEXT photo picked out -- so the technician
+ * sees where to stand and which way to point without leaving the page. The
+ * card page is fetched once and kept on the phone, so it still shows with a
+ * weak signal on the pool deck; it is refreshed quietly in the background. */
+const VACMAP_KEY = "drt.vaccard.v1";
+const vacMap = {html:null, loading:false, tried:false, svgs:{}, marked:{}};
+try{ const c = JSON.parse(localStorage.getItem(VACMAP_KEY) || "null"); if(c && c.html) vacMap.html = c.html; }catch(e){}
+function vacMapLoad(){
+  if(vacMap.loading || vacMap.tried) return;
+  vacMap.loading = true;
+  fetch(VAC_ROUTE_URL + "?v=" + Math.floor(Date.now() / 3600e3), {cache:"no-cache"})
+    .then(r => r.ok ? r.text() : null)
+    .then(t => {
+      if(t && t.includes('class="card"') && t !== vacMap.html){
+        vacMap.html = t; vacMap.svgs = {}; vacMap.marked = {};
+        try{ localStorage.setItem(VACMAP_KEY, JSON.stringify({html:t, at:Date.now()})); }catch(e){}
+        if(document.querySelector("[data-vacmap]")) renderKeepingForm();
+      }
+    })
+    .catch(() => {})
+    .finally(() => { vacMap.loading = false; vacMap.tried = true; });
+}
+function vacMapSvg(card){
+  if(!vacMap.html) return null;
+  if(card in vacMap.svgs) return vacMap.svgs[card];
+  let out = null;
+  try{
+    const doc = new DOMParser().parseFromString(vacMap.html, "text/html");
+    const c = Array.from(doc.querySelectorAll(".card")).find(x => { const k = x.querySelector(".code"); return k && k.textContent.trim() === card; });
+    const svg = c && c.querySelector(".plan svg");
+    if(svg && svg.querySelector(".photo-layer")){
+      out = document.importNode(svg, true);
+      // The card leaves wide margins round each pool for its labels; on a
+      // phone that shrinks the pool to a stamp. Trim the view to what is
+      // actually drawn (photo points included) so the pool fills the width.
+      try{
+        out.classList.add("photos-on");
+        const box = document.createElement("div");
+        box.style.cssText = "position:absolute;left:-9999px;top:0;width:640px;visibility:hidden";
+        box.appendChild(out); document.body.appendChild(box);
+        const layer = out.querySelector(".photo-layer"); if(layer) layer.style.display = "inline";
+        const bb = out.getBBox();
+        if(layer) layer.style.display = "";
+        box.remove();
+        if(bb && bb.width > 50 && bb.height > 50){
+          const p = 10; out.setAttribute("viewBox", [bb.x - p, bb.y - p, bb.width + 2*p, bb.height + 2*p].map(v => Math.round(v)).join(" "));
+        }
+      }catch(e){}
+    }
+  }catch(e){ out = null; }
+  vacMap.svgs[card] = out;
+  return out;
+}
+// The card's drawing with only the next photo's badge and arrow at full
+// strength; the other photo points fade back. Badges are matched to their
+// arrows by colour, which is how the card itself pairs them.
+function vacMapHtml(card, nextId){
+  const k = card + "|" + (nextId || "");
+  if(k in vacMap.marked) return vacMap.marked[k];
+  const src = vacMapSvg(card); if(!src){ return ""; }
+  const svg = src.cloneNode(true);
+  svg.classList.add("photos-on");
+  svg.removeAttribute("width"); svg.removeAttribute("height");
+  const layer = svg.querySelector(".photo-layer");
+  if(layer && nextId){
+    const texts = Array.from(layer.querySelectorAll("text"));
+    const isEnd = /^E/.test(nextId);
+    const t = texts.find(x => { const v = x.textContent.replace(/\s/g, ""); return v === nextId || (isEnd && /^E\d/.test(v)); });
+    const badge = t && t.previousElementSibling;
+    const col = badge && (badge.getAttribute("fill") || "").toLowerCase();
+    Array.from(layer.children).forEach(el => {
+      const c = ((el.getAttribute("fill") || "") + "|" + (el.getAttribute("stroke") || "")).toLowerCase();
+      const mine = el === badge || el === t || (!isEnd && col && c.includes(col) && el.tagName.toLowerCase() !== "rect" && el.tagName.toLowerCase() !== "text");
+      if(!mine) el.setAttribute("opacity", "0.18");
+      else if(el.tagName.toLowerCase() === "path") el.setAttribute("opacity", "0.75");
+    });
+    if(badge){
+      const ring = badge.cloneNode(false);
+      ["x","y","width","height"].forEach(a => { const v = parseFloat(badge.getAttribute(a)); ring.setAttribute(a, a === "x" || a === "y" ? v - 5 : v + 10); });
+      ring.setAttribute("rx", (parseFloat(badge.getAttribute("rx")) || 9) + 5);
+      ring.setAttribute("fill", "none"); ring.setAttribute("stroke", "#FFD23F"); ring.setAttribute("stroke-width", "4"); ring.removeAttribute("opacity");
+      ring.setAttribute("class", "vm-ring");
+      layer.appendChild(ring);
+      layer.appendChild(badge); layer.appendChild(t);   // keep the badge on top of its ring
+    }
+  }
+  // The card hides its photo layer unless .photos-on is set by its own CSS;
+  // here there is no such rule, so it simply shows.
+  const html = svg.outerHTML;
+  vacMap.marked[k] = html;
+  return html;
+}
 const VAC_PHOTOS = {
   // normalMin: how long a proper vacuum usually takes here, first photo to last.
   // Leave null until it's known; a job much quicker than it gets flagged.
@@ -3233,6 +3329,9 @@ function vacuumPanel(s, t){
   return `<div class="wt" data-vacpanel="${key}">
     <div class="wt-head"><span class="wt-title">Manual vacuum · ${esc(poolKey)} · photo proof</span></div>
     <p class="note" style="margin:0">Take each photo in order, from where the route card shows it. The time is printed on every photo.${card}${first ? ` First photo ${clockOf(first)} — ${liveDur(first)} so far.` : ""}</p>
+    ${(() => { vacMapLoad(); const m = spec.card ? vacMapHtml(spec.card, next && next.id) : ""; const p = next && spec.list.find(x => x.id === next.id);
+      return m ? `<figure class="vac-map" data-vacmap="${esc(spec.card)}">${m}<figcaption>${p ? `<b>Next: ${esc(p.id)} · ${esc(p.label)}</b> — ${p.when === "end" ? "a close-up, taken at the ringed badge." : "stand at the ringed badge and point the camera along its arrow."}` : "All photos taken."}</figcaption></figure>`
+               : (spec.card && !vacMap.tried ? `<p class="note" style="margin:0" data-vacmap="${esc(spec.card)}">Loading the route card…</p>` : ""); })()}
     <div class="stack" style="gap:8px">${group("start", "At the start and each corner")}${group("end", "Close down")}</div>
     <button class="btn primary big" data-vacsave="${key}" ${sst.ok ? "" : "disabled"}>${esc(sst.label)}</button>
   </div>`;
