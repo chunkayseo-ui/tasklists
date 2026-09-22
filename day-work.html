@@ -6,6 +6,8 @@
 <title>Day Work</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
 /* Same fixed light theme as the Dosing Round Tracker: read outdoors, in the van, at a shop counter. */
@@ -180,6 +182,21 @@ label.chk input{width:20px;height:20px}
 #lightbox .lb-body{flex:1;display:flex;align-items:center;justify-content:center;overflow:auto}
 #lightbox img{max-width:100%;max-height:100%;border-radius:10px;background:#fff}
 #lightbox .lb-msg{color:#e7eef0;font-size:15px;line-height:1.5;text-align:center;padding:20px;max-width:340px}
+.lmap{height:300px;border-radius:9px;border:1px solid var(--line);background:var(--surface-2);position:relative;z-index:0}
+.lmap.team{height:340px}
+.lmap-none{display:grid;place-items:center;height:100%;color:var(--ink-3);font-size:14px;text-align:center;padding:12px}
+.pin-num{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:700 12px/1 "IBM Plex Mono",monospace;color:#fff;background:var(--accent);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.pin-num.done{background:var(--ok)} .pin-num.here{background:var(--warn)} .pin-num.urgent{background:var(--urgent)} .pin-num.planned{background:#fff;color:var(--accent);border-color:var(--accent);border-style:dashed}
+.pin-me{background:var(--travel);color:#fff;border-radius:999px;padding:3px 8px;font:700 12px/1.3 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.leaflet-container{font-family:"IBM Plex Sans",sans-serif}
+.rt-stop{display:flex;gap:9px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line-soft)}
+.rt-stop:first-child{border-top:0}
+.rt-main{flex:1;min-width:0}
+.rt-name{font-weight:600}
+.rt-jobs{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px}
+.rt-times{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--ink-3);white-space:nowrap}
+.legend{display:flex;gap:12px;font-size:12.5px;color:var(--ink-3);flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle}
 @media(max-width:480px){.stop-name{font-size:20px}.kpis{grid-template-columns:repeat(3,1fr)}.kpi .v{font-size:18px}}
 </style>
 </head>
@@ -189,6 +206,7 @@ label.chk input{width:20px;height:20px}
   <div class="seg" role="tablist" id="tabs">
     <button id="btn-tech" aria-pressed="true">My day</button>
     <button id="btn-team" aria-pressed="false">Team</button>
+    <button id="btn-routes" aria-pressed="false">Routes</button>
     <button id="btn-plan" aria-pressed="false">Plan</button>
   </div>
 </div></header>
@@ -834,7 +852,7 @@ function addStopBox(tech, scope){
   return `<div class="addbox">
     <label class="f">Where<select ${kv(key+".pick")}>${placeOptions(pick)}</select></label>
     ${pick === "new" ? `<label class="f">Place name<input type="text" ${kv(key+".name", 'placeholder="e.g. Ah Seng Electrical, Toa Payoh"')}></label>
-      <div class="row-2"><label class="f">Postal code<input type="text" inputmode="numeric" ${kv(key+".postal", 'placeholder="6 digits"')}></label><label class="f">Type<select ${kv(key+".kind")}>${PLACE_KINDS.map(k => `<option ${keep(key+".kind") === k ? "selected" : ""}>${k}</option>`).join("")}</select></label></div>
+      <div class="row-2"><label class="f">Postal code (required)<input type="text" inputmode="numeric" ${kv(key+".postal", 'placeholder="6 digits"')}></label><label class="f">Type<select ${kv(key+".kind")}>${PLACE_KINDS.map(k => `<option ${keep(key+".kind") === k ? "selected" : ""}>${k}</option>`).join("")}</select></label></div>
       <label class="f">Address (optional)<input type="text" ${kv(key+".addr")}></label>
       <label class="chk"><input type="checkbox" data-keepchk="${esc(key+".save")}" ${keep(key+".save") !== "" ? (keep(key+".save") ? "checked" : "") : "checked"}> Save this place for next time</label>` : ""}
     <label class="f">Note for this stop (optional)<input type="text" ${kv(key+".note", 'placeholder="e.g. ask for Mr Tan at the counter"')}></label>
@@ -846,7 +864,8 @@ async function submitAddStop(scope, tech){
   let place = placeFromPick(pick);
   if(pick === "new"){
     const name = keep(key+".name").trim(); if(!name){ flash("Give the place a name."); return; }
-    const p = {name, postal: keep(key+".postal").trim() || null, addr: keep(key+".addr").trim() || null, kind: keep(key+".kind") || "Other"};
+    if(!/^\d{6}$/.test(keep(key+".postal").trim())){ flash("Enter the 6-digit postal code — that's how the place is found on the map."); return; }
+    const p = {name, postal: keep(key+".postal").trim(), addr: keep(key+".addr").trim() || null, kind: keep(key+".kind") || "Other"};
     flash("Finding it on the map…");
     const pt = await geocodePlace(p);
     if(pt){ p.lat = pt.lat; p.lng = pt.lng; if(!p.addr && pt.addr) p.addr = pt.addr; }
@@ -866,7 +885,7 @@ function editPlaceForm(key, p){
   const k = "ep."+key; const cur = f => state.ui.keep[k+"."+f] !== undefined ? state.ui.keep[k+"."+f] : (p[f] || "");
   return `<div class="addbox">
     <label class="f">Place name<input type="text" ${kv(k+".name")} value="${esc(cur("name"))}"></label>
-    <div class="row-2"><label class="f">Postal code<input type="text" inputmode="numeric" ${kv(k+".postal", 'placeholder="6 digits"')} value="${esc(cur("postal"))}"></label>
+    <div class="row-2"><label class="f">Postal code (required)<input type="text" inputmode="numeric" ${kv(k+".postal", 'placeholder="6 digits"')} value="${esc(cur("postal"))}"></label>
       <label class="f">Type<select ${kv(k+".kind")}>${PLACE_KINDS.map(x => `<option ${cur("kind") === x ? "selected" : ""}>${x}</option>`).join("")}</select></label></div>
     <label class="f">Address (optional)<input type="text" ${kv(k+".addr")} value="${esc(cur("addr"))}"></label>
     <div class="row-2"><button class="btn sm primary" data-editplacesave="${esc(key)}">Save &amp; find on map</button><button class="btn sm" data-editplacecancel>Cancel</button></div>
@@ -878,9 +897,13 @@ async function submitEditPlace(key){
   const get = f => state.ui.keep[k+"."+f] !== undefined ? state.ui.keep[k+"."+f] : (src[f] || "");
   const p = {name:String(get("name")).trim(), postal:String(get("postal")).trim() || null, addr:String(get("addr")).trim() || null, kind:get("kind") || src.kind || "Other"};
   if(!p.name){ flash("Give the place a name."); return; }
+  if(!/^\d{6}$/.test(p.postal || "")){ flash("Enter the 6-digit postal code — that's how the place is found on the map."); return; }
   flash("Finding it on the map…");
   const pt = await geocodePlace(p);
-  if(pt){ p.lat = pt.lat; p.lng = pt.lng; if(!p.addr && pt.addr) p.addr = pt.addr; }
+  // A new postal code with the address left as it was: the old address was
+  // filled in from the old postal code, so it is replaced, not kept.
+  const addrStale = p.postal !== (src.postal || null) && p.addr === (src.addr || null);
+  if(pt){ p.lat = pt.lat; p.lng = pt.lng; if((!p.addr || addrStale) && pt.addr) p.addr = pt.addr; }
   else { p.lat = null; p.lng = null; }
   ["name","postal","addr","kind"].forEach(f => delete state.ui.keep[k+"."+f]); state.ui.editPlace = null;
   if(what === "place"){
@@ -999,6 +1022,90 @@ function viewTeam(){
   }).join("");
   return `<div class="stack">${dateBar}${state.date >= todayKey() ? leftoverHtml(null, isPlanner()) : ""}${rows ? `<div class="crew">${rows}</div>` : `<div class="card pad"><p class="note" style="margin:0">No day work planned for ${esc(fmtDate(state.date))}.</p></div>`}</div>`;
 }
+/* ---- Routes: where each technician went, on a real map ---- */
+const hasMap = () => typeof L !== "undefined" && !!L.map;
+function stopState(s){
+  if(s.arriveAt && !s.departAt) return "here";
+  if(s.departAt) return "done";
+  return s.urgent ? "urgent" : "planned";
+}
+function gmapsRoute(list){
+  const pts = list.filter(s => placeOf(s)).map(s => placeOf(s));
+  if(pts.length < 2) return null;
+  const f = p => p.lat+","+p.lng;
+  return `https://www.google.com/maps/dir/?api=1&origin=${f(pts[0])}&destination=${f(pts[pts.length-1])}${pts.length > 2 ? "&waypoints=" + pts.slice(1,-1).map(f).join("|") : ""}`;
+}
+function routeStopsHtml(who){
+  const list = orderedStops(who); let prev = null;
+  return `<div>${list.map((s, i) => {
+    const st = stopState(s); const js = jobsAt(s.id);
+    const gap = (prev && prev.departAt && s.arriveAt) ? mins(prev.departAt, s.arriveAt) : null; if(s.arriveAt) prev = s;
+    const times = s.departAt ? `${clockOf(s.arriveAt)}–${clockOf(s.departAt)} · ${dur(mins(s.arriveAt, s.departAt))}` : s.arriveAt ? `here since ${clockOf(s.arriveAt)}` : "planned";
+    const chips = js.map(j => `<span class="tag ${j.doneAt ? "st-done" : (j.skipped ? "st-skip" : (j.startedAt ? "st-prog" : (s.departAt ? "st-skip" : "st-open")))}" title="${esc(j.title)}">${esc(j.title.length > 28 ? j.title.slice(0,27) + "…" : j.title)}${j.skipped ? " · couldn't" : (!j.doneAt && s.departAt ? " · not done" : "")}</span>`).join("");
+    const loc = s.fixIn && s.fixIn.lat ? locVerdict(s, "in") : null;
+    return `${gap !== null ? `<div class="travel-gap" style="padding-left:0">🚐 ${dur(gap)} travel${gap < 2 ? ' <span class="dev">⚠ check timing</span>' : ""}<span class="ln"></span></div>` : ""}
+      <div class="rt-stop"><span class="pin-num ${st}" style="flex:none">${i+1}</span><div class="rt-main"><span class="rt-name">${esc(stopLabel(s))}</span> <span class="rt-times">${times}</span>
+        ${loc && loc.k === "far" ? `<div class="note" style="color:var(--urgent);font-size:12.5px">⚠️ ${esc(loc.head)}</div>` : ""}
+        <div class="rt-jobs">${chips || '<span class="muted" style="font-size:13px">no jobs</span>'}</div></div></div>`;
+  }).join("")}</div>`;
+}
+function viewRoutes(){
+  const isToday = state.date === todayKey();
+  const dateBar = `<div class="datebar card pad" style="padding:8px 10px"><button class="btn" data-date="-1">‹</button><span class="dmid">${esc(fmtDate(state.date))}${isToday ? "" : ' <button class="link" data-date="0">today</button>'}</span><button class="btn" data-date="1">›</button></div>`;
+  const techs = Array.from(new Set(state.roster.concat(Object.values(state.stops).map(s => s.tech)))).filter(t => t && myStops(t).length);
+  if(!techs.length) return `<div class="stack">${dateBar}<div class="card pad"><p class="note" style="margin:0">No day work on ${esc(fmtDate(state.date))}.</p></div></div>`;
+  const legend = `<div class="legend"><span><i style="background:var(--ok)"></i>done</span><span><i style="background:var(--warn)"></i>here now</span><span><i style="background:#fff;border:1.5px dashed var(--accent)"></i>still to go</span><span><i style="background:var(--urgent)"></i>urgent</span><span><i style="background:var(--travel)"></i>last seen</span></div>`;
+  const team = isToday && techs.length > 1 ? `<div class="card pad stack" style="gap:8px"><div class="sec-head"><h2 class="sec">Where everyone is</h2></div><div class="lmap team" data-map="__team"></div></div>` : "";
+  const cards = techs.map(t => {
+    const st = techStatus(t); const list = orderedStops(t); const g = gmapsRoute(list);
+    return `<div class="card pad stack" style="gap:10px">
+      <div class="crew-top"><span class="crew-name">${esc(t)}</span><span class="chip ${st.chip}"><span class="dot"></span>${st.chip === "onsite" ? "On site" : st.chip === "travel" ? "Travelling" : st.chip === "done" ? "Done" : "—"}</span><span class="crew-where">${esc(st.text)}</span></div>
+      <div class="kpis"><div class="kpi"><div class="v">${list.filter(s => s.departAt).length}/${list.length}</div><div class="k">stops</div></div><div class="kpi"><div class="v">${Object.values(state.jobs).filter(j => j.tech === t && j.doneAt).length}/${Object.values(state.jobs).filter(j => j.tech === t).length}</div><div class="k">jobs done</div></div><div class="kpi"><div class="v">${dur(travelTotal(t))}</div><div class="k">travel</div></div></div>
+      <div class="lmap" data-map="${esc(t)}"></div>
+      ${routeStopsHtml(t)}
+      ${g ? `<a class="btn sm" href="${esc(g)}" target="_blank" rel="noopener" style="align-self:flex-start">Open the route in Google Maps</a>` : ""}
+    </div>`;
+  }).join("");
+  return `<div class="stack">${dateBar}${legend}${team}${cards}</div>`;
+}
+const maps = {};
+function drawMaps(){
+  document.querySelectorAll("[data-map]").forEach(el => {
+    if(!hasMap()){ el.innerHTML = `<div class="lmap-none">Map tiles couldn't load — the stop list below still shows the route.</div>`; return; }
+    const who = el.dataset.map;
+    const m = L.map(el, {zoomControl:true, attributionControl:true, scrollWheelZoom:false});
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19, attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(m);
+    const pts = [];
+    const numPin = (n, cls) => L.divIcon({className:"", html:`<div class="pin-num ${cls}">${n}</div>`, iconSize:[26,26], iconAnchor:[13,13]});
+    const mePin = name => L.divIcon({className:"", html:`<div class="pin-me">📍 ${esc(name)}</div>`, iconSize:null, iconAnchor:[10,12]});
+    if(who === "__team"){
+      Object.keys(state.stops).length && Array.from(new Set(Object.values(state.stops).map(s => s.tech))).forEach(t => {
+        const act = activeStop(t); const fx = lastFix(t);
+        const p = act && placeOf(act) ? placeOf(act) : (fx ? {lat:fx.lat, lng:fx.lng} : null); if(!p) return;
+        pts.push([p.lat, p.lng]);
+        L.marker([p.lat, p.lng], {icon:mePin(t)}).addTo(m).bindPopup(`<b>${esc(t)}</b><br>${esc(techStatus(t).text)}${fx ? `<br><small>last seen ${clockOf(fx.at)}${fx.addr ? " · " + esc(fx.addr) : ""}</small>` : ""}`);
+      });
+    } else {
+      const list = orderedStops(who); const visited = [], planned = [];
+      list.forEach((s, i) => {
+        const p = placeOf(s); if(!p) return; pts.push([p.lat, p.lng]);
+        const st = stopState(s);
+        (s.arriveAt ? visited : planned).push([p.lat, p.lng]);
+        const js = jobsAt(s.id);
+        L.marker([p.lat, p.lng], {icon:numPin(i+1, st)}).addTo(m).bindPopup(`<b>${i+1}. ${esc(stopLabel(s))}</b><br>${s.arriveAt ? "in " + clockOf(s.arriveAt) : "planned"}${s.departAt ? " · out " + clockOf(s.departAt) : ""}<br>${js.map(j => (j.doneAt ? "✓ " : j.skipped ? "✗ " : "· ") + esc(j.title)).join("<br>")}`);
+        // where the phone really was on Arrive, if it wasn't at the place
+        if(s.fixIn && s.fixIn.lat && locVerdict(s, "in").k === "far"){ L.circleMarker([s.fixIn.lat, s.fixIn.lng], {radius:6, color:"#B23A2E", fillColor:"#B23A2E", fillOpacity:.8}).addTo(m).bindPopup(`⚠️ ${esc(locVerdict(s, "in").head)}`); L.polyline([[s.fixIn.lat, s.fixIn.lng],[p.lat, p.lng]], {color:"#B23A2E", weight:1.5, dashArray:"3 4"}).addTo(m); }
+      });
+      if(visited.length > 1) L.polyline(visited, {color:"#00676F", weight:4, opacity:.85}).addTo(m);
+      const tail = visited.length ? [visited[visited.length-1]].concat(planned) : planned;
+      if(tail.length > 1) L.polyline(tail, {color:"#00676F", weight:3, dashArray:"6 7", opacity:.7}).addTo(m);
+      const fx = lastFix(who); const act = activeStop(who);
+      if(fx && !act){ pts.push([fx.lat, fx.lng]); L.marker([fx.lat, fx.lng], {icon:mePin(who)}).addTo(m).bindPopup(`last seen ${clockOf(fx.at)}${fx.addr ? "<br>" + esc(fx.addr) : ""}`); }
+    }
+    if(pts.length) m.fitBounds(L.latLngBounds(pts).pad(0.25), {maxZoom:15}); else m.setView([1.3521, 103.8198], 11);
+    maps[who] = m;
+  });
+}
 /* ---- Plan ---- */
 function planStopCard(s, i){
   const js = jobsAt(s.id); const locked = !!s.arriveAt;
@@ -1045,9 +1152,18 @@ function paint(){
   const focused = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.keep;
   let caret = null; try{ caret = focused ? document.activeElement.selectionStart : null; }catch(e){}
   $("#hdr-date").textContent = fmtDate(state.date);
-  ["tech","team","plan"].forEach(v => { const b = $("#btn-"+v); if(b) b.setAttribute("aria-pressed", String(state.view === v)); });
+  ["tech","team","routes","plan"].forEach(v => { const b = $("#btn-"+v); if(b) b.setAttribute("aria-pressed", String(state.view === v)); });
   $("#btn-plan").style.display = (state.me && !isPlanner()) ? "none" : "";
-  $("#view").innerHTML = state.view === "team" ? viewTeam() : state.view === "plan" ? viewPlan() : viewTech();
+  if(state.view === "routes"){
+    // Maps are rebuilt on every paint, so only repaint when the day's data
+    // actually changed -- not on every 30-second tick or unrelated snapshot.
+    const sig = JSON.stringify([state.date, state.stops, state.jobs, state.places]);
+    if(state.ui.routesSig === sig && $("#view [data-map]")) { renderConn(); return; }
+    state.ui.routesSig = sig;
+    Object.keys(maps).forEach(k => { try{ maps[k].remove(); }catch(e){} delete maps[k]; });
+  } else state.ui.routesSig = null;
+  $("#view").innerHTML = state.view === "team" ? viewTeam() : state.view === "plan" ? viewPlan() : state.view === "routes" ? viewRoutes() : viewTech();
+  if(state.view === "routes") drawMaps();
   renderConn();
   document.querySelectorAll("[data-keep]").forEach(el => { const v = state.ui.keep[el.dataset.keep]; if(v !== undefined && el.value !== v) el.value = v; el.addEventListener("input", () => { state.ui.keep[el.dataset.keep] = el.value; if(el.tagName === "SELECT") render(); }); });
   document.querySelectorAll("[data-keepchk]").forEach(el => el.addEventListener("change", () => { state.ui.keep[el.dataset.keepchk] = el.checked ? "1" : ""; }));
@@ -1057,6 +1173,7 @@ function paint(){
 function wire(){
   each("#btn-tech", () => { state.view = "tech"; render(); });
   each("#btn-team", () => { state.view = "team"; render(); });
+  each("#btn-routes", () => { state.view = "routes"; render(); });
   each("#btn-plan", () => { state.view = "plan"; render(); });
   each("[data-me]", b => { state.me = b.dataset.me; try{ localStorage.setItem("dw.me", state.me); }catch(e){} render(); });
   each("[data-date]", b => { const d = +b.dataset.date; state.date = d === 0 ? todayKey() : shiftDate(state.date, d); state.ui.addStop = state.ui.addJob = null; listenDay(); render(); });
@@ -1091,7 +1208,11 @@ function wire(){
   each("[data-expand]", b => { state.ui.expand[b.dataset.expand] = !state.ui.expand[b.dataset.expand]; render(); });
   each("[data-plantech]", b => { state.planTech = b.dataset.plantech; state.ui.addStop = state.ui.addJob = null; render(); });
   each("[data-togglesettings]", () => { state.ui.settings = !state.ui.settings; render(); });
-  each("[data-planner]", b => { const n = b.dataset.planner; const list = state.planners.includes(n) ? state.planners.filter(x => x !== n) : state.planners.concat([n]); save("day_config/settings", {planners:list}); });
+  each("[data-planner]", b => { const n = b.dataset.planner;
+    if(n === state.me && state.planners.includes(n)){ flash("You can't remove yourself — ask another planner to."); return; }
+    let list = state.planners.includes(n) ? state.planners.filter(x => x !== n) : state.planners.concat([n]);
+    if(list.length && !list.includes(state.me)) list = list.concat([state.me]);   // whoever sets the list stays on it
+    save("day_config/settings", {planners:list}); });
   each("[data-rmplace]", b => remove("day_places/"+b.dataset.rmplace));
   each("[data-editplace]", b => { state.ui.editPlace = b.dataset.editplace; state.ui.editPlaceFrom = b.dataset.from || "stop"; render(); });
   each("[data-editplacecancel]", () => { const k = "ep."+state.ui.editPlace; ["name","postal","addr","kind"].forEach(f => delete state.ui.keep[k+"."+f]); state.ui.editPlace = null; render(); });
