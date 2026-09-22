@@ -352,6 +352,26 @@ details.panel[open] summary::after{content:"▴"}
   text-transform:none;letter-spacing:0;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pill[aria-pressed="true"] .pill-state{color:#fff}
 .pill-key{display:flex;flex-wrap:wrap;gap:10px 14px;margin-top:10px;font-size:11.5px;color:var(--muted)}
+/* Today's FC readings (morning / afternoon water tests) on the outlet picker,
+   so a technician can see at a glance which pools are already fine and put
+   the night's dosing time where it's actually needed. */
+.fc-strip{margin-top:14px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface)}
+.fc-strip .fc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.fc-strip .fc-head b{font-family:"Barlow Condensed",sans-serif;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.fc-strip .fc-head .muted{font-size:11.5px}
+.fc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:3px 18px}
+.fc-row{display:flex;align-items:baseline;gap:6px;font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.6;white-space:nowrap;overflow:hidden}
+.fc-row .fc-k{font-weight:700;min-width:52px;color:var(--ink)}
+.fc-row .fc-v{color:var(--ink-3)}
+.fc-row .fc-v b{color:var(--ink);font-weight:700}
+.fc-row .fc-none{color:var(--ink-3);font-style:italic;font-family:inherit;font-size:12px}
+.fc-row .fc-err{color:var(--warn);font-style:italic;font-family:inherit;font-size:12px}
+.fc-strip .note{margin:8px 0 0}
+.fc-line{display:flex;flex-wrap:wrap;gap:2px 14px;font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-3);line-height:1.5}
+.fc-line .fc-k{font-weight:700;color:var(--ink)}
+.fc-line b{color:var(--ink);font-weight:700}
+.fc-line .fc-none,.fc-line .fc-err{font-style:italic;font-family:inherit}
+.fc-line .fc-err{color:var(--warn)}
 .pill-key span{display:inline-flex;align-items:center;gap:5px}
 .pill-key i{width:11px;height:11px;border-radius:3px;border:1px solid var(--line);display:inline-block}
 .pill-key .k-done{border-color:var(--ok);background:var(--ok-soft)}
@@ -2227,7 +2247,7 @@ function buildDosingTables(rows){
 }
 // Each loader re-renders once its data lands, but only if a water-test panel
 // is actually on screen waiting for it -- nobody else cares.
-function rerenderIfPanelOpen(){ if(document.querySelector(".wt")) render(); }
+function rerenderIfPanelOpen(){ if(document.querySelector(".wt, .fc-strip, .fc-line")) render(); }
 function loadDosingTables(){
   // A failed load stays failed until the Retry button clears tablesErr --
   // otherwise the re-render after a failure would kick off another load,
@@ -2249,7 +2269,7 @@ function loadPoolHistory(key, force){
   if(dosingData.hist[key] !== undefined || dosingData.histP[key]) return;
   histAttempts[key] = (histAttempts[key] || 0) + 1;
   dosingData.histP[key] = fetch(DOSING_HISTORY_API + "?pool=" + encodeURIComponent(key)).then(r => { if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
-    .then(j => { dosingData.hist[key] = j[key] || []; histAttempts[key] = 0; })
+    .then(j => { dosingData.hist[key] = j[key] || []; histAttempts[key] = 0; fcCheckedAt = new Date().toISOString(); })
     .catch(() => {
       dosingData.hist[key] = false;
       if(histAttempts[key] < 3) setTimeout(() => {
@@ -2303,6 +2323,55 @@ function wtTodayHtml(key){
     <div><b>Attended (8pm)</b>${val(rec.attended8pm)}</div>
   </div>`;
 }
+// --- Today's FC at a glance -------------------------------------------
+// The morning and afternoon water tests are logged on the water-test sheet
+// during the day; by the time the night round starts they're the best hint
+// of which pools actually need dosing tonight. Same per-pool history feed the
+// water-test panel already uses -- nothing new to log, just shown earlier
+// (on the outlet picker and on each stop), before anyone claims a job.
+let fcCheckedAt = null;
+function fcKeysFor(code){
+  const o = OUTLETS.find(x => x.code === code);
+  if(!o) return [];
+  return o.pools ? o.pools.map(pl => ({label:pl, key:dosingKeyFor(code, pl)})) : [{label:code, key:dosingKeyFor(code)}];
+}
+function fcToday(key){
+  const recs = dosingData.hist[key];
+  if(recs === undefined){ loadPoolHistory(key); return {k:"loading"}; }
+  if(recs === false) return {k:"error"};
+  const rec = recs.find(r => r.date === todayKey());
+  if(!rec) return {k:"none"};
+  const v = x => (x === null || x === undefined || x === "") ? null : x;
+  return {k:"ok", am:v(rec.fc && rec.fc.morning), pm:v(rec.fc && rec.fc.afternoon)};
+}
+function fcValsHtml(t){
+  if(t.k === "loading") return '<span class="fc-none">loading…</span>';
+  if(t.k === "error") return '<span class="fc-err">couldn\'t load</span>';
+  if(t.k === "none") return '<span class="fc-none">not tested yet</span>';
+  const f = x => x === null ? "–" : `<b>${esc(String(x))}</b>`;
+  return `<span class="fc-v">AM ${f(t.am)}</span> <span class="fc-v">· PM ${f(t.pm)}</span>`;
+}
+function fcStripHtml(codes){
+  const rows = [], keys = [];
+  codes.forEach(c => fcKeysFor(c).forEach(({label, key}) => {
+    keys.push(key);
+    rows.push(`<div class="fc-row" data-fckey="${esc(key)}"><span class="fc-k">${esc(label)}</span>${fcValsHtml(fcToday(key))}</div>`);
+  }));
+  if(!rows.length) return "";
+  const when = fcCheckedAt ? `<span class="muted">as of ${clockOf(fcCheckedAt)}</span>` : "";
+  return `<div class="fc-strip">
+    <div class="fc-head"><b>Today's water tests · FC</b>${when}<button class="link" data-fcrefresh="${esc(keys.join(","))}">Refresh</button></div>
+    <div class="fc-grid">${rows.join("")}</div>
+    <p class="note">Morning (AM) and afternoon (PM) free chlorine from the water-test sheet. A pool that tested fine all day may not need dosing tonight — check with your supervisor before skipping one.</p>
+  </div>`;
+}
+function fcLineHtml(code){
+  const ks = fcKeysFor(code);
+  if(!ks.length) return "";
+  const single = ks.length === 1;
+  return `<div class="fc-line">${ks.map(({label, key}) => `<span data-fckey="${esc(key)}"><span class="fc-k">${single ? "FC today" : esc(label)}</span> ${fcValsHtml(fcToday(key))}</span>`).join("")}</div>`;
+}
+
 function wtHistoryHtml(key){
   const recs = dosingData.hist[key];
   if(recs === undefined){ loadPoolHistory(key); return '<div class="muted">Loading history… (the sheet can take 10–20 s)</div>'; }
@@ -3670,6 +3739,7 @@ function buildRound(){
       <span><i class="k-onsite"></i>someone on site</span>
       <span><i class="k-taken"></i>in someone's round</span>
     </div>` : ""}
+    ${fcStripHtml(OUTLETS.map(o => o.code))}
     <div class="row-2" style="margin-top:16px">
       <button class="btn" id="pick-all" style="flex:1">Select all</button>
       <button class="btn" id="pick-none" style="flex:1">Clear</button>
@@ -4192,6 +4262,7 @@ function stopCard(s, i, r, isHeading){
       <span class="stop-times">${times}</span>
     </div>
     ${s.covering ? coveringNoteBlock(s) : ""}
+    ${(s.custom || done) ? "" : fcLineHtml(s.outlet)}
     ${s.custom ? "" : issueBlock(s)}
     ${body}</div>`;
 }
@@ -5473,6 +5544,7 @@ function wire(){
   each("[data-wtsave]", b => { const [o,t] = two(b.dataset.wtsave); finishWaterTest(o,t); });
   each("[data-wtretry]", () => { dosingData.tablesErr = false; loadDosingTables(); render(); });
   each("[data-wthistretry]", b => { loadPoolHistory(b.dataset.wthistretry, true); render(); });
+  each("[data-fcrefresh]", b => { b.dataset.fcrefresh.split(",").forEach(k => loadPoolHistory(k, true)); render(); });
   // Manual dosing entry: typed grams/ml land in state.dm on every keystroke
   // (no re-render, so the keyboard stays put); Save reads them back out.
   document.querySelectorAll("[data-dmin]").forEach(i => i.addEventListener("input", () => {
