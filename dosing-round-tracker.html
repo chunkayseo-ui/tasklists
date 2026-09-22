@@ -367,14 +367,25 @@ details.panel[open] summary::after{content:"▴"}
 .assign-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
 .assign-row .oc{font-family:"Barlow Condensed",sans-serif;font-weight:700;text-transform:uppercase;font-size:17.5px;min-width:64px}
 .extra-list{display:flex;flex-direction:column;gap:6px;margin-top:9px}
-.extra-item{display:flex;align-items:center;gap:8px;font-size:15px}
-.extra-item .extra-name{flex:1;overflow-wrap:anywhere}
+.extra-item{display:flex;align-items:center;gap:6px 8px;font-size:15px;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--line-soft)}
+.extra-item:last-child{border-bottom:0}
+.extra-item .extra-name{flex:1 1 100%;font-weight:600;overflow-wrap:anywhere}
+.extra-item .link{margin-left:auto}
 .extra-add{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:9px}
 .extra-add input[type=text]{flex:1 1 160px}
 .extra-add select.pool-pick{flex:0 0 auto;padding:9px 10px;font-size:15px}
 .extra-days{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;width:100%;margin-top:2px}
 .tag.pool{background:var(--accent-soft);color:var(--accent)}
 .chk{display:flex;align-items:center;gap:5px;font-size:13.5px;color:var(--ink-2);white-space:nowrap;cursor:pointer}
+.addjob{background:var(--surface);border:1.5px solid var(--accent);border-radius:12px;padding:12px 14px}
+.addjob input[type=text]{width:100%;font-size:16px}
+.addjob .chk{white-space:normal;align-items:flex-start;line-height:1.35}
+.addjob .chk input{margin-top:2px;flex:none}
+.aj-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.aj-lbl{font:700 12.5px/1 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-3);min-width:78px}
+.aj-chips{display:flex;flex-wrap:wrap;gap:6px}
+.aj-row input[type=date]{font:500 15px "IBM Plex Sans",sans-serif;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.tag.once.late{background:#FDECEA;color:#B42318;border-color:#F5B5AD}
 .chk input{width:16px;height:16px;accent-color:var(--accent)}
 .tog{font:500 13.5px/1 "IBM Plex Sans",sans-serif;padding:7px 11px;border-radius:999px;
   border:1px solid var(--line);background:var(--surface);color:var(--ink-2);cursor:pointer}
@@ -730,7 +741,8 @@ const state = {
                           // view is rebuilt on every save/tick -- a half-entered reading must survive that.
   expandedOutlets:{},     // outlet code -> true, for cards expanded on Overview's "Outlets tonight" grid
                           // (shows that outlet's job list + open issues in place). Also view-only, not persisted.
-  taskSettingDay:null     // 0-6 (Sun-Sat) -- which day's per-branch job assignment is currently being viewed/edited
+  taskSettingDay:null,    // 0-6 (Sun-Sat) -- which day's per-branch job assignment is currently being viewed/edited
+  addJob:null             // the "Add a job" panel on Task Setting, kept here so a re-render never wipes it
                           // on the Task Setting tab. Defaults to today the first time that tab is opened.
 };
 const myId = () => state.me ? todayKey()+"__"+slug(state.me) : null;
@@ -911,8 +923,27 @@ async function initDb(){
   render();
 }
 
+// A dated one-time job (from the "Add a job" panel) is retired the moment a
+// technician marks it done -- it comes off Task Setting and out of any
+// teammate's still-open round at that outlet -- so it never lingers.
+function retireDoneExtras(round){
+  const c = state.cfg; if(!c || !c.extra) return;
+  const gone = [];
+  (round.stops || []).forEach(s => (s.tasks || []).forEach(t => {
+    if(!t.extraId || !t.doneAt) return;
+    const list = c.extra[s.outlet] || [], e = list.find(x => x.id === t.extraId);
+    if(!e || !e.oneTime) return;
+    c.extra[s.outlet] = list.filter(x => x.id !== t.extraId);
+    if(!c.extra[s.outlet].length) delete c.extra[s.outlet];
+    gone.push([s.outlet, e]);
+  }));
+  if(!gone.length) return;
+  saveCfg(clone(c));
+  gone.forEach(([o, e]) => syncExtraToLiveRounds(o, {name:e.name, kind:e.kind, pool:e.pool}, "remove"));
+}
 async function saveRound(round){
   state.rounds[round.id] = round; render();
+  try{ retireDoneExtras(round); }catch(e){}
   await persist("dosing_rounds/"+round.id, (()=>{ const c=clone(round); delete c.id; return c; })(),
     () => { const all = local.read(); all[round.id] = round; local.write(all); });
 }
@@ -1157,14 +1188,19 @@ function tasksFor(outlet){
   // night, same as before this existed.
   const today = todayKey(), dow = operationalNow().getDay();
   const onDay = e => !e.days || !e.days.length || e.days.includes(dow);
-  const extraList = (state.cfg.extra[outlet] || []).filter(e => (!e.oneTime || e.addedDate === today) && onDay(e));
+  // A one-time job with a start date (added from the "Add a job" panel) shows
+  // from that night on, every night, until a technician marks it done -- so a
+  // job nobody got to isn't silently forgotten. An older one-time job with no
+  // start date keeps the original rule: the night it was added only.
+  const showsTonight = e => e.oneTime ? (e.fromDate ? e.fromDate <= today : e.addedDate === today) : onDay(e);
+  const extraList = (state.cfg.extra[outlet] || []).filter(showsTonight);
   const asgNames = assignedFor(outlet, dow);
   const issueTasks = issueTasksFor(outlet);
 
   if(!pools){
     const req = state.cfg.required.map(n => ({id:uid(), name:n, kind:"required", startedAt:null, doneAt:null, claimedBy:null}));
     const asg = asgNames.map(n => ({id:uid(), name:n, kind:"optional", startedAt:null, doneAt:null, claimedBy:null}));
-    const ex  = extraList.map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null}));
+    const ex  = extraList.map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id}));
     return req.concat(asg).concat(ex).concat(issueTasks);
   }
 
@@ -1177,12 +1213,12 @@ function tasksFor(outlet){
   // that pool was added after the standing ones.
   const wholeOutlet = extraList
     .filter(e => !e.pool)
-    .map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null}));
+    .map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id}));
   const perPool = pools.flatMap(p => {
     const req = state.cfg.required.map(n => ({id:uid(), name:n, pool:p, kind:"required", startedAt:null, doneAt:null, claimedBy:null}));
     const asg = asgNames.map(n => ({id:uid(), name:n, pool:p, kind:"optional", startedAt:null, doneAt:null, claimedBy:null}));
     const ex  = extraList.filter(e => e.pool === p)
-      .map(e => ({id:uid(), name:e.name, pool:p, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null}));
+      .map(e => ({id:uid(), name:e.name, pool:p, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id}));
     return req.concat(asg).concat(ex);
   });
   return wholeOutlet.concat(issueTasks).concat(perPool);
@@ -1242,7 +1278,7 @@ function pruneExpiredExtras(extra){
   const out = {}; let changed = false;
   Object.keys(extra||{}).forEach(outlet => {
     const list = extra[outlet] || [];
-    const kept = list.filter(e => !e.oneTime || e.addedDate === today);
+    const kept = list.filter(e => !e.oneTime || e.fromDate || e.addedDate === today);
     if(kept.length !== list.length) changed = true;
     if(kept.length) out[outlet] = kept;
   });
@@ -1411,7 +1447,7 @@ async function syncExtraToLiveRounds(outlet, job, action){
     let changed = false;
     if(action === "add"){
       if(!s.tasks.some(matches)){
-        s.tasks.push(Object.assign({id:uid(), name:job.name, kind:job.kind, startedAt:null, doneAt:null, claimedBy:null, addedBy:job.addedBy||null}, job.pool ? {pool:job.pool} : {}, job.photos ? {photos:job.photos} : {}));
+        s.tasks.push(Object.assign({id:uid(), name:job.name, kind:job.kind, startedAt:null, doneAt:null, claimedBy:null, addedBy:job.addedBy||null}, job.pool ? {pool:job.pool} : {}, job.photos ? {photos:job.photos} : {}, job.extraId ? {extraId:job.extraId} : {}));
         changed = true;
       }
     } else {
@@ -5098,6 +5134,61 @@ function routesView(){
 }
 
 /* ---------- config panels ---------- */
+const addJobBlank = () => ({name:"", branches:[], pool:{}, req:false, mode:"once", date:todayKey(), days:[]});
+function addJobState(){ if(!state.addJob) state.addJob = addJobBlank(); return state.addJob; }
+// "Add a job" -- one panel at the top of Task Setting, instead of a form under
+// every branch. Pick the branch(es), say what the job is, then either give it a
+// start date (it stays on that branch's list every night from then until a
+// technician marks it done) or make it repeat on chosen nights.
+function addJobPanel(){
+  const a = addJobState(), today = todayKey();
+  const chips = OUTLETS.map(o => `<button type="button" class="tog" data-ajbranch="${o.code}" aria-pressed="${a.branches.includes(o.code)}">${esc(o.code)}</button>`).join("");
+  const pools = OUTLETS.filter(o => o.pools && a.branches.includes(o.code)).map(o => `<label class="aj-row"><span class="aj-lbl">${esc(o.code)} pool</span><select class="pool-pick" data-ajpool="${o.code}">
+      <option value="" ${!a.pool[o.code] ? "selected" : ""}>Whole outlet</option>${o.pools.map(p => `<option value="${esc(p)}" ${a.pool[o.code] === p ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>`).join("");
+  const dayChips = DAYNAME.map((dn, i) => `<button type="button" class="tog" data-ajday="${i}" aria-pressed="${a.days.includes(i)}">${dn}</button>`).join("");
+  const n = a.branches.length, ready = a.name.trim() && n;
+  const when = a.mode === "once"
+    ? `<label class="aj-row"><span class="aj-lbl">From the night of</span><input type="date" id="aj-date" value="${esc(a.date || today)}"></label>
+       <p class="note" style="margin:0">${a.date && a.date > today ? `Shows on the list from <strong>${fmtDate(a.date)}</strong>` : "Shows on the list <strong>tonight</strong>"}, and stays there every night until a technician marks it done. Then it drops off by itself.</p>`
+    : `<div class="aj-row"><span class="aj-lbl">Which nights</span><div class="aj-chips">${dayChips}</div></div>
+       <p class="note" style="margin:0">${a.days.length ? "Only on " + a.days.map(d => DAYNAME[d]).join(", ") : "None ticked = every night"}. Stays on the list until you remove it below.</p>`;
+  return `<div class="stack addjob" style="gap:10px">
+    <h2 class="sec">Add a job</h2>
+    <input type="text" id="aj-name" placeholder="What needs doing? e.g. Fix broken tile at the deep end" value="${esc(a.name)}" autocomplete="off">
+    <div class="aj-row"><span class="aj-lbl">Branch</span><div class="aj-chips">${chips}</div></div>
+    ${pools}
+    <div class="aj-row"><span class="aj-lbl">How often</span><div class="seg" role="group"><button type="button" data-ajmode="once" aria-pressed="${a.mode === "once"}">One-time</button><button type="button" data-ajmode="repeat" aria-pressed="${a.mode === "repeat"}">Repeats</button></div></div>
+    ${when}
+    <label class="chk"><input type="checkbox" id="aj-req" ${a.req ? "checked" : ""}> Must do — the technician can't leave the outlet until it's done</label>
+    <button class="btn primary" id="aj-add" ${ready ? "" : "disabled"}>${n > 1 ? `Add to ${n} branches` : n === 1 ? `Add to ${esc(a.branches[0])}` : "Add job"}</button>
+  </div>`;
+}
+function branchJobsList(){
+  const today = todayKey();
+  const blocks = OUTLETS.filter(o => (state.cfg.extra[o.code] || []).length).map(o => {
+    const items = (state.cfg.extra[o.code] || []).map(e => {
+      let when;
+      if(e.oneTime && e.fromDate){
+        if(e.fromDate > today) when = `<span class="tag once">From ${esc(fmtDate(e.fromDate))} · until done</span>`;
+        else if(e.fromDate === today) when = `<span class="tag once">Tonight · until done</span>`;
+        else when = `<span class="tag once late">Since ${esc(fmtDate(e.fromDate))} · not done yet</span>`;
+      } else if(e.oneTime) when = '<span class="tag once">Tonight only</span>';
+      else when = `<span class="tag rec">${(e.days && e.days.length) ? e.days.map(d => DAYNAME[d]).join(", ") : "Every night"}</span>`;
+      return `<div class="extra-item">
+        <span class="extra-name">${esc(e.name)}</span>
+        ${e.pool ? `<span class="tag pool">${esc(e.pool)}</span>` : ""}
+        ${e.kind === "required" ? '<span class="tag req">Must do</span>' : '<span class="tag opt">If time allows</span>'}
+        ${when}
+        <button class="link" data-rmextra="${o.code}|${e.id}">remove</button>
+      </div>`;
+    }).join("");
+    return `<div class="assign-block"><div class="assign-row"><span class="oc">${esc(o.code)}</span></div><div class="extra-list">${items}</div></div>`;
+  }).join("");
+  return `<div class="stack" style="gap:9px">
+    <h2 class="sec">Jobs added per branch</h2>
+    ${blocks || '<p class="note" style="margin:0">Nothing added yet. Use "Add a job" above.</p>'}
+  </div>`;
+}
 function taskSettingView(){
   // Which day's per-branch assignment is being viewed/edited -- defaults to
   // tonight the first time this tab is opened, but a supervisor can flip
@@ -5112,42 +5203,15 @@ function taskSettingView(){
   const assign = OUTLETS.map(o => {
     const on = assignedFor(o.code, day);
     const togs = state.cfg.optional.map(n => `<button class="tog" data-assign="${o.code}|${esc(n)}" data-assignday="${day}" aria-pressed="${on.includes(n)}">${esc(n)}</button>`).join("");
-    // A job added just for this outlet can be tagged to one of its physical pools
-    // (e.g. "replace ladder pad" only applies to JEIP2) or left untagged for
-    // something that isn't any one pool's job, like restocking the chemical shed.
-    // A recurring one can also be scoped to specific nights (e.g. only Fridays);
-    // a one-time job is already locked to the single day it was added, so no
-    // day-of-week scope is shown for it.
-    const extras = (state.cfg.extra[o.code] || []).map(e => {
-      const daysTag = (e.days && e.days.length) ? `<span class="tag rec">${e.days.map(d=>DAYNAME[d]).join(", ")}</span>` : '<span class="tag rec">Every night</span>';
-      return `<div class="extra-item">
-        <span class="extra-name">${esc(e.name)}</span>
-        ${e.pool ? `<span class="tag pool">${esc(e.pool)}</span>` : ""}
-        ${e.kind==="required" ? '<span class="tag req">Must do</span>' : '<span class="tag opt">If time allows</span>'}
-        ${e.oneTime ? '<span class="tag once">One-time</span>' : daysTag}
-        <button class="link" data-rmextra="${o.code}|${e.id}">remove</button>
-      </div>`;
-    }).join("");
-    const poolPick = o.pools ? `<select id="extra-pool-${o.code}" class="pool-pick">
-        <option value="">Whole outlet</option>
-        ${o.pools.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join("")}
-      </select>` : "";
-    const dayChecks = DAYNAME.map((dn,i)=>`<label class="chk"><input type="checkbox" id="extra-day-${o.code}-${i}"> ${dn}</label>`).join("");
     return `<div class="assign-block">
       <div class="assign-row"><span class="oc">${esc(o.code)}</span>${togs || '<span class="note">No shared job to toggle</span>'}</div>
-      ${o.pools ? `<p class="note" style="margin:6px 0 0">${esc(o.code)} has ${o.pools.length} pools (${o.pools.join(", ")}) — the must-do list and any shared job you toggle on above apply to all of them automatically. For a job below, pick one pool it's specific to, or leave it "Whole outlet" for something like restocking chemicals.</p>` : ""}
-      ${extras ? `<div class="extra-list">${extras}</div>` : ""}
-      <div class="extra-add">
-        <input type="text" id="extra-new-${o.code}" placeholder="Add a job just for ${esc(o.code)}">
-        ${poolPick}
-        <label class="chk"><input type="checkbox" id="extra-req-${o.code}"> Must do</label>
-        <label class="chk"><input type="checkbox" id="extra-once-${o.code}" checked> One-time (won't carry to the next visit)</label>
-        <div class="extra-days"><span class="note">Recurring only, which nights:</span>${dayChecks}<span class="note">(none ticked = every night)</span></div>
-        <button class="btn sm" data-addextra="${o.code}">Add</button>
-      </div>
+      ${o.pools ? `<p class="note" style="margin:6px 0 0">${esc(o.code)} has ${o.pools.length} pools (${o.pools.join(", ")}) — the must-do list and any shared job you toggle on above apply to all of them automatically.</p>` : ""}
     </div>`;
   }).join("");
   return `
+  ${addJobPanel()}
+  ${branchJobsList()}
+
   <div class="stack" style="gap:9px">
     <h2 class="sec">Must do — every outlet, every night</h2>
     <p class="note" style="margin:0 0 8px">Blocks leaving the outlet with a warning until it's done. Keep this list short — for something that's only needed some nights, use "Jobs per branch" below instead.</p>
@@ -5166,7 +5230,7 @@ function taskSettingView(){
 
   <div class="stack" style="gap:9px">
     <h2 class="sec">Jobs per branch</h2>
-    <p class="note" style="margin:0 0 8px">Some branches only need certain jobs on certain nights. Pick a day below, then turn on whichever shared jobs apply at each outlet <strong>on that day</strong> — the toggles you see are just for the selected day, not every day. Add something specific to just one outlet further down; tick "Must do" only if it should block leaving until it's done.</p>
+    <p class="note" style="margin:0 0 8px">Some branches only need certain shared jobs on certain nights. Pick a day below, then turn on whichever shared jobs apply at each outlet <strong>on that day</strong> — the toggles you see are just for the selected day, not every day. For a job that belongs to one branch only, use "Add a job" at the top.</p>
     ${daySeg}
     <p class="note" style="margin:6px 0 0">Editing <strong>${DAYNAME[day]}</strong>${day===today?" (tonight)":""}. <span class="mono muted">•</span> marks tonight.</p>
     ${assign}
@@ -5485,29 +5549,39 @@ function wire(){
   // One-off jobs added for a single outlet only. Also pushed straight into any
   // of today's rounds still open at that outlet, so an urgent job is seen right
   // away instead of waiting for the next round.
-  each("[data-addextra]", b => {
-    const outlet = b.dataset.addextra;
-    const inp = $("#extra-new-"+outlet), chk = $("#extra-req-"+outlet), onceChk = $("#extra-once-"+outlet);
-    const poolSel = $("#extra-pool-"+outlet);
-    const v = inp ? inp.value.trim() : ""; if(!v) return;
-    const kind = (chk&&chk.checked) ? "required" : "optional";
-    const oneTime = !onceChk || onceChk.checked;
-    const pool = (poolSel && poolSel.value) ? poolSel.value : undefined;
-    const days = [];
-    for(let d=0; d<7; d++){ const el = document.getElementById("extra-day-"+outlet+"-"+d); if(el && el.checked) days.push(d); }
-    const c = cfg();
-    // Recorded so a job on the checklist that nobody recognizes ("Light bulb
-    // replace"?) can be traced back to whoever on the team set it up, same
-    // idea as crediting an ad-hoc job or a reported issue to its author.
-    const entry = {id:uid(), name:v, kind, oneTime, addedDate: todayKey(), addedBy: state.me || "Supervisor"};
-    if(pool) entry.pool = pool;
-    if(days.length) entry.days = days;
-    c.extra[outlet] = (c.extra[outlet]||[]).concat([entry]);
+  // "Add a job" panel. Chip taps re-render from state, so what's typed is
+  // kept in state.addJob as it's typed rather than read back off the DOM.
+  each("[data-ajbranch]", b => { const a = addJobState(), c = b.dataset.ajbranch; a.branches = a.branches.includes(c) ? a.branches.filter(x => x !== c) : a.branches.concat([c]); render(); });
+  each("[data-ajmode]", b => { addJobState().mode = b.dataset.ajmode; render(); });
+  each("[data-ajday]", b => { const a = addJobState(), d = +b.dataset.ajday; a.days = a.days.includes(d) ? a.days.filter(x => x !== d) : a.days.concat([d]).sort(); render(); });
+  document.querySelectorAll("[data-ajpool]").forEach(sel => sel.addEventListener("change", () => { addJobState().pool[sel.dataset.ajpool] = sel.value; }));
+  on("#aj-name", e => { addJobState().name = e.target.value; const b = $("#aj-add"); if(b) b.disabled = !(e.target.value.trim() && addJobState().branches.length); }, "input");
+  on("#aj-name", e => { if(e.key === "Enter"){ const b = $("#aj-add"); if(b && !b.disabled) b.click(); } }, "keydown");
+  on("#aj-date", e => { addJobState().date = e.target.value; render(); }, "change");
+  on("#aj-req", e => { addJobState().req = e.target.checked; }, "change");
+  on("#aj-add", () => {
+    const a = addJobState(), v = a.name.trim(); if(!v || !a.branches.length) return;
+    const kind = a.req ? "required" : "optional", once = a.mode === "once";
+    const fromDate = once ? (a.date || todayKey()) : null, days = once ? [] : a.days.slice();
+    const c = cfg(), today = todayKey(), dow = operationalNow().getDay();
+    const added = [];
+    a.branches.forEach(outlet => {
+      const pool = a.pool[outlet] || undefined;
+      // addedBy: so a job nobody recognizes on the checklist can be traced back
+      // to whoever on the team set it up.
+      const entry = {id:uid(), name:v, kind, oneTime:once, addedDate:today, addedBy: state.me || "Supervisor"};
+      if(once) entry.fromDate = fromDate;
+      if(pool) entry.pool = pool;
+      if(days.length) entry.days = days;
+      c.extra[outlet] = (c.extra[outlet] || []).concat([entry]);
+      added.push({outlet, entry});
+    });
+    state.addJob = Object.assign(addJobBlank(), {mode:a.mode, req:a.req});
     saveCfg(c);
-    // Only push it into tonight's open round if it actually applies tonight --
-    // a job scoped to other nights shouldn't show up early just because it
-    // was added just now.
-    if(!days.length || days.includes(operationalNow().getDay())) syncExtraToLiveRounds(outlet, {name:v, kind, pool, addedBy:entry.addedBy}, "add");
+    // Straight into tonight's open rounds only if it applies tonight.
+    const tonight = once ? fromDate <= today : (!days.length || days.includes(dow));
+    if(tonight) added.forEach(({outlet, entry}) => syncExtraToLiveRounds(outlet, {name:v, kind, pool:entry.pool, addedBy:entry.addedBy, extraId:entry.id}, "add"));
+    flash(`Added to ${a.branches.join(", ")}${tonight ? "" : " — from " + fmtDate(fromDate || today)}`);
   });
   each("[data-rmextra]", b => {
     const [outlet, id] = two(b.dataset.rmextra); const c = cfg();
@@ -5516,9 +5590,6 @@ function wire(){
     saveCfg(c);
     if(removed) syncExtraToLiveRounds(outlet, {name:removed.name, kind:removed.kind, pool:removed.pool}, "remove");
   });
-  document.querySelectorAll('[id^="extra-new-"]').forEach(inp => inp.addEventListener("keydown", e => {
-    if(e.key === "Enter"){ const outlet = inp.id.slice("extra-new-".length); const b = document.querySelector('[data-addextra="'+outlet+'"]'); if(b) b.click(); }
-  }));
 
   // issues — technician reporting one from their own outlet stop
   // The X/Y jobs count on a Routes-tab stop toggles that stop's per-job
