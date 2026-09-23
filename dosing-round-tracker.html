@@ -3329,7 +3329,7 @@ function vacMapSvg(card){
 // The ids a route-card badge stands for: "P3" -> [P3], "E1–3" -> [E1,E2,E3],
 // "E1,3" -> [E1,E3], "E1,3–4" -> [E1,E3,E4].
 function vacBadgeIds(label){
-  const m = String(label || "").replace(/\s/g, "").match(/^([PE])([\d,–-]+)$/);
+  const m = String(label || "").replace(/\s/g, "").match(/^([PES])([\d,–-]+)$/);
   if(!m) return null;
   const ids = [];
   for(const part of m[2].split(",")){
@@ -3481,6 +3481,10 @@ const VAC_PHOTOS = {
   // HB -- two vacuum ports, two routes: green A from port 1 (right and top),
   // blue B from port 2 (left leg and top left).
   HB: {card:"HB", normalMin:null, list:[
+    {id:"S1", when:"prep", label:"Vacuum port 2 opened", hint:"Close-up of vacuum port 2 open, before connecting the hose."},
+    {id:"S2", when:"prep", label:"Vacuum valve opened", hint:"Close-up of the vacuum valve handle in the open position."},
+    {id:"S3", when:"prep", label:"Balancing tank control valve half open", hint:"Close-up of the balancing tank control valve set to half open."},
+    {id:"S4", when:"prep", label:"Pump cover – no bubbles", hint:"Photo through the pump cover showing no air bubbles."},
     {id:"P1", when:"start", label:"Route B – Set-up at vacuum port 2", hint:"Hose, vacuum head and telescopic pole connected at vacuum port 2. Stand beside the port and look up-left over the top of the left leg."},
     {id:"P2", when:"start", label:"Route B – Shallow ledge – left half", hint:"Stand in the ledge at the middle. Look left along the left half of the ledge."},
     {id:"P3", when:"start", label:"Route B – Deep strip – top of the left leg", hint:"Stand on the left deck. Look right across the top of the left leg."},
@@ -3595,7 +3599,7 @@ async function attachVacPhoto(code, tid, id, rec){
   if(patch) syncTaskToOtherRounds(code, task, patch);
 }
 // Photo badge colours, matched to the route card's own labels.
-const VAC_BADGE_FALLBACK = {P1:"#0B6E61", P2:"#F59E0B", P3:"#DC2626", P4:"#16A34A", P5:"#4F46E5", P6:"#DB2777", P7:"#0891B2", P8:"#B45309", P9:"#475569", E:"#0F2430"};
+const VAC_BADGE_FALLBACK = {P1:"#0B6E61", P2:"#F59E0B", P3:"#DC2626", P4:"#16A34A", P5:"#4F46E5", P6:"#DB2777", P7:"#0891B2", P8:"#B45309", P9:"#475569", E:"#0F2430", S:"#0F766E"};
 function vacBadgeColors(card){
   vacMap.cols = vacMap.cols || {};
   if(card && vacMap.cols[card]) return vacMap.cols[card];
@@ -3609,7 +3613,7 @@ function vacBadgeColors(card){
   return out;
 }
 function vacBadge(card, id){
-  const col = vacBadgeColors(card)[id] || VAC_BADGE_FALLBACK[id] || (id[0] === "E" ? VAC_BADGE_FALLBACK.E : "#5A6B78");
+  const col = vacBadgeColors(card)[id] || VAC_BADGE_FALLBACK[id] || (id[0] === "E" ? VAC_BADGE_FALLBACK.E : id[0] === "S" ? VAC_BADGE_FALLBACK.S : "#5A6B78");
   return `<span class="vac-pb" style="background:${esc(col)}">${esc(id)}</span>`;
 }
 function vacuumPanel(s, t){
@@ -3635,7 +3639,7 @@ function vacuumPanel(s, t){
     } else status = `<span class="ph-status" style="color:var(--ink-3)">${pb}${esc(p.label)}</span>`;
     return `<div class="wt-photo${st === "todo" && !isNext ? "" : " has"}">${img}<div class="ph-main">${status}<div class="ph-actions">${actions}</div></div></div>`;
   };
-  const group = (when, title) => `<span class="wt-lbl" style="margin-top:4px">${title}</span>${spec.list.filter(p => p.when === when).map(slotHtml).join("")}`;
+  const group = (when, title) => { const items = spec.list.filter(p => p.when === when); return items.length ? `<span class="wt-lbl" style="margin-top:4px">${title}</span>${items.map(slotHtml).join("")}` : ""; };
   const sst = vacSaveState(key, t, spec);
   const card = spec.card ? ` <a href="${VAC_ROUTE_URL}#${encodeURIComponent(spec.card)}" target="_blank" rel="noopener">Open the route card</a> to see where each one is taken.` : "";
   return `<div class="wt" data-vacpanel="${key}">
@@ -3643,9 +3647,9 @@ function vacuumPanel(s, t){
     <p class="note" style="margin:0">Take each photo in order, from where the route card shows it. The time is printed on every photo.${card}${first ? ` First photo ${clockOf(first)} — ${liveDur(first)} so far.` : ""}</p>
     ${(() => { vacMapLoad(); const m = spec.card ? vacMapHtml(spec.card, next && next.id, spec.list.filter(x => ["done","queued","failed"].includes(vacSlotState(key, t, x.id))).map(x => x.id)) : ""; const p = next && spec.list.find(x => x.id === next.id);
       if(m && vacMap.hidden) return `<button type="button" class="btn sm vac-map-show" data-vacmaptoggle>🗺️ Show route map${p ? ` · next ${esc(p.id)}` : ""}</button>`;
-      return m ? `<figure class="vac-map" data-vacmap="${esc(spec.card)}"><button type="button" class="vac-map-hide" data-vacmaptoggle aria-label="Hide route map">Hide map ✕</button>${m}<figcaption>${p ? `<b>Next: ${esc(p.id)} · ${esc(p.label)}</b> — ${p.when === "end" ? "a close-up, taken at the ringed badge." : "stand at the ringed badge and point the camera along its arrow."}` : "All photos taken."}</figcaption></figure>`
+      return m ? `<figure class="vac-map" data-vacmap="${esc(spec.card)}"><button type="button" class="vac-map-hide" data-vacmaptoggle aria-label="Hide route map">Hide map ✕</button>${m}<figcaption>${p ? `<b>Next: ${esc(p.id)} · ${esc(p.label)}</b> — ${p.when !== "start" ? "a close-up, taken at the ringed badge." : "stand at the ringed badge and point the camera along its arrow."}` : "All photos taken."}</figcaption></figure>`
                : (spec.card && !vacMap.tried ? `<p class="note" style="margin:0" data-vacmap="${esc(spec.card)}">Loading the route card…</p>` : ""); })()}
-    <div class="stack" style="gap:8px">${group("start", "At the start and each corner")}${group("end", "After vacuuming the pool")}</div>
+    <div class="stack" style="gap:8px">${group("prep", "Before starting — preparation")}${group("start", "At the start and each corner")}${group("end", "After vacuuming the pool")}</div>
     <button class="btn primary big" data-vacsave="${key}" ${sst.ok ? "" : "disabled"}>${esc(sst.label)}</button>
   </div>`;
 }
