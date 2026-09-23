@@ -3206,7 +3206,7 @@ function dosedSummary(d){
   const links = legacy.map((x, i) => photoBtn(x, `📷 ${photos.length > 1 ? photoName(i+1).toLowerCase() : PHOTO_SUBJECT.toLowerCase()}`, photoName(i+1)));
   const pending = photos.filter(x => x.pending).length;
   const photo = (links.length ? " · " + links.join(" ") : "") + (pending ? ` · <span class="muted">📷 ${pending} upload${pending>1?"s":""} pending</span>` : "");
-  const strip = photoStripHtml(withFile, x => photoName(photos.indexOf(x) + 1) + (x.readG !== null && x.readG !== undefined ? " · read " + fmtG(x.readG) : ""));
+  const strip = photoStripHtml(withFile, x => photoName(photos.indexOf(x) + 1) + (x.takenAt ? " · " + clockOf(x.takenAt) : "") + (x.readG !== null && x.readG !== undefined ? " · read " + fmtG(x.readG) : ""));
   return `Dosed <b>${fmtG(d.chlorineG)} chlorine · ${fmtMl(d.acidMl)} acid</b> (${d.tool === "jug" ? "jug" : "scale"})${plan}${src}${photo}${flag ? ' <span class="dev">⚠ off plan</span>' : ""}${mis !== null ? ` <span class="dev">⚠ photo shows ${fmtG(mis)}</span>` : ""}${strip}`;
 }
 function dosingPanel(s, t){
@@ -3305,8 +3305,8 @@ function finishDosing(code, tid){
   const queued = [];
   if(relayCfg()){
     dosed.photos = photos.map(ph => {
-      if(ph.status === "done") return {fileId:ph.fileId, url:ph.url, thumb:ph.thumb || null, readG: (ph.reading && ph.reading.status === "ok") ? Math.round(ph.reading.grams) : null};
-      const qid = uid(); queued.push({qid, ph}); return {pending:true, queueId:qid};
+      if(ph.status === "done") return {fileId:ph.fileId, url:ph.url, thumb:ph.thumb || null, takenAt:ph.takenAt || null, readG: (ph.reading && ph.reading.status === "ok") ? Math.round(ph.reading.grams) : null};
+      const qid = uid(); queued.push({qid, ph}); return {pending:true, queueId:qid, takenAt:ph.takenAt || null};
     });
   }
   let finished = null;
@@ -3704,7 +3704,7 @@ function attachQueuedPhoto(item, j){
   }
   if(!t.dosed) return;
   t.dosed.photos = (t.dosed.photos || []).filter(x => x.queueId !== item.id);
-  t.dosed.photos.push({fileId:j.fileId, url:j.url, thumb:j.thumb || null});
+  t.dosed.photos.push({fileId:j.fileId, url:j.url, thumb:j.thumb || null, takenAt:(item.payload && item.payload.takenAt) || null});
   saveRound(rr);
   syncTaskToOtherRounds(item.outlet, {name:t.name, kind:t.kind, pool:t.pool||null}, {dosed:t.dosed});
   persist("water_tests/"+item.date+"__"+item.poolKey+"__night", {dosingPhotoUrls: t.dosed.photos.filter(x=>x.url).map(x=>x.url)}, () => {}, {merge:true});
