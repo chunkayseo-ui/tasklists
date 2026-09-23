@@ -514,6 +514,7 @@ details.panel[open] summary::after{content:"▴"}
 .vac-map-show{align-self:flex-start}
 .vac-photos-btn{position:absolute;top:6px;left:6px;z-index:1;font:600 12.5px/1 "IBM Plex Sans",sans-serif;padding:7px 10px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.92);color:var(--ink-2);cursor:pointer}
 .vac-map.no-photos .photo-layer{display:none}
+.vac-play-btn{display:block;width:100%;margin:6px 0 0;font:700 15px/1 "IBM Plex Sans",sans-serif;padding:12px;border-radius:9px;border:1px solid #E0B51F;background:#FFD23F;color:#0F2430;cursor:pointer}
 .vac-map svg{display:block;width:100%;height:auto;max-height:70vh}
 .vac-map figcaption{font-size:13.5px;line-height:1.4;color:var(--ink-2);padding:6px 4px 0}
 .wt-photo{display:flex;gap:12px;align-items:center;border:1px dashed var(--line);border-radius:9px;padding:10px 12px;background:var(--surface-2)}
@@ -623,6 +624,305 @@ details.panel[open] summary::after{content:"▴"}
   below is a public client identifier, not a secret — Firestore access is
   controlled by the project's security rules, not by hiding this value.
 -->
+<script>
+/* VacPlay -- plays a route card's vacuum steps one at a time: the walking
+ * route and the vacuum strokes draw themselves, a dot walks the technician's
+ * line, and the photos for that step pop up once it is done. Steps come from
+ * the card's own <svg data-steps="[...]">, so only cards that carry them
+ * (HB for now) get a Play button. Shared by the route card page and the
+ * tracker; keep the two copies identical. */
+(function(){
+  if(window.VacPlay) return;
+  var NS = "http://www.w3.org/2000/svg";
+  var CSS = ".vplay{position:fixed;inset:0;z-index:9999;background:#0F2430;display:flex;flex-direction:column;color:#fff;font:15px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}"
+    + ".vplay-bar{display:flex;align-items:center;gap:10px;padding:10px 12px 6px}"
+    + ".vplay-bar b{font-size:16px}.vplay-count{color:#9FB6C3;font-size:13px;margin-left:auto}"
+    + ".vplay-x{background:rgba(255,255,255,.12);color:#fff;border:0;border-radius:999px;width:36px;height:36px;font-size:17px;cursor:pointer}"
+    + ".vplay-stage{flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center;padding:4px 8px;background:#fff;margin:0 8px;border-radius:10px}"
+    + ".vplay-stage svg{display:block;width:100%;height:100%;max-height:100%}"
+    + ".vplay-cap{padding:10px 14px 4px;min-height:118px}"
+    + ".vplay-dots{display:flex;gap:5px;margin-bottom:8px}.vplay-dots i{flex:1;height:4px;border-radius:2px;background:rgba(255,255,255,.18)}.vplay-dots i.on{background:#FFD23F}.vplay-dots i.done{background:rgba(255,210,63,.5)}"
+    + ".vplay-cap h4{margin:0 0 4px;font-size:17px;display:flex;align-items:center;gap:8px}.vplay-cap h4 .sw{width:14px;height:14px;border-radius:4px;flex:0 0 auto;border:1.5px solid #fff}"
+    + ".vplay-cap p{margin:0;color:#D5E2E9}"
+    + ".vplay-photos{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;font-size:12.5px;color:#9FB6C3;align-items:center}"
+    + ".vplay-photos span{font:700 12px/1 ui-monospace,Menlo,monospace;color:#fff;border-radius:9px;padding:4px 7px;border:1.5px solid #fff}"
+    + ".vplay-ctl{display:grid;grid-template-columns:1fr 1.3fr 1fr;gap:8px;padding:8px 12px calc(12px + env(safe-area-inset-bottom))}"
+    + ".vplay-ctl button{font-family:inherit;font-size:15px;font-weight:600;line-height:1;padding:13px 6px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;cursor:pointer}"
+    + ".vplay-ctl button.pri{background:#FFD23F;border-color:#FFD23F;color:#0F2430}"
+    + ".vplay-ctl button:disabled{opacity:.35}"
+    + "@keyframes vplay-pulse{0%{stroke-opacity:1;stroke-width:3}70%{stroke-opacity:.15;stroke-width:9}100%{stroke-opacity:1;stroke-width:3}}"
+    + ".vplay-ring{animation:vplay-pulse 1.3s ease-in-out infinite}"
+    + "@keyframes vplay-walk{0%,100%{r:10}50%{r:13}}.vplay-walker circle.o{animation:vplay-walk 1s ease-in-out infinite}";
+
+  function expandIds(label){
+    var m = String(label || "").replace(/\s/g, "").match(/^([PES])([\d,–-]+)$/);
+    if(!m) return [label];
+    var ids = [];
+    m[2].split(",").forEach(function(part){
+      var r = part.match(/^(\d+)(?:[–-](\d+))?$/); if(!r) return;
+      for(var i = +r[1]; i <= (r[2] ? +r[2] : +r[1]); i++) ids.push(m[1] + i);
+    });
+    return ids.length ? ids : [label];
+  }
+  function el(tag, attrs){ var e = document.createElementNS(NS, tag); for(var k in attrs) e.setAttribute(k, attrs[k]); return e; }
+  function nearestLen(path, len, pt){
+    var best = 0, bd = 1e9, N = 600;
+    for(var i = 0; i <= N; i++){
+      var l = len * i / N, p = path.getPointAtLength(l), d = (p.x - pt[0]) * (p.x - pt[0]) + (p.y - pt[1]) * (p.y - pt[1]);
+      if(d < bd){ bd = d; best = l; }
+    }
+    return best;
+  }
+  function boxOf(e){
+    var t = e.tagName.toLowerCase(), n;
+    if(t === "rect" && e.getAttribute("width")) return [+e.getAttribute("x"), +e.getAttribute("y"), +e.getAttribute("width"), +e.getAttribute("height")];
+    if((t === "path" && !e.getAttribute("transform")) || t === "polygon"){
+      n = (e.getAttribute(t === "path" ? "d" : "points") || "").match(/-?\d+(\.\d+)?/g);
+      if(n && n.length >= 2){ var xs = [], ys = []; for(var k = 0; k + 1 < n.length; k += 2){ xs.push(+n[k]); ys.push(+n[k + 1]); }
+        var x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys); return [x0, y0, Math.max.apply(null, xs) - x0, Math.max.apply(null, ys) - y0]; }
+    }
+    try{ var b = e.getBBox(); if(b.width || b.height) return [b.x, b.y, b.width, b.height]; }catch(x){}
+    return null;
+  }
+  function union(a, b){ if(!a) return b; if(!b) return a; var x = Math.min(a[0], b[0]), y = Math.min(a[1], b[1]); return [x, y, Math.max(a[0] + a[2], b[0] + b[2]) - x, Math.max(a[1] + a[3], b[1] + b[3]) - y]; }
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]; }); }
+
+  function has(svg){ try{ return !!(svg && JSON.parse(svg.getAttribute("data-steps") || "[]").length); }catch(e){ return false; } }
+
+  function open(srcSvg, title){
+    if(!has(srcSvg)) return;
+    var steps = JSON.parse(srcSvg.getAttribute("data-steps"));
+    if(!document.getElementById("vplay-css")){ var st = document.createElement("style"); st.id = "vplay-css"; st.textContent = CSS; document.head.appendChild(st); }
+    var ov = document.createElement("div");
+    ov.className = "vplay"; ov.setAttribute("role", "dialog"); ov.setAttribute("aria-label", "Vacuum steps");
+    ov.innerHTML = '<div class="vplay-bar"><b>' + esc(title || "Vacuum steps") + '</b><span class="vplay-count"></span><button type="button" class="vplay-x" aria-label="Close">✕</button></div>'
+      + '<div class="vplay-stage"></div>'
+      + '<div class="vplay-cap"><div class="vplay-dots">' + steps.map(function(){ return "<i></i>"; }).join("") + '</div><h4></h4><p></p><div class="vplay-photos"></div></div>'
+      + '<div class="vplay-ctl"><button type="button" data-a="prev">⏮ Back</button><button type="button" data-a="play" class="pri">⏸ Pause</button><button type="button" data-a="next">Next ⏭</button></div>';
+    var svg = srcSvg.cloneNode(true);
+    svg.removeAttribute("width"); svg.removeAttribute("height"); svg.classList.add("photos-on");
+    svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    ov.querySelector(".vplay-stage").appendChild(svg);
+    document.body.appendChild(ov);
+    var prevOverflow = document.body.style.overflow; document.body.style.overflow = "hidden";
+
+    // ---- pieces of the drawing ----
+    var strokes = Array.prototype.map.call(svg.querySelectorAll(".vac-pattern > path"), function(p){
+      return {p:p, len:p.getTotalLength(), marker:p.getAttribute("marker-end")};
+    });
+    var tints = {}; Array.prototype.forEach.call(svg.querySelectorAll(".vac-sections [data-sec]"), function(t){ tints[t.getAttribute("data-sec")] = {e:t, o:parseFloat(t.getAttribute("opacity") || "1")}; });
+    var secn = Array.prototype.slice.call(svg.querySelectorAll(".secn"));
+    var chev = Array.prototype.slice.call(svg.querySelectorAll(".chev"));
+    var routes = {};
+    ["a", "b"].forEach(function(r){
+      var base = svg.querySelector(".rt-" + r); if(!base) return;
+      var over = base.cloneNode(false); over.removeAttribute("class");
+      over.setAttribute("stroke-width", "7"); base.after(over);
+      var len = base.getTotalLength();
+      over.setAttribute("stroke-dasharray", len + " " + len);
+      routes[r.toUpperCase()] = {base:base, over:over, len:len, col:base.getAttribute("stroke")};
+    });
+    var layer = svg.querySelector(".photo-layer");
+    var badges = [];
+    if(layer){
+      layer.style.display = "inline";
+      Array.prototype.forEach.call(layer.querySelectorAll("text"), function(t){
+        var rect = t.previousElementSibling;
+        badges.push({ids:expandIds(t.textContent), els:[rect, t], col:((rect && rect.getAttribute("fill")) || "").toLowerCase(), rect:rect});
+      });
+      Array.prototype.forEach.call(layer.children, function(c){
+        if(c.tagName.toLowerCase() === "text" || badges.some(function(b){ return b.rect === c; })) return;
+        var k = ((c.getAttribute("fill") || "") + "|" + (c.getAttribute("stroke") || "")).toLowerCase();
+        var b = badges.filter(function(x){ return x.col && k.indexOf(x.col) >= 0; })[0];
+        if(b) b.els.push(c); else c.style.display = "none";
+      });
+    }
+    var fx = el("g", {"class":"vplay-fx"}); svg.appendChild(fx);
+    var head = el("circle", {r:"5.5", fill:"#fff", stroke:"#0F2430", "stroke-width":"2.5"}); fx.appendChild(head); head.style.display = "none";
+    var walker = el("g", {"class":"vplay-walker"}); walker.style.display = "none";
+    var wo = el("circle", {r:"11", fill:"#fff", "stroke-width":"4", "class":"o"}), wi = el("circle", {r:"4.5"});
+    walker.appendChild(wo); walker.appendChild(wi);
+    if(layer) layer.parentNode.insertBefore(walker, layer); else fx.appendChild(walker);   // photo badges stay on top of the walking dot
+    var rings = el("g", {}); fx.appendChild(rings);
+
+    // where each step leaves the walking lines
+    var revealAfter = [], cur = {A:0, B:0};
+    steps.forEach(function(s){
+      var from = {A:cur.A, B:cur.B};
+      if(s.walk && routes[s.walk.r]){
+        var R = routes[s.walk.r];
+        cur[s.walk.r] = s.walk.to ? Math.max(from[s.walk.r], nearestLen(R.base, R.len, s.walk.to)) : R.len;
+      }
+      revealAfter.push({from:from, to:{A:cur.A, B:cur.B}});
+    });
+
+    // The camera: the whole pool trimmed to what is drawn, and for each step a
+    // close-up on the part being worked, so the section fills a phone screen.
+    var full = null;
+    try{ var fb = svg.getBBox(); full = [fb.x - 8, fb.y - 8, fb.width + 16, fb.height + 16]; }catch(e){}
+    if(!full || full[2] < 50){ full = (svg.getAttribute("viewBox") || "0 0 640 430").split(/[\s,]+/).map(Number); }
+    function focusOf(k){
+      var s = steps[k], b = null;
+      if(!s.sec && !s.at) return full.slice();   // preparation / finishing: the whole pool
+      if(s.sec && strokes[s.sec - 1]) b = union(b, boxOf(strokes[s.sec - 1].p));
+      if(s.walk && routes[s.walk.r]){
+        var R = routes[s.walk.r], ra = revealAfter[k];
+        for(var q = 0; q <= 20; q++){ var pt = R.base.getPointAtLength(ra.from[s.walk.r] + (ra.to[s.walk.r] - ra.from[s.walk.r]) * q / 20); b = union(b, [pt.x - 12, pt.y - 12, 24, 24]); }
+      }
+      if(s.at) b = union(b, [s.at[0] - 14, s.at[1] - 14, 28, 28]);
+      badges.forEach(function(x){ if(x.ids.some(function(id){ return (s.photos || []).indexOf(id) >= 0; })) x.els.forEach(function(e){ b = union(b, boxOf(e)); }); });
+      (s.hl || []).forEach(function(sel){ Array.prototype.forEach.call(svg.querySelectorAll(sel), function(e){ b = union(b, boxOf(e)); }); });
+      if(!b) return full.slice();
+      var pad = 22; b = [b[0] - pad, b[1] - pad, b[2] + 2 * pad, b[3] + 2 * pad];
+      // never zoom in further than ~2.6x, and match the stage's shape
+      var minW = full[2] / 2.2; if(b[2] < minW){ b[0] -= (minW - b[2]) / 2; b[2] = minW; }
+      var st = ov.querySelector(".vplay-stage"), ar = Math.max(.3, (st.clientWidth - 16) / Math.max(1, st.clientHeight - 8));
+      if(b[2] / b[3] < ar){ var w = b[3] * ar; b[0] -= (w - b[2]) / 2; b[2] = w; } else { var h = b[2] / ar; b[1] -= (h - b[3]) / 2; b[3] = h; }
+      if(b[2] >= full[2] && b[3] >= full[3]) return full.slice();
+      // keep the close-up over the pool rather than the empty margin round it
+      [0, 1].forEach(function(a){
+        if(b[a + 2] <= full[a + 2]) b[a] = Math.max(full[a], Math.min(full[a] + full[a + 2] - b[a + 2], b[a]));
+        else b[a] = full[a] - (b[a + 2] - full[a + 2]) / 2;
+      });
+      return b;
+    }
+    var vb = full.slice(), vbFrom = full.slice(), vbTo = full.slice(), vbT = 0, ZOOM = 700;
+    svg.setAttribute("viewBox", vb.join(" "));
+    function camera(now){
+      var k = Math.min(1, (now - vbT) / ZOOM), e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      vb = vbFrom.map(function(v, j){ return v + (vbTo[j] - v) * e; });
+      svg.setAttribute("viewBox", vb.map(function(v){ return Math.round(v * 10) / 10; }).join(" "));
+      return k < 1;
+    }
+    function aim(now){ vbFrom = vb.slice(); vbTo = focusOf(i); vbT = now; }
+
+    var i = 0, t0 = 0, playing = true, pausedAt = 0, raf = 0, lastKey = "";
+    var DRAW = 5200, HOLD = 2600, STILL = 4200;
+    function durs(s){ return s.sec ? [DRAW, HOLD] : [0, STILL]; }
+
+    function setRings(s){
+      while(rings.firstChild) rings.removeChild(rings.firstChild);
+      var targets = [];
+      (s.hl || []).forEach(function(sel){ Array.prototype.forEach.call(svg.querySelectorAll(sel), function(e){ targets.push(e); }); });
+      badges.forEach(function(b){ if(b.ids.some(function(id){ return (s.photos || []).indexOf(id) >= 0; }) && b.rect) targets.push(b.rect); });
+      targets.forEach(function(e){
+        var bb = boxOf(e); if(!bb) return;
+        rings.appendChild(el("rect", {x:bb[0] - 5, y:bb[1] - 5, width:bb[2] + 10, height:bb[3] + 10, rx:Math.min(14, (bb[3] + 10) / 2),
+          fill:"none", stroke:"#FFD23F", "stroke-width":"3", "class":"vplay-ring"}));
+      });
+    }
+    function caption(s){
+      var cap = ov.querySelector(".vplay-cap");
+      var sw = s.sec && tints[s.sec] ? '<span class="sw" style="background:' + tints[s.sec].e.getAttribute("fill") + '"></span>' : "";
+      cap.querySelector("h4").innerHTML = sw + esc(s.t);
+      cap.querySelector("p").textContent = s.d || "";
+      var ph = s.photos || [];
+      cap.querySelector(".vplay-photos").innerHTML = ph.length ? "Photos: " + ph.map(function(id){
+        var b = badges.filter(function(x){ return x.ids.indexOf(id) >= 0; })[0];
+        return '<span style="background:' + (b ? b.rect.getAttribute("fill") : "#0F2430") + '">' + esc(id) + "</span>";
+      }).join("") : "";
+      Array.prototype.forEach.call(cap.querySelectorAll(".vplay-dots i"), function(d, k){ d.className = k === i ? "on" : (k < i ? "done" : ""); });
+      ov.querySelector(".vplay-count").textContent = "Step " + (i + 1) + " of " + steps.length;
+      ov.querySelector('[data-a="prev"]').disabled = i === 0;
+      ov.querySelector('[data-a="next"]').disabled = i === steps.length - 1;
+    }
+    function draw(p){
+      var s = steps[i], d = durs(s), k = d[0] ? Math.min(1, p / d[0]) : 1;
+      if(lastKey !== String(i)){ lastKey = String(i); caption(s); setRings(s); aim(performance.now()); }
+      var doneSec = {}; for(var j = 0; j < i; j++) if(steps[j].sec) doneSec[steps[j].sec] = 1;
+      strokes.forEach(function(o, j){
+        var n = j + 1, e = o.p;
+        if(n === s.sec){
+          e.style.opacity = "1"; e.setAttribute("stroke-dasharray", o.len + " " + o.len); e.setAttribute("stroke-dashoffset", String(o.len * (1 - k)));
+          if(k < 1) e.removeAttribute("marker-end"); else if(o.marker) e.setAttribute("marker-end", o.marker);
+          e.setAttribute("stroke-width", "3.2");
+        } else {
+          e.removeAttribute("stroke-dasharray"); e.removeAttribute("stroke-dashoffset"); e.removeAttribute("stroke-width");
+          if(o.marker) e.setAttribute("marker-end", o.marker);
+          e.style.opacity = doneSec[n] ? ".5" : ".12";
+        }
+      });
+      Object.keys(tints).forEach(function(n){ var t = tints[n]; t.e.setAttribute("opacity", String(+n === s.sec ? Math.min(.6, t.o * 2) : (doneSec[n] ? t.o : t.o * .45))); });
+      secn.forEach(function(e){ e.style.opacity = +e.getAttribute("data-sec") === s.sec ? "1" : ".3"; });
+      chev.forEach(function(e){ e.style.opacity = ".15"; });
+      var ra = revealAfter[i], wpt = null, wcol = null;
+      Object.keys(routes).forEach(function(r){
+        var R = routes[r], a = ra.from[r], b = ra.to[r], L = a + (b - a) * k;
+        R.base.style.opacity = ".22";
+        R.over.setAttribute("stroke-dashoffset", String(R.len - L));
+        R.over.style.opacity = s.walk && s.walk.r === r ? "1" : ".45";
+        if(s.walk && s.walk.r === r){ var q = R.base.getPointAtLength(Math.max(0, Math.min(R.len, L))); wpt = [q.x, q.y]; wcol = R.col; }
+      });
+      if(!wpt && s.at){ wpt = s.at; wcol = s.atCol || "#0F2430"; }
+      if(wpt){ walker.style.display = ""; walker.setAttribute("transform", "translate(" + wpt[0] + "," + wpt[1] + ")"); wo.setAttribute("stroke", wcol); wi.setAttribute("fill", wcol); }
+      else walker.style.display = "none";
+      var so = s.sec && strokes[s.sec - 1];
+      if(so && k < 1){ var hp = so.p.getPointAtLength(so.len * k); head.style.display = ""; head.setAttribute("cx", hp.x); head.setAttribute("cy", hp.y); }
+      else head.style.display = "none";
+      var show = k >= 1 ? (s.photos || []) : [];
+      badges.forEach(function(b){
+        var on = b.ids.some(function(id){ return show.indexOf(id) >= 0; });
+        b.els.forEach(function(e){ e.style.display = on ? "" : "none"; });
+      });
+      rings.style.display = k >= 1 ? "" : "none";
+    }
+    function tick(now){
+      raf = 0;
+      if(!ov.isConnected) return;
+      var s = steps[i], d = durs(s), p = playing ? now - t0 : pausedAt;
+      if(playing && p >= d[0] + d[1]){
+        if(i < steps.length - 1){ i++; t0 = now; p = 0; }
+        else { playing = false; pausedAt = d[0] + d[1]; setBtn(); p = pausedAt; }
+      }
+      draw(p);
+      var moving = camera(now);
+      if(playing || moving) raf = requestAnimationFrame(tick);
+    }
+    function setBtn(){
+      var b = ov.querySelector('[data-a="play"]');
+      var atEnd = !playing && i === steps.length - 1 && pausedAt >= durs(steps[i])[0] + durs(steps[i])[1];
+      b.textContent = playing ? "⏸ Pause" : (atEnd ? "↻ Replay" : "▶ Play");
+    }
+    function go(n){
+      i = Math.max(0, Math.min(steps.length - 1, n));
+      t0 = performance.now();
+      if(!playing) pausedAt = durs(steps[i])[0];   // paused: show the step finished
+      if(!raf) raf = requestAnimationFrame(tick);
+      setBtn();
+    }
+    function toggle(){
+      var now = performance.now();
+      if(playing){ playing = false; pausedAt = now - t0; }
+      else {
+        var d = durs(steps[i]);
+        if(i === steps.length - 1 && pausedAt >= d[0] + d[1]){ i = 0; pausedAt = 0; lastKey = ""; }
+        playing = true; t0 = now - pausedAt;
+      }
+      setBtn(); if(!raf) raf = requestAnimationFrame(tick);
+    }
+    function close(){
+      if(raf) cancelAnimationFrame(raf); raf = 0;
+      document.removeEventListener("keydown", onKey);
+      ov.remove(); document.body.style.overflow = prevOverflow;
+    }
+    function onKey(e){
+      if(e.key === "Escape") close();
+      else if(e.key === "ArrowRight") go(i + 1);
+      else if(e.key === "ArrowLeft") go(i - 1);
+      else if(e.key === " "){ e.preventDefault(); toggle(); }
+    }
+    ov.querySelector(".vplay-x").addEventListener("click", close);
+    ov.querySelector('[data-a="prev"]').addEventListener("click", function(){ go(i - 1); });
+    ov.querySelector('[data-a="next"]').addEventListener("click", function(){ go(i + 1); });
+    ov.querySelector('[data-a="play"]').addEventListener("click", toggle);
+    ov.querySelector(".vplay-stage").addEventListener("click", toggle);
+    document.addEventListener("keydown", onKey);
+    t0 = performance.now(); raf = requestAnimationFrame(tick);
+    return {close:close, go:go, toggle:toggle, state:function(){ return {i:i, playing:playing}; }};
+  }
+  window.VacPlay = {open:open, has:has};
+})();
+</script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 
@@ -3657,7 +3957,7 @@ function vacuumPanel(s, t){
     <p class="note" style="margin:0">Take each photo in order, from where the route card shows it. The time is printed on every photo.${card}${first ? ` First photo ${clockOf(first)} — ${liveDur(first)} so far.` : ""}</p>
     ${(() => { vacMapLoad(); const m = spec.card ? vacMapHtml(spec.card, next && next.id, spec.list.filter(x => ["done","queued","failed"].includes(vacSlotState(key, t, x.id))).map(x => x.id)) : ""; const p = next && spec.list.find(x => x.id === next.id);
       if(m && vacMap.hidden) return `<button type="button" class="btn sm vac-map-show" data-vacmaptoggle>🗺️ Show route map${p ? ` · next ${esc(p.id)}` : ""}</button>`;
-      return m ? `<figure class="vac-map${vacMap.noPhotos ? " no-photos" : ""}" data-vacmap="${esc(spec.card)}"><button type="button" class="vac-photos-btn" data-vacphotostoggle aria-pressed="${vacMap.noPhotos ? "false" : "true"}">📷 ${vacMap.noPhotos ? "Show" : "Hide"} photo points</button><button type="button" class="vac-map-hide" data-vacmaptoggle aria-label="Hide route map">Hide map ✕</button>${m}<figcaption>${p ? `<b>Next: ${esc(p.id)} · ${esc(p.label)}</b> — ${p.when !== "start" ? "a close-up, taken at the ringed badge." : "stand at the ringed badge and point the camera along its arrow."}` : "All photos taken."}</figcaption></figure>`
+      return m ? `<figure class="vac-map${vacMap.noPhotos ? " no-photos" : ""}" data-vacmap="${esc(spec.card)}"><button type="button" class="vac-photos-btn" data-vacphotostoggle aria-pressed="${vacMap.noPhotos ? "false" : "true"}">📷 ${vacMap.noPhotos ? "Show" : "Hide"} photo points</button><button type="button" class="vac-map-hide" data-vacmaptoggle aria-label="Hide route map">Hide map ✕</button>${m}${(window.VacPlay && VacPlay.has(vacMapSvg(spec.card))) ? `<button type="button" class="vac-play-btn" data-vacplay="${esc(spec.card)}">▶ Play the vacuum steps</button>` : ""}<figcaption>${p ? `<b>Next: ${esc(p.id)} · ${esc(p.label)}</b> — ${p.when !== "start" ? "a close-up, taken at the ringed badge." : "stand at the ringed badge and point the camera along its arrow."}` : "All photos taken."}</figcaption></figure>`
                : (spec.card && !vacMap.tried ? `<p class="note" style="margin:0" data-vacmap="${esc(spec.card)}">Loading the route card…</p>` : ""); })()}
     <div class="stack" style="gap:8px">${group("prep", "Before starting — preparation")}${group("start", "At the start and each corner")}${group("end", "After vacuuming the pool")}</div>
     <button class="btn primary big" data-vacsave="${key}" ${sst.ok ? "" : "disabled"}>${esc(sst.label)}</button>
@@ -5643,6 +5943,7 @@ function wire(){
   const splitLast = v => { const k = v.lastIndexOf("|"); return [v.slice(0, k), v.slice(k+1)]; };
   each("[data-vacmaptoggle]", () => vacMapToggle());
   each("[data-vacphotostoggle]", () => vacPhotosToggle());
+  each("[data-vacplay]", b => { const sv = vacMapSvg(b.dataset.vacplay); if(sv && window.VacPlay) VacPlay.open(sv, b.dataset.vacplay + " · vacuum steps"); });
   each("[data-vacbtn]", b => { const i = document.querySelector(`[data-vacin="${b.dataset.vacbtn}"]`); if(i){ i.value = ""; i.click(); } });
   document.querySelectorAll("[data-vacin]").forEach(i => i.addEventListener("change", () => { const f = i.files && i.files[0]; const [key, id] = splitLast(i.dataset.vacin); if(f) onVacPhotoPicked(key, id, f); }));
   each("[data-vacretry]", b => { const [key, id] = splitLast(b.dataset.vacretry); const ph = vacLocal(key)[id]; if(!ph || !ph.base64) return; ph.status = "uploading"; render(); uploadVacPhoto(key, id); });
