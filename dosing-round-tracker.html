@@ -759,7 +759,7 @@ details.panel[open] summary::after{content:"▴"}
       });
     }
     // vacuum strokes on top of the (now solid) photo arrows, so both stay visible
-    var pat = svg.querySelector(".vac-pattern"); if(pat && layer) layer.parentNode.insertBefore(pat, layer.nextSibling);
+    // photo arrows sit above the vacuum strokes (the card's own order), badges on the very top
     var fx = el("g", {"class":"vplay-fx"}); svg.appendChild(fx);
     var head = el("circle", {r:"5.5", fill:"#fff", stroke:"#0F2430", "stroke-width":"2.5"}); fx.appendChild(head); head.style.display = "none";
     var walker = el("g", {"class":"vplay-walker"}); walker.style.display = "none";
@@ -894,7 +894,8 @@ details.panel[open] summary::after{content:"▴"}
 
     var quietAt = 0;
     var i = 0, t0 = 0, playing = true, pausedAt = 0, raf = 0, lastKey = "";
-    var DRAW = 5200, HOLD = 2600, STILL = 4200;
+    var DRAW = 5200, HOLD = 3200, STILL = 4200;
+    var PHOTO_DELAY = 1800;   // after a section is vacuumed, pause before the photo point and arrow appear
     var LEAD = 2200;    // walking to where the vacuuming starts, before the strokes draw
     var SETTLE = 900;   // stand still at the start while the map zooms in
     var CATCH = 600;    // after the strokes, the dot finishes its walk
@@ -950,8 +951,9 @@ details.panel[open] summary::after{content:"▴"}
     function draw(p){
       var s = steps[i], ra = revealAfter[i], pre = preOf(s);
       var k = s.sec ? Math.max(0, Math.min(1, (p - pre) / DRAW)) : 1;
-      if(spoken !== i) speakFor(i, k >= 1);
-      else if(k >= 1 && photoSaid !== i){ photoSaid = i; say([photoClip(s)], false); }
+      var photoOn = s.sec ? p >= pre + DRAW + PHOTO_DELAY : true;
+      if(spoken !== i) speakFor(i, photoOn);
+      else if(photoOn && photoSaid !== i){ photoSaid = i; say([photoClip(s)], false); }
       if(lastKey !== String(i)){ lastKey = String(i); caption(s); setRings(s); aim(performance.now()); }
       var doneSec = {}; for(var j = 0; j < i; j++) if(steps[j].sec) doneSec[steps[j].sec] = 1;
       strokes.forEach(function(o, j){
@@ -983,12 +985,12 @@ details.panel[open] summary::after{content:"▴"}
       var so = s.sec && strokes[s.sec - 1];
       if(so && k < 1 && p >= pre){ var hp = so.p.getPointAtLength(so.len * k); head.style.display = ""; head.setAttribute("cx", hp.x); head.setAttribute("cy", hp.y); }
       else head.style.display = "none";
-      var show = k >= 1 ? (s.photos || []) : [];   // photo point + arrow only once the section is finished
+      var show = photoOn ? (s.photos || []) : [];   // photo point + arrow only once the section is finished (and a short pause)
       badges.forEach(function(b){
         var on = b.ids.some(function(id){ return show.indexOf(id) >= 0; });
         b.els.forEach(function(e){ e.style.display = on ? "" : "none"; });
       });
-      rings.style.display = k >= 1 ? "" : "none";
+      rings.style.display = photoOn ? "" : "none";
     }
     function tick(now){
       raf = 0;
@@ -1014,7 +1016,7 @@ details.panel[open] summary::after{content:"▴"}
     function go(n){
       i = Math.max(0, Math.min(steps.length - 1, n));
       t0 = performance.now();
-      if(!playing) pausedAt = durs(steps[i])[0] + (steps[i].sec ? CATCH : 0);   // paused: show the step finished
+      if(!playing) pausedAt = durs(steps[i])[0] + (steps[i].sec ? PHOTO_DELAY : 0);   // paused: show the step finished
       speakFor(i, !playing);
       if(!raf) raf = requestAnimationFrame(tick);
       setBtn();
