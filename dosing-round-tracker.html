@@ -1247,6 +1247,12 @@ const state = {
                           // on the Task Setting tab. Defaults to today the first time that tab is opened.
 };
 const myId = () => state.me ? todayKey()+"__"+slug(state.me) : null;
+// "Test" is a practice name anyone can pick: its rounds are tagged TEST, left
+// out of Overview and every count, never touch anyone else's round or the
+// Task Setting job list, and Reset simply clears them.
+const TEST_NAME = "Test";
+const isTestRound = r => !!r && slug(r.person || "") === "test";
+const isTestMe = () => slug(state.me || "") === "test";
 const myRound = () => state.rounds[myId()] || null;
 // Who else (besides me) already has this outlet in their round today, whether
 // they've arrived yet or not. Purely informational — nothing stops two
@@ -1260,7 +1266,7 @@ const myRound = () => state.rounds[myId()] || null;
 function outletTonight(code){
   const stops = [];
   Object.values(state.rounds).forEach(r => {
-    if(r.date !== todayKey() || !r.stops) return;
+    if(r.date !== todayKey() || !r.stops || (isTestRound(r) && !isTestMe())) return;
     const s = r.stops.find(x => x.outlet === code);
     if(s && !isQuick(s) && s.arriveAt) stops.push({s, person:r.person});
   });
@@ -1277,7 +1283,7 @@ function othersOn(code){
   const mine = myId();
   const names = new Set();
   Object.values(state.rounds).forEach(r => {
-    if(r.id === mine || r.date !== todayKey() || !r.stops) return;
+    if(r.id === mine || r.date !== todayKey() || !r.stops || isTestRound(r) !== isTestMe()) return;
     if(r.stops.some(s => s.outlet === code)) names.add(r.person);
   });
   return [...names];
@@ -1296,7 +1302,7 @@ function conflictingTask(outlet, t){
   if(!t.doneAt || !t.claimedBy) return null;
   const today = todayKey();
   for(const r of Object.values(state.rounds)){
-    if(r.date !== today || !r.stops) continue;
+    if(r.date !== today || !r.stops || isTestRound(r)) continue;
     const s = r.stops.find(x => x.outlet === outlet);
     if(!s) continue;
     const m = s.tasks.find(x => x.name===t.name && x.kind===t.kind && (x.pool||null)===(t.pool||null));
@@ -1428,7 +1434,7 @@ async function initDb(){
 // technician marks it done -- it comes off Task Setting and out of any
 // teammate's still-open round at that outlet -- so it never lingers.
 function retireDoneExtras(round){
-  const c = state.cfg; if(!c || !c.extra) return;
+  const c = state.cfg; if(!c || !c.extra || isTestRound(round)) return;
   const gone = [];
   (round.stops || []).forEach(s => (s.tasks || []).forEach(t => {
     if(!t.extraId || !t.doneAt) return;
@@ -1988,8 +1994,9 @@ async function syncExtraToLiveRounds(outlet, job, action){
  */
 async function syncTaskToOtherRounds(outlet, task, patch){
   const mine = myId(), today = todayKey();
+  if(isTestMe()) return;
   const matches = t => t.name === task.name && t.kind === task.kind && (t.pool||null) === (task.pool||null);
-  const others = Object.values(state.rounds).filter(r => r.id !== mine && r.date === today);
+  const others = Object.values(state.rounds).filter(r => r.id !== mine && r.date === today && !isTestRound(r));
   for(const orig of others){
     const r = clone(orig);
     const s = r.stops.find(x => x.outlet === outlet && !x.departAt);
@@ -4273,7 +4280,8 @@ function vacSummaryHtml(code, t){
 function techView(){
   if(!state.me) return pickPerson();
   const r = myRound();
-  return r ? runRound(r) : buildRound();
+  const banner = isTestMe() ? `<div class="card" style="padding:12px 14px;margin-bottom:12px;border:2px dashed var(--warn);background:#FFF8E6"><strong>🧪 Practice mode.</strong> This round is marked TEST — it isn't counted and doesn't change anyone else's jobs. <strong>Reset today's round</strong> clears it completely.</div>` : "";
+  return banner + (r ? runRound(r) : buildRound());
 }
 
 function pickPerson(){
@@ -4283,7 +4291,7 @@ function pickPerson(){
     <div class="eyebrow">Step 1</div>
     <h2 class="sec" style="margin:6px 0 14px">Who's doing the round?</h2>
     <div class="stack">
-      <select id="who"><option value="">Select your name…</option>${opts}</select>
+      <select id="who"><option value="">Select your name…</option>${opts}${state.roster.some(n => slug(n) === "test") ? "" : `<option value="${TEST_NAME}">🧪 Test — practice, not counted</option>`}</select>
       <button class="btn primary big" id="who-go">Continue</button>
       <p class="note">Your name is remembered on this phone, so you only pick it once.</p>
     </div>
@@ -5036,6 +5044,7 @@ function outletStatusGrid(rounds){
 // Supervisor board dedupes shared-outlet jobs, so two technicians' mirrored
 // copies of the same job don't show up twice.
 function unfinishedJobs(rounds){
+  rounds = rounds.filter(r => !isTestRound(r));
   const seen = new Set(), out = [];
   rounds.forEach(r => r.stops.forEach(s => {
     if(!s.departAt || isQuick(s)) return;
@@ -5188,7 +5197,7 @@ function issueBoard(){
 }
 
 function overviewView(){
-  const rounds = roundsForDate(todayKey());
+  const rounds = roundsForDate(todayKey()).filter(r => !isTestRound(r));
   const stats = overviewStats(rounds);
   const openN = Object.values(state.issues).filter(i => i.status!=="resolved").length;
   const urgentN = Object.values(state.issues).filter(i => i.status!=="resolved" && i.priority==="urgent").length;
@@ -5249,6 +5258,7 @@ function crewRow(r, isToday, opts){
       locHtml(s, "in", {prefix: stopLabel(s) + " · in " + clockOf(s.arriveAt)})).join("")}</div>` : "";
   return `<div class="crew-row"><div class="crew-top">
       <span class="crew-name">${esc(r.person)}</span>
+      ${isTestRound(r) ? '<span class="tag req">TEST</span>' : ""}
       ${chip}
       <span class="crew-where mono">${t.tasksDone} jobs · ${dur(t.onSite)} on site · ${dur(t.travel)} travel</span>
       ${delBtn}
@@ -5280,9 +5290,10 @@ function mgrView(){
     }
   }
 
-  const rounds = roundsForDate(viewDate);
+  const allRounds = roundsForDate(viewDate);
+  const rounds = allRounds.filter(r => !isTestRound(r));
 
-  if(!rounds.length){
+  if(!allRounds.length){
     return `${dateNav}<div class="card empty">
       <div class="eyebrow" style="margin-bottom:8px">${isToday ? "No rounds started today" : "No rounds recorded on "+esc(fmtDate(viewDate))}</div>
       ${isToday
@@ -5294,7 +5305,7 @@ function mgrView(){
   const agg = rounds.reduce((a,r)=>{const t=totals(r);a.on+=t.onSite;a.tr+=t.travel;a.done+=t.done;a.tot+=t.total;a.tk+=t.tasksDone;return a;},{on:0,tr:0,done:0,tot:0,tk:0});
   const share = (agg.on+agg.tr) ? Math.round(agg.tr/(agg.on+agg.tr)*100) : 0;
 
-  const crew = rounds.map(r => crewRow(r, isToday, {deletable:true})).join("");
+  const crew = allRounds.map(r => crewRow(r, isToday, {deletable:true})).join("");
 
   // Every job on the board today, across every stop of every round -- not just
   // ones someone has picked up. A pooled outlet (JE) puts the same job list
@@ -5770,6 +5781,7 @@ function routeCard(r, proj, byCode){
   return `<div class="card route-card">
     <div class="route-head">
       <span class="crew-name">${esc(r.person)}</span>
+      ${isTestRound(r) ? '<span class="tag req">TEST</span>' : ""}
       <span class="chip ${cs.k}"><span class="dot"></span>${esc(cs.label)}</span>
     </div>
     ${summary}
@@ -5803,7 +5815,7 @@ function routesView(){
   }
 
   const rounds = roundsForDate(viewDate);
-  const withStops = rounds.filter(r => r.stops.some(s => s.arriveAt));
+  const withStops = rounds.filter(r => r.stops.some(everVisited));
 
   if(!withStops.length){
     return `${dateNav}<div class="card empty">
@@ -6045,7 +6057,7 @@ function wire(){
     // see it, and the technician starts a fresh round. Only an empty round is
     // simply cleared.
     const r = state.rounds[id];
-    const worked = r && (r.stops || []).some(s => everVisited(s) || (s.tasks || []).some(t => t.doneAt || t.claimedBy || (t.vac && t.vac.photos && Object.keys(t.vac.photos).length)));
+    const worked = r && !isTestRound(r) && (r.stops || []).some(s => everVisited(s) || (s.tasks || []).some(t => t.doneAt || t.claimedBy || (t.vac && t.vac.photos && Object.keys(t.vac.photos).length)));
     if(worked){
       if(!confirm("Start a new round?\n\nEverything you've done in this round stays saved — your supervisor can still see it.")) return;
       const now = new Date(), keep = clone(r);
