@@ -3478,6 +3478,22 @@ const VAC_PHOTOS = {
     {id:"E3", when:"end", label:"Vacuum valve closed", hint:"Close-up of the valve handle in the closed position."},
     {id:"E4", when:"end", label:"Vacuum port closed", hint:"Close-up of the port with the cover on."}
   ]},
+  // HB -- two vacuum ports, two routes: green A from port 1 (right and top),
+  // blue B from port 2 (left leg and top left).
+  HB: {card:"HB", normalMin:null, list:[
+    {id:"P1", when:"start", label:"Route A – set-up at vacuum port 1", hint:"Hose, vacuum head and telescopic pole connected at vacuum port 1, bottom right."},
+    {id:"P2", when:"start", label:"Route A – right side", hint:"Stand on the right deck. Look left across the deep part."},
+    {id:"P3", when:"start", label:"Route A – top deck, right half", hint:"Stand on the top deck. Look down over the right half of the pool."},
+    {id:"P4", when:"start", label:"Route A – top deck, middle", hint:"Stand on the top deck near the middle. Look down towards the high wall and stairs."},
+    {id:"P5", when:"start", label:"Route B – set-up at vacuum port 2", hint:"Hose, vacuum head and telescopic pole connected at vacuum port 2, top of the left leg."},
+    {id:"P6", when:"start", label:"Route B – bottom deck, left leg", hint:"Stand on the bottom deck. Look up the left leg past the pillar."},
+    {id:"P7", when:"start", label:"Route B – top left corner", hint:"Stand at the top left corner. Look down over the ledge and the top of the left leg."},
+    {id:"E1", when:"end", label:"Vacuum head, pipe and telescopic pole kept", hint:"Vacuum head, pipe and telescopic pole put back in storage."},
+    {id:"E2", when:"end", label:"Vacuum valve 1 closed", hint:"Close-up of valve 1's handle in the closed position."},
+    {id:"E3", when:"end", label:"Vacuum valve 2 closed", hint:"Close-up of valve 2's handle in the closed position."},
+    {id:"E4", when:"end", label:"Vacuum port 1 closed", hint:"Close-up of port 1 with the cover on."},
+    {id:"E5", when:"end", label:"Vacuum port 2 closed", hint:"Close-up of port 2 with the cover on."}
+  ]},
   // JE Outdoor Pool 1 -- vacuum port upper left, one clockwise lap.
   JEOP1: {card:"JEOP1", normalMin:null, list:[
     {id:"P1", when:"start", label:"Set-up", hint:"Hose, vacuum head and telescopic pole connected at the vacuum port, upper left."},
@@ -3577,7 +3593,7 @@ async function attachVacPhoto(code, tid, id, rec){
   if(patch) syncTaskToOtherRounds(code, task, patch);
 }
 // Photo badge colours, matched to the route card's own labels.
-const VAC_BADGE_FALLBACK = {P1:"#0B6E61", P2:"#F59E0B", P3:"#DC2626", P4:"#16A34A", P5:"#4F46E5", P6:"#DB2777", E:"#0F2430"};
+const VAC_BADGE_FALLBACK = {P1:"#0B6E61", P2:"#F59E0B", P3:"#DC2626", P4:"#16A34A", P5:"#4F46E5", P6:"#DB2777", P7:"#0891B2", E:"#0F2430"};
 function vacBadgeColors(card){
   vacMap.cols = vacMap.cols || {};
   if(card && vacMap.cols[card]) return vacMap.cols[card];
