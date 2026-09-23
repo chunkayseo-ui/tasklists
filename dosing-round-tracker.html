@@ -753,7 +753,9 @@ details.panel[open] summary::after{content:"▴"}
         var R = routes[s.walk.r];
         cur[s.walk.r] = s.walk.to ? Math.max(from[s.walk.r], nearestLen(R.base, R.len, s.walk.to)) : R.len;
       }
-      revealAfter.push({from:from, to:{A:cur.A, B:cur.B}});
+      var lead = null;
+      if(s.walk && s.walk.lead && routes[s.walk.r]){ var RL = routes[s.walk.r]; lead = Math.max(from[s.walk.r], Math.min(cur[s.walk.r], nearestLen(RL.base, RL.len, s.walk.lead))); }
+      revealAfter.push({from:from, to:{A:cur.A, B:cur.B}, lead:lead});
     });
 
     // The camera: the whole pool trimmed to what is drawn, and for each step a
@@ -798,7 +800,8 @@ details.panel[open] summary::after{content:"▴"}
 
     var i = 0, t0 = 0, playing = true, pausedAt = 0, raf = 0, lastKey = "";
     var DRAW = 5200, HOLD = 2600, STILL = 4200;
-    function durs(s){ return s.sec ? [DRAW, HOLD] : [0, STILL]; }
+    var LEAD = 2200;   // walking to where the vacuuming starts, before the strokes draw
+    function durs(s){ return s.sec ? [(s.walk && s.walk.lead ? LEAD : 0) + DRAW, HOLD] : [0, STILL]; }
 
     function setRings(s){
       while(rings.firstChild) rings.removeChild(rings.firstChild);
@@ -828,6 +831,8 @@ details.panel[open] summary::after{content:"▴"}
     }
     function draw(p){
       var s = steps[i], d = durs(s), k = d[0] ? Math.min(1, p / d[0]) : 1;
+      var ra = revealAfter[i], leadMs = (s.sec && s.walk && s.walk.lead) ? LEAD : 0, wk = k;   // wk: how far along the walk
+      if(leadMs){ var lf = Math.min(1, p / leadMs), dk = Math.max(0, Math.min(1, (p - leadMs) / DRAW)); k = dk; wk = p < leadMs ? -1 + lf : dk; }
       if(lastKey !== String(i)){ lastKey = String(i); caption(s); setRings(s); aim(performance.now()); }
       var doneSec = {}; for(var j = 0; j < i; j++) if(steps[j].sec) doneSec[steps[j].sec] = 1;
       strokes.forEach(function(o, j){
@@ -845,9 +850,11 @@ details.panel[open] summary::after{content:"▴"}
       Object.keys(tints).forEach(function(n){ var t = tints[n]; t.e.setAttribute("opacity", String(+n === s.sec ? Math.min(.6, t.o * 2) : (doneSec[n] ? t.o : t.o * .45))); });
       secn.forEach(function(e){ e.style.opacity = +e.getAttribute("data-sec") === s.sec ? "1" : ".3"; });
       chev.forEach(function(e){ e.style.opacity = ".15"; });
-      var ra = revealAfter[i], wpt = null, wcol = null;
+      var wpt = null, wcol = null;
       Object.keys(routes).forEach(function(r){
-        var R = routes[r], a = ra.from[r], b = ra.to[r], L = a + (b - a) * k;
+        var R = routes[r], a = ra.from[r], b = ra.to[r], L;
+        if(ra.lead !== null && s.walk && s.walk.r === r) L = wk < 0 ? a + (ra.lead - a) * (1 + wk) : ra.lead + (b - ra.lead) * wk;
+        else L = a + (b - a) * k;
         R.base.style.opacity = ".22";
         R.over.setAttribute("stroke-dashoffset", String(R.len - L));
         R.over.style.opacity = s.walk && s.walk.r === r ? "1" : ".45";
@@ -857,7 +864,7 @@ details.panel[open] summary::after{content:"▴"}
       if(wpt){ walker.style.display = ""; walker.setAttribute("transform", "translate(" + wpt[0] + "," + wpt[1] + ")"); wo.setAttribute("stroke", wcol); wi.setAttribute("fill", wcol); }
       else walker.style.display = "none";
       var so = s.sec && strokes[s.sec - 1];
-      if(so && k < 1){ var hp = so.p.getPointAtLength(so.len * k); head.style.display = ""; head.setAttribute("cx", hp.x); head.setAttribute("cy", hp.y); }
+      if(so && k < 1 && !(leadMs && p < leadMs)){ var hp = so.p.getPointAtLength(so.len * k); head.style.display = ""; head.setAttribute("cx", hp.x); head.setAttribute("cy", hp.y); }
       else head.style.display = "none";
       var show = k >= 1 ? (s.photos || []) : [];
       badges.forEach(function(b){
