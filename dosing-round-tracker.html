@@ -770,7 +770,7 @@ details.panel[open] summary::after{content:"▴"}
     if(!full || full[2] < 50){ full = (svg.getAttribute("viewBox") || "0 0 640 430").split(/[\s,]+/).map(Number); }
     function focusOf(k){
       var s = steps[k], b = null;
-      if(!s.sec && !s.at) return full.slice();   // preparation / finishing: the whole pool
+      if(!s.sec && !s.at && !s.zoom) return full.slice();   // preparation / finishing: the whole pool
       if(s.sec && strokes[s.sec - 1]) b = union(b, boxOf(strokes[s.sec - 1].p));
       if(s.walk && routes[s.walk.r]){
         var R = routes[s.walk.r], ra = revealAfter[k];
@@ -803,46 +803,77 @@ details.panel[open] summary::after{content:"▴"}
     }
     function aim(now){ vbFrom = vb.slice(); vbTo = focusOf(i); vbT = now; }
 
-    // ---- voice guide: reads each step out loud (phone's built-in voice, works offline) ----
+    // ---- voice guide: a recorded, natural voice clip per step (audio files next to
+    // the route card); if a clip can't load (no signal), the phone's own voice reads
+    // the same words instead. ----
     var tts = window.speechSynthesis || null, voiceOn = true, spoken = -1, photoSaid = -1, voice = null;
     try{ voiceOn = localStorage.getItem("vplay.voice") !== "0"; }catch(e){}
     function pickVoice(){
       if(!tts) return;
       var vs = tts.getVoices().filter(function(v){ return /^en/i.test(v.lang); }), pref = ["en-SG", "en-GB", "en-AU", "en-US"];
-      for(var q = 0; q < pref.length && !voice; q++) voice = vs.filter(function(v){ return v.lang.replace("_", "-") === pref[q]; })[0] || null;
-      if(!voice) voice = vs[0] || null;
+      var good = vs.filter(function(v){ return /natural|neural|enhanced|premium|google/i.test(v.name); });
+      for(var q = 0; q < pref.length && !voice; q++) voice = good.filter(function(v){ return v.lang.replace("_", "-") === pref[q]; })[0] || vs.filter(function(v){ return v.lang.replace("_", "-") === pref[q]; })[0] || null;
+      if(!voice) voice = good[0] || vs[0] || null;
     }
     if(tts){ pickVoice(); try{ tts.addEventListener("voiceschanged", pickVoice); }catch(e){} }
-    function setVoiceBtn(){ var b = ov.querySelector(".vplay-v"); if(!tts){ b.style.display = "none"; return; } b.textContent = voiceOn ? "\uD83D\uDD0A" : "\uD83D\uDD07"; b.setAttribute("aria-pressed", voiceOn ? "true" : "false"); }
-    function hush(){ if(tts) try{ tts.cancel(); }catch(e){} }
-    function say(text, flush){
-      if(!tts || !voiceOn || !text) return;
-      if(flush) hush();
-      var u = new SpeechSynthesisUtterance(text);
-      if(voice){ u.voice = voice; u.lang = voice.lang; } else u.lang = "en-GB";
-      u.rate = .95;
-      try{ tts.speak(u); }catch(e){}
+    var aud = null; try{ aud = new Audio(); aud.preload = "auto"; }catch(e){}
+    var queue = [], cur = null, gen = 0;
+    function setVoiceBtn(){ var b = ov.querySelector(".vplay-v"); if(!tts && !aud){ b.style.display = "none"; return; } b.textContent = voiceOn ? "🔊" : "🔇"; b.setAttribute("aria-pressed", voiceOn ? "true" : "false"); }
+    function hush(){
+      gen++; queue = []; cur = null;
+      if(aud) try{ aud.pause(); aud.onended = aud.onerror = null; }catch(e){}
+      if(tts) try{ tts.cancel(); }catch(e){}
     }
-    function spokenTitle(s){ return String(s.t).replace(/^(\d+)\s*\u00b7\s*/, "Section $1. ").replace(/\s*\u2014\s*/g, ". ").replace(/\s*\+\s*/g, " and "); }
+    function next(){
+      cur = queue.shift() || null; if(!cur) return;
+      var my = ++gen, item = cur;
+      function done(){ if(my === gen){ cur = null; next(); } }
+      function robot(){
+        if(my !== gen) return;
+        if(!tts || !item.text) return done();
+        var u = new SpeechSynthesisUtterance(item.text);
+        if(voice){ u.voice = voice; u.lang = voice.lang; } else u.lang = "en-GB";
+        u.rate = .95; u.onend = u.onerror = done;
+        try{ tts.speak(u); }catch(e){ done(); }
+        setTimeout(function(){ if(my === gen && tts && !tts.speaking && !tts.pending) done(); }, 15000);
+      }
+      if(aud && item.url){
+        aud.onended = done; aud.onerror = robot;
+        try{ aud.src = item.url; var pr = aud.play(); if(pr && pr.catch) pr.catch(robot); }catch(e){ robot(); }
+      } else robot();
+    }
+    function say(items, flush){
+      if(!voiceOn) return;
+      items = items.filter(function(x){ return x && (x.url || x.text); }); if(!items.length) return;
+      if(flush) hush();
+      queue = queue.concat(items);
+      if(!cur) next();
+    }
+    function spokenTitle(s){ return String(s.t).replace(/^(\d+)\s*·\s*/, "Section $1. ").replace(/\s*—\s*/g, ". ").replace(/\s*\+\s*/g, " and "); }
     function photoLine(s){
       var ph = s.photos || []; if(!ph.length) return "";
       var list = ph.length === 1 ? ph[0] : ph.slice(0, -1).join(", ") + " and " + ph[ph.length - 1];
       return (ph.length === 1 ? "Take photo " : "Take photos ") + list + ".";
     }
+    function introClip(s){ return {url:s.audio, text:s.say || (spokenTitle(s) + ". " + (s.d || ""))}; }
+    function photoClip(s){ return (s.photos || []).length ? {url:s.audioP, text:s.sayP || photoLine(s)} : null; }
     function speakFor(n, finished){
       var s = steps[n]; spoken = n;
-      say(spokenTitle(s) + ". " + (s.d || "") + (finished ? " " + photoLine(s) : ""), true);
+      say([introClip(s), finished ? photoClip(s) : null], true);
       if(finished) photoSaid = n;
     }
-    function busy(){ return !!(tts && voiceOn && (tts.speaking || tts.pending)); }
+    function busy(){ return !!(voiceOn && (cur || queue.length)); }
+    // fetch the clips once so they play straight away on the pool deck
+    try{ steps.forEach(function(s){ [s.audio, s.audioP].forEach(function(u){ if(u) fetch(u).catch(function(){}); }); }); }catch(e){}
 
+    var quietAt = 0;
     var i = 0, t0 = 0, playing = true, pausedAt = 0, raf = 0, lastKey = "";
     var DRAW = 5200, HOLD = 2600, STILL = 4200;
     var LEAD = 2200;    // walking to where the vacuuming starts, before the strokes draw
     var SETTLE = 900;   // stand still at the start while the map zooms in
     var CATCH = 600;    // after the strokes, the dot finishes its walk
     function preOf(s){ return s.sec ? SETTLE + (s.walk && s.walk.lead ? LEAD : 0) : 0; }
-    function durs(s){ return s.sec ? [preOf(s) + DRAW, HOLD] : [0, STILL]; }
+    function durs(s){ return s.sec ? [preOf(s) + DRAW, HOLD] : [0, s.still || STILL]; }
     // Where the walking dot is: standing, walking to the start, then keeping
     // level with the vacuum head (never walking ahead of it or back), then
     // finishing the line once the section is done.
@@ -894,7 +925,7 @@ details.panel[open] summary::after{content:"▴"}
       var s = steps[i], ra = revealAfter[i], pre = preOf(s);
       var k = s.sec ? Math.max(0, Math.min(1, (p - pre) / DRAW)) : 1;
       if(spoken !== i) speakFor(i, k >= 1);
-      else if(k >= 1 && photoSaid !== i){ photoSaid = i; say(photoLine(s), false); }
+      else if(k >= 1 && photoSaid !== i){ photoSaid = i; say([photoClip(s)], false); }
       if(lastKey !== String(i)){ lastKey = String(i); caption(s); setRings(s); aim(performance.now()); }
       var doneSec = {}; for(var j = 0; j < i; j++) if(steps[j].sec) doneSec[steps[j].sec] = 1;
       strokes.forEach(function(o, j){
@@ -937,7 +968,10 @@ details.panel[open] summary::after{content:"▴"}
       raf = 0;
       if(!ov.isConnected) return;
       var s = steps[i], d = durs(s), p = playing ? now - t0 : pausedAt;
-      if(playing && p >= d[0] + d[1] && busy() && p < d[0] + d[1] + 12000){ /* let the voice finish */ }
+      if(busy()) quietAt = now;
+      // let the voice finish, then give s.gap ms to do the job before moving on
+      var waiting = (busy() || now - quietAt < (s.gap || 0)) && p < d[0] + d[1] + 25000;
+      if(playing && p >= d[0] + d[1] && waiting){ /* wait */ }
       else if(playing && p >= d[0] + d[1]){
         if(i < steps.length - 1){ i++; t0 = now; p = 0; }
         else { playing = false; pausedAt = d[0] + d[1]; setBtn(); p = pausedAt; }
