@@ -3481,13 +3481,15 @@ const VAC_PHOTOS = {
   // HB -- two vacuum ports, two routes: green A from port 1 (right and top),
   // blue B from port 2 (left leg and top left).
   HB: {card:"HB", normalMin:null, list:[
-    {id:"P1", when:"start", label:"Route A – set-up at vacuum port 1", hint:"Hose, vacuum head and telescopic pole connected at vacuum port 1, bottom right."},
-    {id:"P2", when:"start", label:"Route A – right side", hint:"Stand on the right deck. Look left across the deep part."},
-    {id:"P3", when:"start", label:"Route A – top deck, right half", hint:"Stand on the top deck. Look down over the right half of the pool."},
-    {id:"P4", when:"start", label:"Route A – top deck, middle", hint:"Stand on the top deck near the middle. Look down towards the high wall and stairs."},
-    {id:"P5", when:"start", label:"Route B – set-up at vacuum port 2", hint:"Hose, vacuum head and telescopic pole connected at vacuum port 2. Stand beside the port and look up-left over the top of the left leg."},
-    {id:"P6", when:"start", label:"Route B – bottom deck, left leg", hint:"Stand on the bottom deck. Look up the left leg past the pillar."},
-    {id:"P7", when:"start", label:"Route B – top left, down the left leg", hint:"Stand on the top deck at the top left corner. Look straight down the left leg to the bottom."},
+    {id:"P1", when:"start", label:"Route B – Set-up at vacuum port 2", hint:"Hose, vacuum head and telescopic pole connected at vacuum port 2. Stand beside the port and look up-left over the top of the left leg."},
+    {id:"P2", when:"start", label:"Route B – Shallow ledge – left half", hint:"Stand in the ledge at the middle. Look left along the left half of the ledge."},
+    {id:"P3", when:"start", label:"Route B – Deep strip – top of the left leg", hint:"Stand on the left deck. Look right across the top of the left leg."},
+    {id:"P4", when:"start", label:"Route B – Left leg – outer half", hint:"Stand on the bottom deck at the left. Look up the outer half of the left leg."},
+    {id:"P5", when:"start", label:"Route B – Left leg – inner half", hint:"Stand by vacuum port 2. Look down the inner half of the left leg, past the pillar."},
+    {id:"P6", when:"start", label:"Route A – Set-up at vacuum port 1", hint:"Hose, vacuum head and telescopic pole connected at vacuum port 1, bottom right."},
+    {id:"P7", when:"start", label:"Route A – Right side – looking left", hint:"Stand on the right deck. Look left across the deep part."},
+    {id:"P8", when:"start", label:"Route A – Top deck – right half", hint:"Stand on the top deck. Look down over the right half of the pool."},
+    {id:"P9", when:"start", label:"Route A – Top deck – middle", hint:"Stand on the top deck near the middle. Look down towards the stairs."},
     {id:"E1", when:"end", label:"Vacuum head, pipe and telescopic pole kept", hint:"Vacuum head, pipe and telescopic pole put back in storage."},
     {id:"E2", when:"end", label:"Vacuum valve 1 closed", hint:"Close-up of valve 1's handle in the closed position."},
     {id:"E3", when:"end", label:"Vacuum valve 2 closed", hint:"Close-up of valve 2's handle in the closed position."},
@@ -3593,7 +3595,7 @@ async function attachVacPhoto(code, tid, id, rec){
   if(patch) syncTaskToOtherRounds(code, task, patch);
 }
 // Photo badge colours, matched to the route card's own labels.
-const VAC_BADGE_FALLBACK = {P1:"#0B6E61", P2:"#F59E0B", P3:"#DC2626", P4:"#16A34A", P5:"#4F46E5", P6:"#DB2777", P7:"#0891B2", E:"#0F2430"};
+const VAC_BADGE_FALLBACK = {P1:"#0B6E61", P2:"#F59E0B", P3:"#DC2626", P4:"#16A34A", P5:"#4F46E5", P6:"#DB2777", P7:"#0891B2", P8:"#B45309", P9:"#475569", E:"#0F2430"};
 function vacBadgeColors(card){
   vacMap.cols = vacMap.cols || {};
   if(card && vacMap.cols[card]) return vacMap.cols[card];
