@@ -5970,8 +5970,21 @@ function wire(){
 
   on("#who-go", () => { const v=$("#who").value; if(!v) return; state.me=v; localStorage.setItem("drt.me",v); render(); });
   on("#switch-user", () => { state.me=""; localStorage.removeItem("drt.me"); render(); });
-  on("#reset-round", () => {
+  on("#reset-round", async () => {
     const id = myId(); if(!id) return;
+    // Work already done (jobs finished, photos taken) is never thrown away:
+    // the old round is kept under its own id for the day, so supervisors still
+    // see it, and the technician starts a fresh round. Only an empty round is
+    // simply cleared.
+    const r = state.rounds[id];
+    const worked = r && (r.stops || []).some(s => s.arriveAt || (s.tasks || []).some(t => t.doneAt || t.claimedBy || (t.vac && t.vac.photos && Object.keys(t.vac.photos).length)));
+    if(worked){
+      if(!confirm("Start a new round?\n\nEverything you've done in this round stays saved — your supervisor can still see it.")) return;
+      const now = new Date(), keep = clone(r);
+      keep.id = id + "__" + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
+      keep.closedAt = now.toISOString(); keep.headingTo = null;
+      try{ await saveRound(keep); }catch(e){ flash("Couldn't save the old round, so it wasn't reset. Try again."); return; }
+    }
     delete state.rounds[id];
     if(state.db) state.db.doc("dosing_rounds/"+id).delete().catch(()=>{});
     else { const all = local.read(); delete all[id]; local.write(all); }
