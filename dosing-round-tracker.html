@@ -164,6 +164,8 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 .tag.st-done{background:var(--ok-soft);color:var(--ok)}
 .tag.st-cant{background:#FDECEA;color:#B42318;border:1px solid #F5B5AE}
 .cant-read{color:#B42318}
+.job-done-panel{border:1px solid var(--line);background:var(--surface-2);border-radius:10px;padding:10px 12px;margin:4px 0 8px;display:flex;flex-direction:column;gap:8px}
+.job-done-panel textarea{width:100%;font:15px "IBM Plex Sans",sans-serif}
 .cant-link{font-size:13px;color:#B42318;padding:0}
 .cant-form{border:1.5px solid #F5B5AE;background:#FFF8F7;border-radius:10px;padding:10px 12px;margin:4px 0 8px;display:flex;flex-direction:column;gap:8px}
 .cant-form textarea{width:100%;font:15px "IBM Plex Sans",sans-serif}
@@ -1714,6 +1716,31 @@ function extrasTonight(outlet){
 // How many jobs a branch has tonight on top of the must-do list: shared
 // "if time allows" jobs switched on, jobs added in Task Setting, and issues
 // turned into tasks. Shown as "+N jobs" on the outlet pills.
+// Who has a job assigned to them at this branch tonight (Task Setting "Assign to").
+function assignedTonight(outlet){
+  const names = [];
+  extrasTonight(outlet).forEach(e => { if(e.assignee && !names.includes(e.assignee)) names.push(e.assignee); });
+  return names;
+}
+// Branches where tonight's jobs are assigned to me -- already ticked on the
+// outlet picker, and added to my round by themselves if it's already going.
+const assignedToMe = () => state.me ? OUTLETS.map(o => o.code).filter(c => assignedTonight(c).includes(state.me)) : [];
+const pickSel = () => state.picking || assignedToMe();
+// My round is already under way and a job for me lands at a branch that
+// isn't on it: add the branch, once (removing it by hand is respected).
+function autoAddAssigned(){
+  const r = myRound(); if(!r || isTestRound(r) || r.date !== todayKey()) return;
+  const want = assignedToMe().filter(c => !r.stops.some(x => x.outlet === c) && !(r.autoAdded || []).includes(c));
+  if(!want.length || state.autoAdding) return;
+  state.autoAdding = true;
+  withRound(rr => {
+    let n = 0;
+    want.forEach(c => { if(rr.stops.some(x => x.outlet === c)) return;
+      rr.stops.push({outlet:c, arriveAt:null, departAt:null, fixIn:null, fixOut:null, covering:false, coveringNote:"", assigned:true, tasks: seedTasksFor(c)}); n++; });
+    rr.autoAdded = (rr.autoAdded || []).concat(want);
+    if(!n) return false;
+  }, "Couldn't add the branch assigned to you.").then(() => { state.autoAdding = false; flash("Added " + want.join(", ") + " — a job there is assigned to you."); }, () => { state.autoAdding = false; });
+}
 function extraJobCount(outlet){
   return assignedFor(outlet, operationalNow().getDay()).length + extrasTonight(outlet).length + issueTasksFor(outlet).length;
 }
@@ -2005,6 +2032,18 @@ function cantFinishTask(code, tid, reason, note, photos){
     flash(extra ? "Noted — it stays on the list for the next visit." : "Noted — the supervisor can see why.");
     render();
   });
+}
+// Any other job, while it's running: take or upload photos of the work and
+// leave a note if needed. Both are saved on the job when it's marked done.
+state.doneNote = state.doneNote || {};
+const doneScope = (s, t) => "done|" + s.outlet + "|" + t.id;
+function jobDonePanel(s, t){
+  const key = s.outlet + "|" + t.id, scope = doneScope(s, t);
+  return `<div class="job-done-panel">
+    ${formPhotosHtml(scope, "work")}
+    <textarea rows="2" maxlength="500" data-donenote="${key}" placeholder="Note (optional) — e.g. what was done, anything to follow up">${esc(state.doneNote[key] || "")}</textarea>
+    <span class="note" style="margin:0">Tap <strong>${esc(t.claimedBy || state.me)}</strong> above when it's done — the photos and note are saved with the job.</span>
+  </div>`;
 }
 function cantFormHtml(s, t){
   const key = s.outlet + "|" + t.id, c = state.cant || {};
@@ -2484,17 +2523,23 @@ function finishTask(code, tid){
     finishDosing(code, tid); return;
   }
   if(t0 && t0.claimedBy === state.me && vacSpec(code, t0)){ finishVacuum(code, tid); return; }
+  const dScope = "done|" + code + "|" + tid, dKey = code + "|" + tid;
+  if(fpBusy(dScope)){ flash("Wait for the photo to finish uploading."); return; }
+  const donePhotos = fpDone(dScope), doneNote = (state.doneNote[dKey] || "").trim().slice(0, 500);
   let finished = null, stopOutlet = null, issueId = null;
   withRound(r => {
     const s = r.stops.find(x=>x.outlet===code); if(!s) return false;
     const t = s.tasks.find(x=>x.id===tid); if(!t || !t.startedAt || t.doneAt) return false;
     if(t.claimedBy !== state.me) return false;
     t.doneAt = new Date().toISOString();
+    if(donePhotos.length) t.donePhotos = donePhotos;
+    if(doneNote) t.doneNote = doneNote;
     finished = {name:t.name, kind:t.kind, pool:t.pool||null, doneAt:t.doneAt};
     stopOutlet = s.outlet;
     issueId = t.issueId || null;
   }, "Couldn't mark that done. Try again.").then(() => {
-    if(finished) syncTaskToOtherRounds(stopOutlet, finished, {doneAt:finished.doneAt});
+    if(finished){ delete state.fp[dScope]; delete state.doneNote[dKey]; }
+    if(finished) syncTaskToOtherRounds(stopOutlet, finished, Object.assign({doneAt:finished.doneAt}, donePhotos.length ? {donePhotos} : {}, doneNote ? {doneNote} : {}));
     // A job that started life as a reported issue closes the loop on the
     // Overview board the moment it's actually finished — no separate
     // "mark resolved" step for the supervisor to remember.
@@ -4411,6 +4456,7 @@ function vacSummaryHtml(code, t){
 function techView(){
   if(!state.me) return pickPerson();
   const r = myRound();
+  if(r) setTimeout(autoAddAssigned, 0);
   const banner = isTestMe() ? `<div class="card" style="padding:12px 14px;margin-bottom:12px;border:2px dashed var(--warn);background:#FFF8E6"><strong>🧪 Practice mode.</strong> This round is marked TEST — it isn't counted and doesn't change anyone else's jobs. <strong>Reset today's round</strong> clears it completely.</div>` : "";
   return banner + (r ? runRound(r) : buildRound());
 }
@@ -4446,7 +4492,7 @@ function tonightScheduleHtml(){
 }
 
 function buildRound(){
-  const sel = state.picking || [];
+  const sel = pickSel();
   const pills = OUTLETS.map(o => {
     const extra = extraJobCount(o.code);
     const others = othersOn(o.code);
@@ -4454,7 +4500,8 @@ function buildRound(){
     // Whoever is actually at the outlet is the more useful name to show; fall
     // back to whoever merely has it in their round.
     const names = night.names.length ? night.names : others;
-    const who = names.length ? `<span class="pill-who">${esc(names.join(", "))}</span>` : "";
+    const forWho = assignedTonight(o.code).filter(n => !names.includes(n));
+    const who = (names.length || forWho.length) ? `<span class="pill-who">${esc(names.concat(forWho.map(n => "for " + n)).join(", "))}</span>` : "";
     const state2 = night.k === "done"    ? `<span class="pill-state">✓ done</span>`
                  : night.k === "partial" ? `<span class="pill-state">${night.left} left</span>`
                  : night.k === "onsite"  ? `<span class="pill-state">on site</span>`
@@ -4469,6 +4516,7 @@ function buildRound(){
   <div class="card" style="padding:20px">
     <div class="sec-head" style="margin-bottom:4px"><h2 class="sec">Today's round</h2><span class="eyebrow">${esc(state.me)}</span></div>
     <p class="note" style="margin:0 0 10px">Tap the outlets you're covering today, then Start round.${anyTaken ? " Outlets someone else has already covered or picked up are marked — you can still take them too." : ""}</p>
+    ${assignedToMe().length ? `<p class="note" style="margin:0 0 10px;color:#5B21B6"><strong>${esc(assignedToMe().join(", "))}</strong> ${assignedToMe().length > 1 ? "are" : "is"} already ticked — a job there is assigned to you.</p>` : ""}
     ${tonightScheduleHtml()}
     ${fcStripHtml(OUTLETS.map(o => o.code))}
     <div class="pill-grid">${pills}</div>
@@ -4735,6 +4783,8 @@ function taskRow(s, t){
                : (finished && t.vac) ? `<span class="wt-read">${vacSummaryHtml(s.outlet, t)}</span>`
                : (!finished && t.plannedDose && isDosingTask(t)) ? `<span class="wt-read">${plannedDoseSummary(t.plannedDose)}</span>`
                : "") + (t.photos && t.photos.length ? `<span class="wt-read">${photoStripHtml(t.photos, (x, i) => "Job photo " + (i+1))}</span>` : "")
+               + (finished && t.doneNote ? `<span class="wt-read">📝 ${esc(t.doneNote)}</span>` : "")
+               + (finished && t.donePhotos && t.donePhotos.length ? `<span class="wt-read">${photoStripHtml(t.donePhotos, (x, i) => "Work photo " + (i+1))}</span>` : "")
                + (t.cantFinish ? `<span class="wt-read cant-read">⚠ ${cantLine(t.cantFinish, "")}</span>${t.cantFinish.photos && t.cantFinish.photos.length ? `<span class="wt-read">${photoStripHtml(t.cantFinish.photos, (x, i) => "Can't finish photo " + (i+1))}</span>` : ""}${(!finished && t.vac) ? `<span class="wt-read">${vacSummaryHtml(s.outlet, t)}</span>` : ""}`
                   : (!finished && t.lastStuck) ? `<span class="wt-read cant-read">Not finished last time: ${cantLine(t.lastStuck, "")}</span>` : "");
   const canCant = !finished && !s.departAt && !t.cantFinish && !isQuick(s) && (!running || mine);
@@ -4747,6 +4797,7 @@ function taskRow(s, t){
               : (running && mine && isWaterTestTask(t)) ? waterTestPanel(s, t)
               : (running && mine && isDosingTask(t)) ? dosingPanel(s, t)
               : (running && mine && isPanelTask(t) && hasPanel(s.outlet)) ? pumpPanelBlock(s, t)
+              : (running && mine) ? jobDonePanel(s, t)
               : "";
 
   return `<div class="task ${running?"running":""} ${finished?"finished":""}">
@@ -5008,6 +5059,7 @@ function stopCard(s, i, r, isHeading){
       ${isHeading?'<span class="chip travel"><span class="dot"></span>Next</span>':""}
       ${(!s.arriveAt && s.away)?'<span class="tag add">Coming back</span>':""}
       ${s.covering?'<span class="tag covering">Covering</span>':""}
+      ${s.assigned?'<span class="tag for">Assigned to you</span>':""}
       <span class="stop-times">${times}</span>
     </div>
     ${s.covering ? coveringNoteBlock(s) : ""}
@@ -6303,13 +6355,13 @@ function wire(){
   each("[data-delround]", b => deleteRoundById(b.dataset.delround));
 
   each("[data-pick]", b => {
-    const cur = state.picking || [], c = b.dataset.pick;
+    const cur = pickSel(), c = b.dataset.pick;
     state.picking = cur.includes(c) ? cur.filter(x=>x!==c) : cur.concat([c]); render();
   });
   on("#pick-all",  () => { state.picking = OUTLETS.map(o=>o.code); render(); });
   on("#pick-none", () => { state.picking = []; render(); });
   on("#start", () => {
-    const sel = state.picking || [];
+    const sel = pickSel();
     const ordered = OUTLETS.map(o=>o.code).filter(c => sel.includes(c));
     if(ordered.length) startRound(ordered);
   });
@@ -6407,6 +6459,8 @@ function wire(){
     }
     if(type === "issue") return {kind:"issue", code, what:"Issue", text: ($("#issue-desc")||{}).value};
     if(type === "job") return {kind:"job", code, what:"Job", text: ($("#newtask")||{}).value};
+    if(type === "done"){ const tid = scope.split("|")[2]; const r = myRound(); const st = r && r.stops.find(x => x.outlet === code); const tk = st && st.tasks.find(x => x.id === tid);
+      return {kind:"job", code, what:"Job done", text: (tk ? tk.name : "") + (state.doneNote[code + "|" + tid] ? " — " + state.doneNote[code + "|" + tid] : "")}; }
     if(type === "cant") return {kind:"job", code, what:"Can't finish", text: ((state.cant && state.cant.reason) || "") + (($("#cant-note")||{}).value ? " — " + $("#cant-note").value : "")};
     return {kind:"issue", code: ($("#addissue-outlet")||{}).value || "?", what:"Issue", text: ($("#addissue-desc")||{}).value};
   };
@@ -6557,6 +6611,7 @@ function wire(){
   each("[data-ajday]", b => { const a = addJobState(), d = +b.dataset.ajday; a.days = a.days.includes(d) ? a.days.filter(x => x !== d) : a.days.concat([d]).sort(); render(); });
   document.querySelectorAll("[data-ajpool]").forEach(sel => sel.addEventListener("change", () => { addJobState().pool[sel.dataset.ajpool] = sel.value; }));
   on("#aj-name", e => { addJobState().name = e.target.value; const b = $("#aj-add"); if(b) b.disabled = !(e.target.value.trim() && addJobState().branches.length && addJobState().cat); }, "input");
+  document.querySelectorAll("[data-donenote]").forEach(ta => ta.addEventListener("input", () => { state.doneNote[ta.dataset.donenote] = ta.value; }));
   on("#aj-cat", e => { addJobState().cat = e.target.value; render(); }, "change");
   on("#aj-name", e => { if(e.key === "Enter"){ const b = $("#aj-add"); if(b && !b.disabled) b.click(); } }, "keydown");
   on("#aj-date", e => { addJobState().date = e.target.value; render(); }, "change");
