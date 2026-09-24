@@ -256,6 +256,8 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 .task-by{font:600 12px/1.4 "IBM Plex Mono",monospace;color:var(--ink-3)}
 .task-time{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:14.5px;white-space:nowrap}
 .task .act{flex:none}
+.task-time-in .task-time{white-space:normal;font-size:13px}
+.task-detail{flex-basis:100%;display:flex;flex-direction:column;gap:3px;min-width:0;margin-top:-4px}
 /* The X (cancel claim) + claimer's-name (finish) button pair shown on a job
    the current technician has running. */
 .act-group{display:flex;gap:6px;flex:none}
@@ -4825,10 +4827,10 @@ function taskRow(s, t){
     <span class="task-main">
       <span class="task-name">${esc(t.name)}</span>
       <span class="task-meta">${status}${tag}${catTag(t.category || catOf(s, t))}${assigneeOf(s, t) ? `<span class="tag for${assigneeOf(s, t) === state.me ? " me" : ""}">For ${esc(assigneeOf(s, t))}</span>` : ""}${addedByOf(t) ? `<span class="task-by">Added by ${esc(addedByOf(t))}</span>` : ""}${del}${cantBtn}</span>
-      ${detail}
-      ${conflictNote}
+      ${finished && time ? `<span class="task-time-in">${time}</span>` : ""}
     </span>
-    ${time}${act}
+    ${finished ? "" : time}${act}
+    ${(detail || conflictNote) ? `<div class="task-detail">${detail}${conflictNote}</div>` : ""}
   </div>${cantForm}${panel}`;
 }
 
