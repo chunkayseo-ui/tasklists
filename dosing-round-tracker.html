@@ -239,6 +239,8 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 .task-name{font-weight:600;font-size:16px;line-height:1.35;overflow-wrap:anywhere}
 .task.finished .task-name{color:var(--ink-2)}
 .task-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.tag.for{background:#EDE9FE;color:#5B21B6;border:1px solid #C4B5FD}
+.tag.for.me{background:#5B21B6;color:#fff;border-color:#5B21B6}
 .task-by{font:600 12px/1.4 "IBM Plex Mono",monospace;color:var(--ink-3)}
 .task-time{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:14.5px;white-space:nowrap}
 .task .act{flex:none}
@@ -1731,7 +1733,7 @@ function tasksFor(outlet){
   if(!pools){
     const req = state.cfg.required.map(n => ({id:uid(), name:n, kind:"required", startedAt:null, doneAt:null, claimedBy:null}));
     const asg = asgNames.map(n => ({id:uid(), name:n, kind:"optional", startedAt:null, doneAt:null, claimedBy:null}));
-    const ex  = extraList.map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id}));
+    const ex  = extraList.map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null}));
     return req.concat(asg).concat(ex).concat(issueTasks);
   }
 
@@ -1744,12 +1746,12 @@ function tasksFor(outlet){
   // that pool was added after the standing ones.
   const wholeOutlet = extraList
     .filter(e => !e.pool)
-    .map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id}));
+    .map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null}));
   const perPool = pools.flatMap(p => {
     const req = state.cfg.required.map(n => ({id:uid(), name:n, pool:p, kind:"required", startedAt:null, doneAt:null, claimedBy:null}));
     const asg = asgNames.map(n => ({id:uid(), name:n, pool:p, kind:"optional", startedAt:null, doneAt:null, claimedBy:null}));
     const ex  = extraList.filter(e => e.pool === p)
-      .map(e => ({id:uid(), name:e.name, pool:p, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id}));
+      .map(e => ({id:uid(), name:e.name, pool:p, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null}));
     return req.concat(asg).concat(ex);
   });
   return wholeOutlet.concat(issueTasks).concat(perPool);
@@ -1992,7 +1994,7 @@ async function syncExtraToLiveRounds(outlet, job, action){
     let changed = false;
     if(action === "add"){
       if(!s.tasks.some(matches)){
-        s.tasks.push(Object.assign({id:uid(), name:job.name, kind:job.kind, startedAt:null, doneAt:null, claimedBy:null, addedBy:job.addedBy||null}, job.pool ? {pool:job.pool} : {}, job.photos ? {photos:job.photos} : {}, job.extraId ? {extraId:job.extraId} : {}));
+        s.tasks.push(Object.assign({id:uid(), name:job.name, kind:job.kind, startedAt:null, doneAt:null, claimedBy:null, addedBy:job.addedBy||null}, job.assignee ? {assignee:job.assignee} : {}, job.pool ? {pool:job.pool} : {}, job.photos ? {photos:job.photos} : {}, job.extraId ? {extraId:job.extraId} : {}));
         changed = true;
       }
     } else {
@@ -4671,7 +4673,7 @@ function taskRow(s, t){
   return `<div class="task ${running?"running":""} ${finished?"finished":""}">
     <span class="task-main">
       <span class="task-name">${esc(t.name)}</span>
-      <span class="task-meta">${status}${tag}${addedByOf(t) ? `<span class="task-by">Added by ${esc(addedByOf(t))}</span>` : ""}${del}</span>
+      <span class="task-meta">${status}${tag}${assigneeOf(s, t) ? `<span class="tag for${assigneeOf(s, t) === state.me ? " me" : ""}">For ${esc(assigneeOf(s, t))}</span>` : ""}${addedByOf(t) ? `<span class="task-by">Added by ${esc(addedByOf(t))}</span>` : ""}${del}</span>
       ${detail}
       ${conflictNote}
     </span>
@@ -5921,12 +5923,41 @@ const NIGHT_SCHEDULE = {
 };
 const nightBranches = dow => NIGHT_SCHEDULE[dow] || OUTLETS.map(o => o.code);
 const dowOfKey = key => { const [y,m,d] = key.split("-").map(Number); return new Date(y, m-1, d).getDay(); };
-const addJobBlank = () => ({name:"", branches:[], pool:{}, req:false, mode:"once", date:todayKey(), days:[]});
+const addJobBlank = () => ({name:"", branches:[], pool:{}, req:false, mode:"once", date:todayKey(), days:[], tech:""});
 function addJobState(){ if(!state.addJob) state.addJob = addJobBlank(); return state.addJob; }
 // "Add a job" -- one panel at the top of Task Setting, instead of a form under
 // every branch. Pick the branch(es), say what the job is, then either give it a
 // start date (it stays on that branch's list every night from then until a
 // technician marks it done) or make it repeat on chosen nights.
+// Who a job was assigned to, if anyone: the task's own copy, else the Task
+// Setting entry it came from (a round started before the field existed).
+function assigneeOf(s, t){
+  if(t.assignee) return t.assignee;
+  if(t.extraId && s && s.outlet){ const e = (state.cfg.extra[s.outlet] || []).find(x => x.id === t.extraId); if(e && e.assignee) return e.assignee; }
+  return null;
+}
+const TRACKER_URL = "https://chunkayseo-ui.github.io/tasklists/dosing-round-tracker.html";
+// Tell the FM Telegram group about a job assigned to someone (via the photo
+// relay -- the bot token lives in the relay script, never on this page).
+// items: [{outlet, entry}] -- the same job added at one or more branches.
+async function notifyAssigned(items){
+  const e0 = items[0].entry, today = todayKey();
+  const where = items.map(({outlet, entry}) => outlet + (entry.pool ? " (" + entry.pool + ")" : "")).join(", ");
+  const when = e0.oneTime
+    ? (e0.fromDate && e0.fromDate > today ? "From the night of " + fmtDate(e0.fromDate) + ", until done" : "From tonight, until done")
+    : ((e0.days && e0.days.length) ? "Repeats: " + e0.days.map(d => DAYNAME[d]).join(", ") : "Every night");
+  const text = [`📋 New job for ${e0.assignee}`, `📍 ${where}`, `🔧 ${e0.name}`, `${e0.kind === "required" ? "❗ Must do" : "If time allows"} · ${when}`, `Added by ${e0.addedBy || state.me || "Supervisor"}`, TRACKER_URL].join("\n");
+  let res;
+  if(!relayCfg()) res = {ok:false, err:"No photo relay set up (Task Setting → Photo proof)."};
+  else {
+    try{ const r = await relayPost({kind:"notify", text}); res = {ok:!!r.sent, err: r.sent ? null : (r.reason || "The relay has no Telegram bot token / chat id yet.")}; }
+    catch(err){ res = {ok:false, err: /no image/i.test(String(err && err.message)) ? "The relay script needs updating (paste the new photo-relay.gs and redeploy)." : String((err && err.message) || "Couldn't reach the relay.")}; }
+  }
+  const c = clone(state.cfg), stamp = {at:new Date().toISOString(), ok:res.ok, err:res.err};
+  items.forEach(({outlet, entry}) => { const e = (c.extra[outlet] || []).find(x => x.id === entry.id); if(e) e.notified = stamp; });
+  saveCfg(c);
+  flash(res.ok ? `Telegram sent to FM — ${e0.assignee}` : "Job added, but Telegram not sent: " + res.err);
+}
 function addJobPanel(){
   const a = addJobState(), today = todayKey();
   const chips = OUTLETS.map(o => `<button type="button" class="tog" data-ajbranch="${o.code}" aria-pressed="${a.branches.includes(o.code)}">${esc(o.code)}</button>`).join("");
@@ -5949,8 +5980,10 @@ function addJobPanel(){
     <div class="aj-row"><span class="aj-lbl">How often</span><div class="seg" role="group"><button type="button" data-ajmode="once" aria-pressed="${a.mode === "once"}">One-time</button><button type="button" data-ajmode="repeat" aria-pressed="${a.mode === "repeat"}">Repeats</button></div></div>
     ${when}
     ${adderField("aj-by")}
+    <div class="aj-row"><span class="aj-lbl">Assign to</span><div class="aj-chips"><button type="button" class="tog" data-ajtech="" aria-pressed="${!a.tech}">Anyone</button>${(state.roster || []).map(nm => `<button type="button" class="tog" data-ajtech="${esc(nm)}" aria-pressed="${a.tech === nm}">${esc(nm)}</button>`).join("")}</div></div>
+    ${a.tech ? `<p class="note" style="margin:0">The job shows <strong>For ${esc(a.tech)}</strong> on the list, and the FM Telegram group gets a message when you add it.</p>` : ""}
     <label class="chk"><input type="checkbox" id="aj-req" ${a.req ? "checked" : ""}> Must do — the technician can't leave the outlet until it's done</label>
-    <button class="btn primary" id="aj-add" ${ready ? "" : "disabled"}>${n > 1 ? `Add to ${n} branches` : n === 1 ? `Add to ${esc(a.branches[0])}` : "Add job"}</button>
+    <button class="btn primary" id="aj-add" ${ready ? "" : "disabled"}>${n > 1 ? `Add to ${n} branches` : n === 1 ? `Add to ${esc(a.branches[0])}` : "Add job"}${a.tech && n ? ` &amp; tell ${esc(a.tech)}` : ""}</button>
     <details class="sched"><summary>Night dosing schedule — which branches each night</summary>
       <table class="sched-t">${[1,2,3,4,5,6,0].map(d => `<tr><th>${DAYNAME[d]}</th><td>${NIGHT_SCHEDULE[d] ? NIGHT_SCHEDULE[d].join(", ") : "All branches"}</td></tr>`).join("")}</table>
     </details>
@@ -5972,6 +6005,8 @@ function branchJobsList(){
         ${e.pool ? `<span class="tag pool">${esc(e.pool)}</span>` : ""}
         ${e.kind === "required" ? '<span class="tag req">Must do</span>' : '<span class="tag opt">If time allows</span>'}
         ${when}
+        ${e.assignee ? `<span class="tag for">For ${esc(e.assignee)}</span>` : ""}
+        ${e.assignee && e.notified ? (e.notified.ok ? `<span class="note" style="font-size:12.5px">✓ Telegram sent ${esc(clockOf(e.notified.at))}</span>` : `<span class="note dev" style="font-size:12.5px">Telegram not sent — ${esc(e.notified.err || "")} <button class="link" data-renotify="${o.code}|${e.id}" style="font-size:12.5px;padding:0">send again</button></span>`) : ""}
         <button class="link" data-rmextra="${o.code}|${e.id}">remove</button>
       </div>`;
     }).join("");
@@ -6363,6 +6398,8 @@ function wire(){
   // kept in state.addJob as it's typed rather than read back off the DOM.
   each("[data-ajbranch]", b => { const a = addJobState(), c = b.dataset.ajbranch; a.branches = a.branches.includes(c) ? a.branches.filter(x => x !== c) : a.branches.concat([c]); render(); });
   each("[data-ajmode]", b => { addJobState().mode = b.dataset.ajmode; render(); });
+  each("[data-ajtech]", b => { addJobState().tech = b.dataset.ajtech; render(); });
+  each("[data-renotify]", b => { const [o, id] = b.dataset.renotify.split("|"); const e = (state.cfg.extra[o] || []).find(x => x.id === id); if(e) notifyAssigned([{outlet:o, entry:e}]); });
   each("[data-ajday]", b => { const a = addJobState(), d = +b.dataset.ajday; a.days = a.days.includes(d) ? a.days.filter(x => x !== d) : a.days.concat([d]).sort(); render(); });
   document.querySelectorAll("[data-ajpool]").forEach(sel => sel.addEventListener("change", () => { addJobState().pool[sel.dataset.ajpool] = sel.value; }));
   on("#aj-name", e => { addJobState().name = e.target.value; const b = $("#aj-add"); if(b) b.disabled = !(e.target.value.trim() && addJobState().branches.length); }, "input");
@@ -6385,14 +6422,16 @@ function wire(){
       if(once) entry.fromDate = fromDate;
       if(pool) entry.pool = pool;
       if(days.length) entry.days = days;
+      if(a.tech) entry.assignee = a.tech;
       c.extra[outlet] = (c.extra[outlet] || []).concat([entry]);
       added.push({outlet, entry});
     });
     state.addJob = Object.assign(addJobBlank(), {mode:a.mode, req:a.req});
     saveCfg(c);
+    if(added.length && added[0].entry.assignee) notifyAssigned(added);
     // Straight into tonight's open rounds only if it applies tonight.
     const tonight = once ? fromDate <= today : (!days.length || days.includes(dow));
-    if(tonight) added.forEach(({outlet, entry}) => syncExtraToLiveRounds(outlet, {name:v, kind, pool:entry.pool, addedBy:entry.addedBy, extraId:entry.id}, "add"));
+    if(tonight) added.forEach(({outlet, entry}) => syncExtraToLiveRounds(outlet, {name:v, kind, pool:entry.pool, addedBy:entry.addedBy, assignee:entry.assignee, extraId:entry.id}, "add"));
     flash(`Added to ${a.branches.join(", ")}${tonight ? "" : " — from " + fmtDate(fromDate || today)}`);
   });
   each("[data-rmextra]", b => {
