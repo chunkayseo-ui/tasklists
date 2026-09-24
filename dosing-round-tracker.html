@@ -162,6 +162,14 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 .tag.st-open{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
 .tag.st-prog{background:var(--warn-soft);color:var(--warn)}
 .tag.st-done{background:var(--ok-soft);color:var(--ok)}
+.tag.st-cant{background:#FDECEA;color:#B42318;border:1px solid #F5B5AE}
+.cant-read{color:#B42318}
+.cant-link{font-size:13px;color:#B42318;padding:0}
+.cant-form{border:1.5px solid #F5B5AE;background:#FFF8F7;border-radius:10px;padding:10px 12px;margin:4px 0 8px;display:flex;flex-direction:column;gap:8px}
+.cant-form textarea{width:100%;font:15px "IBM Plex Sans",sans-serif}
+.stuck-row{border:1px solid var(--line);border-left:4px solid #B42318;border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;background:var(--surface)}
+.stuck-acts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.stuck-acts select,.stuck-acts input[type=date]{font:500 14px "IBM Plex Sans",sans-serif;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
 /* A checkmark ahead of the text on every "done"-style tag (a finished job, a
    fully-departed outlet, a resolved issue, a completed round) -- purely a
    visual affordance via generated content, so it never changes what any of
@@ -1448,7 +1456,7 @@ function retireDoneExtras(round){
   const c = state.cfg; if(!c || !c.extra || isTestRound(round)) return;
   const gone = [];
   (round.stops || []).forEach(s => (s.tasks || []).forEach(t => {
-    if(!t.extraId || !t.doneAt) return;
+    if(!t.extraId || !t.doneAt || (t.vac && t.vac.unfinished)) return;
     const list = c.extra[s.outlet] || [], e = list.find(x => x.id === t.extraId);
     if(!e || !e.oneTime) return;
     c.extra[s.outlet] = list.filter(x => x.id !== t.extraId);
@@ -1701,7 +1709,7 @@ function extrasTonight(outlet){
   // job nobody got to isn't silently forgotten. An older one-time job with no
   // start date keeps the original rule: the night it was added only.
   const showsTonight = e => e.oneTime ? (e.fromDate ? e.fromDate <= today : e.addedDate === today) : onDay(e);
-  return (state.cfg.extra[outlet] || []).filter(showsTonight);
+  return (state.cfg.extra[outlet] || []).filter(e => !e.cancelled && showsTonight(e));
 }
 // How many jobs a branch has tonight on top of the must-do list: shared
 // "if time allows" jobs switched on, jobs added in Task Setting, and issues
@@ -1735,7 +1743,7 @@ function tasksFor(outlet){
   if(!pools){
     const req = state.cfg.required.map(n => ({id:uid(), name:n, kind:"required", startedAt:null, doneAt:null, claimedBy:null}));
     const asg = asgNames.map(n => ({id:uid(), name:n, kind:"optional", startedAt:null, doneAt:null, claimedBy:null}));
-    const ex  = extraList.map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null, category:e.category||null}));
+    const ex  = extraList.map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null, category:e.category||null, lastStuck:e.stuck||null}));
     return req.concat(asg).concat(ex).concat(issueTasks);
   }
 
@@ -1748,12 +1756,12 @@ function tasksFor(outlet){
   // that pool was added after the standing ones.
   const wholeOutlet = extraList
     .filter(e => !e.pool)
-    .map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null, category:e.category||null}));
+    .map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null, category:e.category||null, lastStuck:e.stuck||null}));
   const perPool = pools.flatMap(p => {
     const req = state.cfg.required.map(n => ({id:uid(), name:n, pool:p, kind:"required", startedAt:null, doneAt:null, claimedBy:null}));
     const asg = asgNames.map(n => ({id:uid(), name:n, pool:p, kind:"optional", startedAt:null, doneAt:null, claimedBy:null}));
     const ex  = extraList.filter(e => e.pool === p)
-      .map(e => ({id:uid(), name:e.name, pool:p, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null, category:e.category||null}));
+      .map(e => ({id:uid(), name:e.name, pool:p, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null, category:e.category||null, lastStuck:e.stuck||null}));
     return req.concat(asg).concat(ex);
   });
   return wholeOutlet.concat(issueTasks).concat(perPool);
@@ -1952,7 +1960,67 @@ function quickLabel(s){
   const q = s.quick || {}; const base = (QUICK_PURPOSES.find(x => x.id === q.purpose) || QUICK_PURPOSES[3]).label;
   return q.note ? `${base} — ${q.note}` : base;
 }
-function requiredLeft(s){ return isQuick(s) ? 0 : s.tasks.filter(t => t.kind==="required" && !t.doneAt).length; }
+function requiredLeft(s){ return isQuick(s) ? 0 : s.tasks.filter(t => t.kind==="required" && !t.doneAt && !t.cantFinish).length; }
+
+/* ---------- "Can't finish" ----------
+ * A technician who can't complete a job says why (reason + note + photo).
+ * The job goes back to open -- nothing is running, a must-do no longer holds
+ * up Leave -- and carries the reason. A job added in Task Setting stays on
+ * the branch's list for the next visit, showing what happened last time, and
+ * waits on Overview for the supervisor to decide: keep, reassign, move the
+ * date, turn it into an issue, or cancel. */
+const CANT_REASONS = ["Need parts / tools", "Need a contractor", "Not enough time tonight", "Can't access the area", "Other"];
+function cantLine(c, prefix){
+  if(!c) return "";
+  const when = c.date && c.date !== todayKey() ? fmtDate(c.date) : (c.at ? clockOf(c.at) : "");
+  return `${prefix}${esc(c.reason)}${c.note ? " — " + esc(c.note) : ""} · ${esc(c.by || "")}${when ? " · " + esc(when) : ""}`;
+}
+function markExtraStuck(outlet, id, rec){
+  const c = clone(state.cfg); const e = ((c.extra || {})[outlet] || []).find(x => x.id === id); if(!e) return;
+  const h = {date:rec.date, at:rec.at, by:rec.by, reason:rec.reason, note:rec.note || "", photos:rec.photos || []};
+  e.stuck = Object.assign({}, h, {ack:false});
+  e.history = (e.history || []).concat([h]).slice(-12);
+  saveCfg(c);
+}
+function cantFinishTask(code, tid, reason, note, photos){
+  const r0 = myRound(), s0 = r0 && r0.stops.find(x => x.outlet === code), t0 = s0 && s0.tasks.find(x => x.id === tid);
+  if(!t0 || t0.doneAt) return;
+  if(t0.startedAt && t0.claimedBy && t0.claimedBy !== state.me){ flash(t0.claimedBy + " is on this job — only they can stop it."); return; }
+  if(!reason){ flash("Pick why it can't be finished."); return; }
+  let rec = null, key = null, extra = null, vacQ = [], vac = null;
+  return withRound(r => {
+    const s = r.stops.find(x => x.outlet === code); if(!s) return false;
+    const t = s.tasks.find(x => x.id === tid); if(!t || t.doneAt) return false;
+    rec = {reason, note:(note || "").trim().slice(0, 300), photos:(photos || []).filter(x => x && x.fileId), by:state.me, at:new Date().toISOString(), date:todayKey(), startedAt:t.startedAt || null};
+    if(t.startedAt && vacSpec(code, t)){ const vq = vacLeftUnfinished(code, t, r.id); if(vq){ t.vac = vq.vac; vac = vq.vac; vacQ = vq.queued; } }
+    t.cantFinish = rec; t.startedAt = null; t.claimedBy = null;
+    key = {name:t.name, kind:t.kind, pool:t.pool || null};
+    extra = t.extraId ? {outlet:s.outlet, id:t.extraId} : null;
+  }, "Couldn't save that. Try again.").then(() => {
+    if(!rec) return;
+    syncTaskToOtherRounds(code, key, Object.assign({cantFinish:rec, startedAt:null, claimedBy:null}, vac ? {vac} : {}));
+    vacQ.forEach(q => { photoQ.add(q.item); delete state.vac[q.key]; });
+    if(extra && !isTestMe()) markExtraStuck(extra.outlet, extra.id, rec);
+    state.cant = null; delete state.fp["cant|" + code];
+    flash(extra ? "Noted — it stays on the list for the next visit." : "Noted — the supervisor can see why.");
+    render();
+  });
+}
+function cantFormHtml(s, t){
+  const key = s.outlet + "|" + t.id, c = state.cant || {};
+  const chips = CANT_REASONS.map(x => `<button type="button" class="tog" data-cantreason="${esc(x)}" aria-pressed="${c.reason === x}">${esc(x)}</button>`).join("");
+  const scope = "cant|" + s.outlet;
+  return `<div class="cant-form">
+    <b>Can't finish “${esc(t.name)}”${t.pool ? " (" + esc(t.pool) + ")" : ""} — why?</b>
+    <div class="aj-chips">${chips}</div>
+    <textarea id="cant-note" rows="2" maxlength="300" placeholder="What's needed / how far you got (optional)"></textarea>
+    ${formPhotosHtml(scope, "problem")}
+    <div class="row-2">
+      <button class="btn warn sm" style="flex:1" data-cantsave="${key}" ${c.reason && !fpBusy(scope) ? "" : "disabled"}>${fpBusy(scope) ? "Wait for the photo…" : "Save — can't finish"}</button>
+      <button class="btn sm" style="flex:1" data-cantcancel>Cancel</button>
+    </div>
+  </div>`;
+}
 
 async function startRound(codes){
   state.picking = null;
@@ -2107,13 +2175,14 @@ function depart(code){
         // but marked as left unfinished with whatever photos were taken.
         const vq = vacLeftUnfinished(code, t, r.id);
         if(vq){ t.vac = vq.vac; vacQueued.push(...vq.queued); }
-        autoClosed.push(Object.assign({name:t.name, kind:t.kind, pool:t.pool||null, doneAt:t.doneAt}, t.vac ? {vac:t.vac} : {}));
+        autoClosed.push(Object.assign({name:t.name, kind:t.kind, pool:t.pool||null, doneAt:t.doneAt, extraId:t.extraId||null}, t.vac ? {vac:t.vac} : {}));
       }
     });
     s.departAt = new Date().toISOString();
     stopOutlet = s.outlet;
   }, "Couldn't record the departure. Try again.").then(async () => {
     for(const task of autoClosed) await syncTaskToOtherRounds(stopOutlet, task, task.vac ? {doneAt:task.doneAt, vac:task.vac} : {doneAt:task.doneAt});
+    autoClosed.filter(t => t.extraId && t.vac && t.vac.unfinished && !isTestMe()).forEach(t => markExtraStuck(stopOutlet, t.extraId, {date:todayKey(), at:t.doneAt, by:state.me, reason:"Left without finishing", note:"Vacuum stopped part way when leaving", photos:[]}));
     vacQueued.forEach(q => { photoQ.add(q.item); delete state.vac[q.key]; });
     const fix = await getFix();
     withRoundKeepingForm(r => { const s = r.stops.find(x=>x.outlet===code); if(!s || (s.fixOut && !s.fixOut.fail)) return false; s.fixOut = fix; });
@@ -2366,10 +2435,11 @@ function claimTask(code, tid){
     }
     t.startedAt = new Date().toISOString();
     t.claimedBy = state.me;
+    if(t.cantFinish){ t.lastStuck = t.cantFinish; t.cantFinish = null; }
     claimed = {name:t.name, kind:t.kind, pool:t.pool||null, startedAt:t.startedAt, claimedBy:t.claimedBy};
     stopOutlet = s.outlet;
   }, "Couldn't claim that job. Try again.").then(async () => {
-    if(claimed) syncTaskToOtherRounds(stopOutlet, claimed, {startedAt:claimed.startedAt, claimedBy:claimed.claimedBy});
+    if(claimed) syncTaskToOtherRounds(stopOutlet, claimed, {startedAt:claimed.startedAt, claimedBy:claimed.claimedBy, cantFinish:null});
     if(autoArrived){
       const fix = await getFix();
       withRoundKeepingForm(r => { const s = r.stops.find(x=>x.outlet===code); if(!s || (s.fixIn && !s.fixIn.fail)) return false; s.fixIn = fix; });
@@ -3425,7 +3495,7 @@ function formPhotosHtml(scope, what){
 // A photo arriving mid-form must not wipe what has been typed. render()
 // rebuilds the form from state, and the text isn't in state until Send -- so
 // carry the fields across the redraw by hand.
-const FORM_FIELDS = ["#issue-desc", "#issue-priority", "#newtask", "#addissue-outlet", "#addissue-desc", "#addissue-priority", "#addissue-by", "#addissue-cat", "#quick-purpose", "#quick-note"];
+const FORM_FIELDS = ["#cant-note", "#issue-desc", "#issue-priority", "#newtask", "#addissue-outlet", "#addissue-desc", "#addissue-priority", "#addissue-by", "#addissue-cat", "#quick-purpose", "#quick-note"];
 // Same courtesy for a save nobody tapped for -- the location fix landing a few
 // seconds after Arrive/Leave. It redraws the screen like any save, so whatever
 // someone is halfway through typing is carried across it.
@@ -4597,6 +4667,7 @@ function taskRow(s, t){
   const mine = !!t.claimedBy && t.claimedBy === state.me && !conflict;
   const status = finished ? '<span class="tag st-done">Done</span>'
                : running  ? '<span class="tag st-prog">In Progress</span>'
+               : t.cantFinish ? '<span class="tag st-cant">Can\'t finish</span>'
                           : '<span class="tag st-open">Open</span>';
   const tag = t.kind==="required" ? '<span class="tag req">Must do</span>'
             : t.kind==="optional" ? '<span class="tag opt">If time allows</span>'
@@ -4650,7 +4721,7 @@ function taskRow(s, t){
          </span>`
       : `<span class="btn sm act inprogress" aria-hidden="true">${who}</span>`;
   } else if(!s.departAt){
-    act = `<button class="btn sm act" data-claim="${key}">Open</button>`;
+    act = `<button class="btn sm act" data-claim="${key}">${t.cantFinish ? "Try again" : "Open"}</button>`;
   } else { time = `<span class="task-time muted">not done</span>`; }
 
   const del = (!t.startedAt && t.kind==="adhoc" && !s.departAt)
@@ -4663,7 +4734,12 @@ function taskRow(s, t){
                : (finished && t.dosed) ? `<span class="wt-read">${dosedSummary(t.dosed)}</span>`
                : (finished && t.vac) ? `<span class="wt-read">${vacSummaryHtml(s.outlet, t)}</span>`
                : (!finished && t.plannedDose && isDosingTask(t)) ? `<span class="wt-read">${plannedDoseSummary(t.plannedDose)}</span>`
-               : "") + (t.photos && t.photos.length ? `<span class="wt-read">${photoStripHtml(t.photos, (x, i) => "Job photo " + (i+1))}</span>` : "");
+               : "") + (t.photos && t.photos.length ? `<span class="wt-read">${photoStripHtml(t.photos, (x, i) => "Job photo " + (i+1))}</span>` : "")
+               + (t.cantFinish ? `<span class="wt-read cant-read">⚠ ${cantLine(t.cantFinish, "")}</span>${t.cantFinish.photos && t.cantFinish.photos.length ? `<span class="wt-read">${photoStripHtml(t.cantFinish.photos, (x, i) => "Can't finish photo " + (i+1))}</span>` : ""}${(!finished && t.vac) ? `<span class="wt-read">${vacSummaryHtml(s.outlet, t)}</span>` : ""}`
+                  : (!finished && t.lastStuck) ? `<span class="wt-read cant-read">Not finished last time: ${cantLine(t.lastStuck, "")}</span>` : "");
+  const canCant = !finished && !s.departAt && !t.cantFinish && !isQuick(s) && (!running || mine);
+  const cantBtn = canCant ? `<button class="link cant-link" data-cantopen="${key}">Can't finish</button>` : "";
+  const cantForm = (state.cant && state.cant.key === key && canCant) ? cantFormHtml(s, t) : "";
   // The calculator opens inline under the water-test job the moment its
   // claimer taps it -- the reading and the dose are entered right here.
   // The dosing job likewise opens its measured-amounts entry.
@@ -4676,12 +4752,12 @@ function taskRow(s, t){
   return `<div class="task ${running?"running":""} ${finished?"finished":""}">
     <span class="task-main">
       <span class="task-name">${esc(t.name)}</span>
-      <span class="task-meta">${status}${tag}${catTag(t.category || catOf(s, t))}${assigneeOf(s, t) ? `<span class="tag for${assigneeOf(s, t) === state.me ? " me" : ""}">For ${esc(assigneeOf(s, t))}</span>` : ""}${addedByOf(t) ? `<span class="task-by">Added by ${esc(addedByOf(t))}</span>` : ""}${del}</span>
+      <span class="task-meta">${status}${tag}${catTag(t.category || catOf(s, t))}${assigneeOf(s, t) ? `<span class="tag for${assigneeOf(s, t) === state.me ? " me" : ""}">For ${esc(assigneeOf(s, t))}</span>` : ""}${addedByOf(t) ? `<span class="task-by">Added by ${esc(addedByOf(t))}</span>` : ""}${del}${cantBtn}</span>
       ${detail}
       ${conflictNote}
     </span>
     ${time}${act}
-  </div>${panel}`;
+  </div>${cantForm}${panel}`;
 }
 
 function priorityTag(p){
@@ -5116,7 +5192,7 @@ function unfinishedJobs(rounds){
     s.tasks.filter(t => !t.doneAt).forEach(t => {
       const k = s.outlet+"|"+t.kind+"|"+t.name+"|"+(t.pool||"");
       if(seen.has(k)) return; seen.add(k);
-      out.push({outlet:s.outlet, label, pool:t.pool||null, name:t.name, kind:t.kind, person:r.person, departAt:s.departAt});
+      out.push({outlet:s.outlet, label, pool:t.pool||null, name:t.name, kind:t.kind, person:r.person, departAt:s.departAt, cant:t.cantFinish||null});
     });
   }));
   // Must-do first (the ones that matter most), then optional, then ad-hoc;
@@ -5130,6 +5206,45 @@ function unfinishedJobs(rounds){
   });
   return out;
 }
+function cantFinishBlock(rounds){
+  const waiting = [];
+  OUTLETS.forEach(o => (state.cfg.extra[o.code] || []).forEach(e => { if(e.stuck && !e.stuck.ack && !e.cancelled) waiting.push({o:o.code, e}); }));
+  const seen = new Set(), other = [];
+  rounds.filter(r => !isTestRound(r)).forEach(r => r.stops.forEach(s => (s.tasks || []).forEach(t => {
+    if(!t.cantFinish || t.extraId) return;
+    const k = s.outlet + "|" + t.kind + "|" + t.name + "|" + (t.pool || ""); if(seen.has(k)) return; seen.add(k);
+    other.push({s, t});
+  })));
+  if(!waiting.length && !other.length) return `<p class="note" style="margin:0">Nothing reported as can't finish.</p>`;
+  const rosterOpts = sel => (state.roster || []).map(n => `<option value="${esc(n)}" ${sel === n ? "selected" : ""}>${esc(n)}</option>`).join("");
+  const rows = waiting.map(({o, e}) => {
+    const k = o + "|" + e.id, st = e.stuck, tries = (e.history || []).length;
+    const cancelling = state.stuckCancel === k;
+    return `<div class="stuck-row">
+      <div><strong>${esc(o)}</strong>${e.pool ? ` <span class="tag pool">${esc(e.pool)}</span>` : ""} — ${esc(e.name)} ${catTag(e.category)}${e.assignee ? `<span class="tag for">For ${esc(e.assignee)}</span>` : ""}</div>
+      <div class="cant-read">⚠ ${cantLine(st, "")}${tries > 1 ? ` <span class="muted">(${tries} tries)</span>` : ""}</div>
+      ${st.photos && st.photos.length ? photoStripHtml(st.photos, (x, i) => "Photo " + (i+1)) : ""}
+      ${cancelling ? `<div class="stuck-acts"><input type="text" id="stuck-cancel-why" maxlength="120" placeholder="Why cancel? (optional)" style="flex:1;min-width:160px"><button class="btn warn sm" data-stuckcancelok="${k}">Cancel the job</button><button class="btn sm" data-stuckcancelno>Back</button></div>`
+      : `<div class="stuck-acts">
+        <button class="btn sm primary" data-stuckkeep="${k}">Keep for next visit</button>
+        <select data-stuckassign="${k}" aria-label="Reassign"><option value="">Reassign to…</option>${rosterOpts("")}</select>
+        <label class="muted" style="font-size:13px">Move to <input type="date" data-stuckdate="${k}" value="${esc(e.fromDate && e.fromDate > todayKey() ? e.fromDate : "")}"></label>
+        <button class="btn sm" data-stuckissue="${k}">Turn into issue</button>
+        <button class="btn sm" data-stuckcancel="${k}">Cancel job</button>
+      </div>`}
+    </div>`;
+  }).join("");
+  const others = other.map(({s, t}) => `<div class="stuck-row" style="border-left-color:var(--line)">
+      <div><strong>${esc(stopLabel(s))}</strong>${t.pool ? ` <span class="tag pool">${esc(t.pool)}</span>` : ""} — ${esc(t.name)} <span class="muted" style="font-size:13px">(comes back on its usual schedule)</span></div>
+      <div class="cant-read">⚠ ${cantLine(t.cantFinish, "")}</div>
+      ${t.cantFinish.photos && t.cantFinish.photos.length ? photoStripHtml(t.cantFinish.photos, (x, i) => "Photo " + (i+1)) : ""}
+    </div>`).join("");
+  return `${waiting.length ? `<p class="note" style="margin:0">Jobs you added that a technician couldn't finish. They stay on the branch's list until you decide.</p>` : ""}<div class="stack" style="gap:8px">${rows}${others}</div>`;
+}
+function editExtra(o, id, fn){
+  const c = clone(state.cfg), e = ((c.extra || {})[o] || []).find(x => x.id === id); if(!e) return null;
+  fn(e); saveCfg(c); return e;
+}
 function unfinishedJobsBlock(rounds){
   const list = unfinishedJobs(rounds);
   if(!list.length) return `<p class="note" style="margin:0">Nothing left open — every job at every stop left tonight is done.</p>`;
@@ -5138,7 +5253,7 @@ function unfinishedJobsBlock(rounds){
               : k==="issue"    ? '<span class="tag urgent">Reported issue</span>'
               : '<span class="tag add">Added</span>';
   const rows = list.map(x => `<div class="issue-row">
-    <span class="issue-desc"><strong>${esc(x.label)}</strong>${x.pool?` <span class="tag pool">${esc(x.pool)}</span>`:""} — ${esc(x.name)} ${tagOf(x.kind)}</span>
+    <span class="issue-desc"><strong>${esc(x.label)}</strong>${x.pool?` <span class="tag pool">${esc(x.pool)}</span>`:""} — ${esc(x.name)} ${tagOf(x.kind)}${x.cant ? `<br><span class="cant-read">⚠ Can't finish: ${cantLine(x.cant, "")}</span>` : ""}</span>
     <span class="mono muted issue-meta">left by ${esc(x.person)} · ${clockOf(x.departAt)}</span>
   </div>`).join("");
   return `<div class="issue-list">${rows}</div>`;
@@ -5281,6 +5396,11 @@ function overviewView(){
   <div class="stack" style="gap:9px">
     <h2 class="sec">Technicians right now</h2>
     ${rounds.length ? `<div class="crew">${rounds.map(r => crewRow(r,true)).join("")}</div>` : `<p class="note" style="margin:0">No rounds started tonight yet.</p>`}
+  </div>
+
+  <div class="stack" style="gap:9px" id="cant-section">
+    <h2 class="sec">Couldn't finish</h2>
+    ${cantFinishBlock(rounds)}
   </div>
 
   <div class="stack" style="gap:9px">
@@ -6006,8 +6126,8 @@ function addJobPanel(){
 }
 function branchJobsList(){
   const today = todayKey();
-  const blocks = OUTLETS.filter(o => (state.cfg.extra[o.code] || []).length).map(o => {
-    const items = (state.cfg.extra[o.code] || []).map(e => {
+  const blocks = OUTLETS.filter(o => (state.cfg.extra[o.code] || []).some(e => !e.cancelled)).map(o => {
+    const items = (state.cfg.extra[o.code] || []).filter(e => !e.cancelled).map(e => {
       let when;
       if(e.oneTime && e.fromDate){
         if(e.fromDate > today) when = `<span class="tag once">From ${esc(fmtDate(e.fromDate))} · until done</span>`;
@@ -6018,6 +6138,7 @@ function branchJobsList(){
       return `<div class="extra-item">
         <span class="extra-name">${esc(e.name)}</span>
         ${catTag(e.category)}
+        ${e.stuck ? `<span class="tag st-cant">Couldn't finish ${esc(fmtDate(e.stuck.date))}</span>` : ""}
         ${e.pool ? `<span class="tag pool">${esc(e.pool)}</span>` : ""}
         ${e.kind === "required" ? '<span class="tag req">Must do</span>' : '<span class="tag opt">If time allows</span>'}
         ${when}
@@ -6255,6 +6376,10 @@ function wire(){
   each("[data-cancelreopen]", b => { state.confirmReopen = null; render(); });
   each("[data-reopen]", b => { state.confirmReopen = null; reopenStop(b.dataset.reopen); });
   each("[data-claim]",  b => { const [o,t] = two(b.dataset.claim); claimTask(o,t); });
+  each("[data-cantopen]", b => { state.cant = {key:b.dataset.cantopen, reason:""}; render(); const n = $("#cant-note"); if(n) n.scrollIntoView({block:"center"}); });
+  each("[data-cantreason]", b => { if(state.cant){ state.cant.reason = b.dataset.cantreason; renderKeepingForm(); } });
+  each("[data-cantcancel]", () => { if(state.cant) delete state.fp["cant|" + state.cant.key.split("|")[0]]; state.cant = null; render(); });
+  each("[data-cantsave]", b => { const [o,t] = two(b.dataset.cantsave); const scope = "cant|" + o; if(fpBusy(scope)) return; cantFinishTask(o, t, state.cant && state.cant.reason, ($("#cant-note") || {}).value, fpDone(scope)); });
   // X on a running job -- undoes an accidental claim right away, no confirm.
   each("[data-cancel]", b => { const [o,t] = two(b.dataset.cancel); cancelClaim(o,t); });
   // Tapping the claimer's own name on a running job marks it done.
@@ -6282,6 +6407,7 @@ function wire(){
     }
     if(type === "issue") return {kind:"issue", code, what:"Issue", text: ($("#issue-desc")||{}).value};
     if(type === "job") return {kind:"job", code, what:"Job", text: ($("#newtask")||{}).value};
+    if(type === "cant") return {kind:"job", code, what:"Can't finish", text: ((state.cant && state.cant.reason) || "") + (($("#cant-note")||{}).value ? " — " + $("#cant-note").value : "")};
     return {kind:"issue", code: ($("#addissue-outlet")||{}).value || "?", what:"Issue", text: ($("#addissue-desc")||{}).value};
   };
   document.querySelectorAll("[data-fpin-cam],[data-fpin-gal]").forEach(i => i.addEventListener("change", () => {
@@ -6415,6 +6541,18 @@ function wire(){
   each("[data-ajbranch]", b => { const a = addJobState(), c = b.dataset.ajbranch; a.branches = a.branches.includes(c) ? a.branches.filter(x => x !== c) : a.branches.concat([c]); render(); });
   each("[data-ajmode]", b => { addJobState().mode = b.dataset.ajmode; render(); });
   each("[data-ajtech]", b => { addJobState().tech = b.dataset.ajtech; render(); });
+  each("[data-stuckkeep]", b => { const [o, id] = b.dataset.stuckkeep.split("|"); editExtra(o, id, e => { e.stuck.ack = true; e.stuck.decided = {by:state.me, at:new Date().toISOString(), what:"keep"}; }); flash("Kept — it stays on " + o + "'s list."); });
+  document.querySelectorAll("[data-stuckassign]").forEach(sel => sel.addEventListener("change", () => { if(!sel.value) return; const [o, id] = sel.dataset.stuckassign.split("|"); const v = sel.value; editExtra(o, id, e => { e.assignee = v; e.stuck.ack = true; e.stuck.decided = {by:state.me, at:new Date().toISOString(), what:"reassign " + v}; }); flash("Reassigned to " + v + "."); }));
+  document.querySelectorAll("[data-stuckdate]").forEach(inp => inp.addEventListener("change", () => { if(!inp.value) return; const [o, id] = inp.dataset.stuckdate.split("|"); const v = inp.value; const e = editExtra(o, id, e => { e.oneTime = true; e.fromDate = v; e.stuck.ack = true; e.stuck.decided = {by:state.me, at:new Date().toISOString(), what:"moved to " + v}; }); if(e && v > todayKey()) syncExtraToLiveRounds(o, {name:e.name, kind:e.kind, pool:e.pool}, "remove"); flash("Moved to " + fmtDate(v) + "."); }));
+  each("[data-stuckissue]", b => { const [o, id] = b.dataset.stuckissue.split("|"); const e0 = (state.cfg.extra[o] || []).find(x => x.id === id); if(!e0) return; const st = e0.stuck || {};
+    reportIssue(o, `${e0.name}${e0.pool ? " (" + e0.pool + ")" : ""} — couldn't finish: ${st.reason || ""}${st.note ? ". " + st.note : ""}`, "medium", state.me, st.photos || [], e0.category || null);
+    editExtra(o, id, e => { e.cancelled = {by:state.me, at:new Date().toISOString(), reason:"Moved to the issue board"}; e.stuck.ack = true; });
+    syncExtraToLiveRounds(o, {name:e0.name, kind:e0.kind, pool:e0.pool}, "remove"); flash("Moved to Issues & tasks below."); });
+  each("[data-stuckcancel]", b => { state.stuckCancel = b.dataset.stuckcancel; render(); });
+  each("[data-stuckcancelno]", () => { state.stuckCancel = null; render(); });
+  each("[data-stuckcancelok]", b => { const [o, id] = b.dataset.stuckcancelok.split("|"); const why = (($("#stuck-cancel-why") || {}).value || "").trim(); state.stuckCancel = null;
+    const e = editExtra(o, id, e => { e.cancelled = {by:state.me, at:new Date().toISOString(), reason:why || "Cancelled"}; e.stuck.ack = true; });
+    if(e) syncExtraToLiveRounds(o, {name:e.name, kind:e.kind, pool:e.pool}, "remove"); flash("Job cancelled."); });
   each("[data-renotify]", b => { const [o, id] = b.dataset.renotify.split("|"); const e = (state.cfg.extra[o] || []).find(x => x.id === id); if(e) notifyAssigned([{outlet:o, entry:e}]); });
   each("[data-ajday]", b => { const a = addJobState(), d = +b.dataset.ajday; a.days = a.days.includes(d) ? a.days.filter(x => x !== d) : a.days.concat([d]).sort(); render(); });
   document.querySelectorAll("[data-ajpool]").forEach(sel => sel.addEventListener("change", () => { addJobState().pool[sel.dataset.ajpool] = sel.value; }));
