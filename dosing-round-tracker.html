@@ -239,6 +239,8 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 .task-name{font-weight:600;font-size:16px;line-height:1.35;overflow-wrap:anywhere}
 .task.finished .task-name{color:var(--ink-2)}
 .task-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.tag.cat{background:#ECFDF5;color:#065F46;border:1px solid #A7F3D0}
+.cat-pick{font:500 15px "IBM Plex Sans",sans-serif;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);flex:1;min-width:190px}
 .tag.for{background:#EDE9FE;color:#5B21B6;border:1px solid #C4B5FD}
 .tag.for.me{background:#5B21B6;color:#fff;border-color:#5B21B6}
 .task-by{font:600 12px/1.4 "IBM Plex Mono",monospace;color:var(--ink-3)}
@@ -1733,7 +1735,7 @@ function tasksFor(outlet){
   if(!pools){
     const req = state.cfg.required.map(n => ({id:uid(), name:n, kind:"required", startedAt:null, doneAt:null, claimedBy:null}));
     const asg = asgNames.map(n => ({id:uid(), name:n, kind:"optional", startedAt:null, doneAt:null, claimedBy:null}));
-    const ex  = extraList.map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null}));
+    const ex  = extraList.map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null, category:e.category||null}));
     return req.concat(asg).concat(ex).concat(issueTasks);
   }
 
@@ -1746,12 +1748,12 @@ function tasksFor(outlet){
   // that pool was added after the standing ones.
   const wholeOutlet = extraList
     .filter(e => !e.pool)
-    .map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null}));
+    .map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null, category:e.category||null}));
   const perPool = pools.flatMap(p => {
     const req = state.cfg.required.map(n => ({id:uid(), name:n, pool:p, kind:"required", startedAt:null, doneAt:null, claimedBy:null}));
     const asg = asgNames.map(n => ({id:uid(), name:n, pool:p, kind:"optional", startedAt:null, doneAt:null, claimedBy:null}));
     const ex  = extraList.filter(e => e.pool === p)
-      .map(e => ({id:uid(), name:e.name, pool:p, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null}));
+      .map(e => ({id:uid(), name:e.name, pool:p, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null, category:e.category||null}));
     return req.concat(asg).concat(ex);
   });
   return wholeOutlet.concat(issueTasks).concat(perPool);
@@ -1994,7 +1996,7 @@ async function syncExtraToLiveRounds(outlet, job, action){
     let changed = false;
     if(action === "add"){
       if(!s.tasks.some(matches)){
-        s.tasks.push(Object.assign({id:uid(), name:job.name, kind:job.kind, startedAt:null, doneAt:null, claimedBy:null, addedBy:job.addedBy||null}, job.assignee ? {assignee:job.assignee} : {}, job.pool ? {pool:job.pool} : {}, job.photos ? {photos:job.photos} : {}, job.extraId ? {extraId:job.extraId} : {}));
+        s.tasks.push(Object.assign({id:uid(), name:job.name, kind:job.kind, startedAt:null, doneAt:null, claimedBy:null, addedBy:job.addedBy||null}, job.assignee ? {assignee:job.assignee} : {}, job.category ? {category:job.category} : {}, job.pool ? {pool:job.pool} : {}, job.photos ? {photos:job.photos} : {}, job.extraId ? {extraId:job.extraId} : {}));
         changed = true;
       }
     } else {
@@ -2579,7 +2581,7 @@ function addedByOf(t){
 // assigning a non-urgent task to an outlet before anyone's even reported it
 // (see addIssueBlock, on Overview). Either way it starts life as "open" --
 // unplanned, just on the board -- until a supervisor commits to a plan.
-function reportIssue(outlet, description, priority, raisedBy, photos){
+function reportIssue(outlet, description, priority, raisedBy, photos, category){
   const desc = (description||"").trim().slice(0,500);
   if(!desc || !outlet) return;
   saveIssue({
@@ -2590,7 +2592,8 @@ function reportIssue(outlet, description, priority, raisedBy, photos){
     raisedBy: raisedBy || state.me || "Supervisor",
     raisedAt: new Date().toISOString(),
     assignee: null, targetDate: null, notes: "", resolvedAt: null, resolvedBy: null,
-    convertedToTask: false
+    convertedToTask: false,
+    category: category || null
   });
 }
 
@@ -3422,7 +3425,7 @@ function formPhotosHtml(scope, what){
 // A photo arriving mid-form must not wipe what has been typed. render()
 // rebuilds the form from state, and the text isn't in state until Send -- so
 // carry the fields across the redraw by hand.
-const FORM_FIELDS = ["#issue-desc", "#issue-priority", "#newtask", "#addissue-outlet", "#addissue-desc", "#addissue-priority", "#addissue-by", "#quick-purpose", "#quick-note"];
+const FORM_FIELDS = ["#issue-desc", "#issue-priority", "#newtask", "#addissue-outlet", "#addissue-desc", "#addissue-priority", "#addissue-by", "#addissue-cat", "#quick-purpose", "#quick-note"];
 // Same courtesy for a save nobody tapped for -- the location fix landing a few
 // seconds after Arrive/Leave. It redraws the screen like any save, so whatever
 // someone is halfway through typing is carried across it.
@@ -4673,7 +4676,7 @@ function taskRow(s, t){
   return `<div class="task ${running?"running":""} ${finished?"finished":""}">
     <span class="task-main">
       <span class="task-name">${esc(t.name)}</span>
-      <span class="task-meta">${status}${tag}${assigneeOf(s, t) ? `<span class="tag for${assigneeOf(s, t) === state.me ? " me" : ""}">For ${esc(assigneeOf(s, t))}</span>` : ""}${addedByOf(t) ? `<span class="task-by">Added by ${esc(addedByOf(t))}</span>` : ""}${del}</span>
+      <span class="task-meta">${status}${tag}${catTag(t.category || catOf(s, t))}${assigneeOf(s, t) ? `<span class="tag for${assigneeOf(s, t) === state.me ? " me" : ""}">For ${esc(assigneeOf(s, t))}</span>` : ""}${addedByOf(t) ? `<span class="task-by">Added by ${esc(addedByOf(t))}</span>` : ""}${del}</span>
       ${detail}
       ${conflictNote}
     </span>
@@ -5155,7 +5158,7 @@ function issueSortCompare(a,b){
 function issueCard(issue){
   const editing = state.planningIssue === issue.id;
   const rosterOpts = state.roster.map(n => `<option value="${esc(n)}" ${issue.assignee===n?"selected":""}>${esc(n)}</option>`).join("");
-  const meta = `<span class="mono muted">reported by ${esc(issue.raisedBy)} · ${fmtWhenFull(issue.raisedAt)}</span>`;
+  const meta = `${catTag(issue.category)}<span class="mono muted">reported by ${esc(issue.raisedBy)} · ${fmtWhenFull(issue.raisedAt)}</span>`;
   let body;
   if(editing){
     body = `<div class="issue-form">
@@ -5228,6 +5231,7 @@ function addIssueBlock(){
         <option value="urgent">Urgent</option>
       </select>
     </div>
+    <label class="aj-row"><span class="aj-lbl">Job type</span>${catSelect("addissue-cat", "")}</label>
     <textarea id="addissue-desc" rows="2" maxlength="500"
       placeholder="What needs to be done? e.g. Replace worn ladder pad at JEIP2"></textarea>
     ${adderField("addissue-by")}
@@ -5923,7 +5927,7 @@ const NIGHT_SCHEDULE = {
 };
 const nightBranches = dow => NIGHT_SCHEDULE[dow] || OUTLETS.map(o => o.code);
 const dowOfKey = key => { const [y,m,d] = key.split("-").map(Number); return new Date(y, m-1, d).getDay(); };
-const addJobBlank = () => ({name:"", branches:[], pool:{}, req:false, mode:"once", date:todayKey(), days:[], tech:""});
+const addJobBlank = () => ({name:"", branches:[], pool:{}, req:false, mode:"once", date:todayKey(), days:[], tech:"", cat:""});
 function addJobState(){ if(!state.addJob) state.addJob = addJobBlank(); return state.addJob; }
 // "Add a job" -- one panel at the top of Task Setting, instead of a form under
 // every branch. Pick the branch(es), say what the job is, then either give it a
@@ -5931,6 +5935,11 @@ function addJobState(){ if(!state.addJob) state.addJob = addJobBlank(); return s
 // technician marks it done) or make it repeat on chosen nights.
 // Who a job was assigned to, if anyone: the task's own copy, else the Task
 // Setting entry it came from (a round started before the field existed).
+function catOf(s, t){
+  if(t.extraId && s && s.outlet){ const e = (state.cfg.extra[s.outlet] || []).find(x => x.id === t.extraId); if(e && e.category) return e.category; }
+  if(t.issueId){ const i = state.issues[t.issueId]; if(i && i.category) return i.category; }
+  return null;
+}
 function assigneeOf(s, t){
   if(t.assignee) return t.assignee;
   if(t.extraId && s && s.outlet){ const e = (state.cfg.extra[s.outlet] || []).find(x => x.id === t.extraId); if(e && e.assignee) return e.assignee; }
@@ -5946,7 +5955,7 @@ async function notifyAssigned(items){
   const when = e0.oneTime
     ? (e0.fromDate && e0.fromDate > today ? "From the night of " + fmtDate(e0.fromDate) + ", until done" : "From tonight, until done")
     : ((e0.days && e0.days.length) ? "Repeats: " + e0.days.map(d => DAYNAME[d]).join(", ") : "Every night");
-  const text = [`📋 New job for ${e0.assignee}`, `📍 ${where}`, `🔧 ${e0.name}`, `${e0.kind === "required" ? "❗ Must do" : "If time allows"} · ${when}`, `Added by ${e0.addedBy || state.me || "Supervisor"}`, TRACKER_URL].join("\n");
+  const text = [`📋 New job for ${e0.assignee}`, `📍 ${where}`, `🔧 ${e0.name}${e0.category ? " (" + e0.category + ")" : ""}`, `${e0.kind === "required" ? "❗ Must do" : "If time allows"} · ${when}`, `Added by ${e0.addedBy || state.me || "Supervisor"}`, TRACKER_URL].join("\n");
   let res;
   if(!relayCfg()) res = {ok:false, err:"No photo relay set up (Task Setting → Photo proof)."};
   else {
@@ -5958,13 +5967,18 @@ async function notifyAssigned(items){
   saveCfg(c);
   flash(res.ok ? `Telegram sent to FM — ${e0.assignee}` : "Job added, but Telegram not sent: " + res.err);
 }
+// Job type -- picked for every job a supervisor sets up, so the jobs given
+// out can be counted by type later (report).
+const JOB_CATS = ["Branch Improvement", "Collecting / Delivery", "Maintenance Works", "Inspecting", "Repairing", "Monthly Request Delivery", "Others"];
+const catSelect = (id, val) => `<select id="${id}" class="cat-pick" aria-label="Job type"><option value="" ${val ? "" : "selected"} disabled>Choose the job type…</option>${JOB_CATS.map(c => `<option value="${esc(c)}" ${val === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>`;
+const catTag = c => c ? `<span class="tag cat">${esc(c)}</span>` : "";
 function addJobPanel(){
   const a = addJobState(), today = todayKey();
   const chips = OUTLETS.map(o => `<button type="button" class="tog" data-ajbranch="${o.code}" aria-pressed="${a.branches.includes(o.code)}">${esc(o.code)}</button>`).join("");
   const pools = OUTLETS.filter(o => o.pools && a.branches.includes(o.code)).map(o => `<label class="aj-row"><span class="aj-lbl">${esc(o.code)} pool</span><select class="pool-pick" data-ajpool="${o.code}">
       <option value="" ${!a.pool[o.code] ? "selected" : ""}>Whole outlet</option>${o.pools.map(p => `<option value="${esc(p)}" ${a.pool[o.code] === p ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>`).join("");
   const dayChips = DAYNAME.map((dn, i) => `<button type="button" class="tog" data-ajday="${i}" aria-pressed="${a.days.includes(i)}">${dn}</button>`).join("");
-  const n = a.branches.length, ready = a.name.trim() && n;
+  const n = a.branches.length, ready = a.name.trim() && n && a.cat;
   const when = a.mode === "once"
     ? `<label class="aj-row"><span class="aj-lbl">From the night of</span><input type="date" id="aj-date" value="${esc(a.date || today)}"></label>
        ${(() => { const d = a.date || today, dow = dowOfKey(d), on = nightBranches(dow), off = a.branches.filter(c => !on.includes(c));
@@ -5975,6 +5989,7 @@ function addJobPanel(){
   return `<div class="stack addjob" style="gap:10px">
     <h2 class="sec">Add a job</h2>
     <input type="text" id="aj-name" placeholder="What needs doing? e.g. Fix broken tile at the deep end" value="${esc(a.name)}" autocomplete="off">
+    <label class="aj-row"><span class="aj-lbl">Job type</span>${catSelect("aj-cat", a.cat)}</label>
     <div class="aj-row"><span class="aj-lbl">Branch</span><div class="aj-chips">${chips}</div></div>
     ${pools}
     <div class="aj-row"><span class="aj-lbl">How often</span><div class="seg" role="group"><button type="button" data-ajmode="once" aria-pressed="${a.mode === "once"}">One-time</button><button type="button" data-ajmode="repeat" aria-pressed="${a.mode === "repeat"}">Repeats</button></div></div>
@@ -6002,6 +6017,7 @@ function branchJobsList(){
       else when = `<span class="tag rec">${(e.days && e.days.length) ? e.days.map(d => DAYNAME[d]).join(", ") : "Every night"}</span>`;
       return `<div class="extra-item">
         <span class="extra-name">${esc(e.name)}</span>
+        ${catTag(e.category)}
         ${e.pool ? `<span class="tag pool">${esc(e.pool)}</span>` : ""}
         ${e.kind === "required" ? '<span class="tag req">Must do</span>' : '<span class="tag opt">If time allows</span>'}
         ${when}
@@ -6402,7 +6418,8 @@ function wire(){
   each("[data-renotify]", b => { const [o, id] = b.dataset.renotify.split("|"); const e = (state.cfg.extra[o] || []).find(x => x.id === id); if(e) notifyAssigned([{outlet:o, entry:e}]); });
   each("[data-ajday]", b => { const a = addJobState(), d = +b.dataset.ajday; a.days = a.days.includes(d) ? a.days.filter(x => x !== d) : a.days.concat([d]).sort(); render(); });
   document.querySelectorAll("[data-ajpool]").forEach(sel => sel.addEventListener("change", () => { addJobState().pool[sel.dataset.ajpool] = sel.value; }));
-  on("#aj-name", e => { addJobState().name = e.target.value; const b = $("#aj-add"); if(b) b.disabled = !(e.target.value.trim() && addJobState().branches.length); }, "input");
+  on("#aj-name", e => { addJobState().name = e.target.value; const b = $("#aj-add"); if(b) b.disabled = !(e.target.value.trim() && addJobState().branches.length && addJobState().cat); }, "input");
+  on("#aj-cat", e => { addJobState().cat = e.target.value; render(); }, "change");
   on("#aj-name", e => { if(e.key === "Enter"){ const b = $("#aj-add"); if(b && !b.disabled) b.click(); } }, "keydown");
   on("#aj-date", e => { addJobState().date = e.target.value; render(); }, "change");
   on("#aj-req", e => { addJobState().req = e.target.checked; }, "change");
@@ -6423,15 +6440,16 @@ function wire(){
       if(pool) entry.pool = pool;
       if(days.length) entry.days = days;
       if(a.tech) entry.assignee = a.tech;
+      if(a.cat) entry.category = a.cat;
       c.extra[outlet] = (c.extra[outlet] || []).concat([entry]);
       added.push({outlet, entry});
     });
-    state.addJob = Object.assign(addJobBlank(), {mode:a.mode, req:a.req});
+    state.addJob = Object.assign(addJobBlank(), {mode:a.mode, req:a.req, cat:a.cat});
     saveCfg(c);
     if(added.length && added[0].entry.assignee) notifyAssigned(added);
     // Straight into tonight's open rounds only if it applies tonight.
     const tonight = once ? fromDate <= today : (!days.length || days.includes(dow));
-    if(tonight) added.forEach(({outlet, entry}) => syncExtraToLiveRounds(outlet, {name:v, kind, pool:entry.pool, addedBy:entry.addedBy, assignee:entry.assignee, extraId:entry.id}, "add"));
+    if(tonight) added.forEach(({outlet, entry}) => syncExtraToLiveRounds(outlet, {name:v, kind, pool:entry.pool, addedBy:entry.addedBy, assignee:entry.assignee, category:entry.category, extraId:entry.id}, "add"));
     flash(`Added to ${a.branches.join(", ")}${tonight ? "" : " — from " + fmtDate(fromDate || today)}`);
   });
   each("[data-rmextra]", b => {
@@ -6480,10 +6498,11 @@ function wire(){
   on("#cancel-addissue", () => { state.addingIssue = false; delete state.fp.addissue; render(); });
   on("#submit-addissue", () => {
     if(fpBusy("addissue")) return;
-    const o = $("#addissue-outlet"), d = $("#addissue-desc"), p = $("#addissue-priority");
+    const o = $("#addissue-outlet"), d = $("#addissue-desc"), p = $("#addissue-priority"), cat = ($("#addissue-cat") || {}).value || "";
+    if(!cat){ flash("Pick the job type first."); return; }
     state.addingIssue = false;
     const by = rememberAdder(($("#addissue-by") || {}).value) || null;
-    reportIssue(o ? o.value : "", d ? d.value : "", p ? p.value : "low", by, fpDone("addissue"));
+    reportIssue(o ? o.value : "", d ? d.value : "", p ? p.value : "low", by, fpDone("addissue"), cat);
     delete state.fp.addissue;
   });
 
