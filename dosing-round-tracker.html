@@ -239,6 +239,7 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 .task-name{font-weight:600;font-size:16px;line-height:1.35;overflow-wrap:anywhere}
 .task.finished .task-name{color:var(--ink-2)}
 .task-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.task-by{font:600 12px/1.4 "IBM Plex Mono",monospace;color:var(--ink-3)}
 .task-time{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:14.5px;white-space:nowrap}
 .task .act{flex:none}
 /* The X (cancel claim) + claimer's-name (finish) button pair shown on a job
@@ -425,6 +426,7 @@ details.panel[open] summary::after{content:"▴"}
 .aj-lbl{font:700 12.5px/1 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-3);min-width:78px}
 .aj-chips{display:flex;flex-wrap:wrap;gap:6px}
 .aj-row input[type=date]{font:500 15px "IBM Plex Sans",sans-serif;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.aj-row input[type=text]{flex:1;min-width:150px;width:auto;font:500 15px "IBM Plex Sans",sans-serif;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
 .tag.once.late{background:#FDECEA;color:#B42318;border-color:#F5B5AD}
 .sched summary{cursor:pointer;font-size:13.5px;color:var(--ink-2);list-style:none}
 .sched summary::before{content:"▸ ";color:var(--ink-3)}
@@ -1685,6 +1687,24 @@ function scheduledToday(){
   const list = OUTLETS.filter(o => o.day === d).map(o => o.code);
   return list.length ? list : OUTLETS.map(o => o.code);
 }
+// The jobs added for one branch (Task Setting "Add a job") that are on its
+// list tonight.
+function extrasTonight(outlet){
+  const today = todayKey(), dow = operationalNow().getDay();
+  const onDay = e => !e.days || !e.days.length || e.days.includes(dow);
+  // A one-time job with a start date (added from the "Add a job" panel) shows
+  // from that night on, every night, until a technician marks it done -- so a
+  // job nobody got to isn't silently forgotten. An older one-time job with no
+  // start date keeps the original rule: the night it was added only.
+  const showsTonight = e => e.oneTime ? (e.fromDate ? e.fromDate <= today : e.addedDate === today) : onDay(e);
+  return (state.cfg.extra[outlet] || []).filter(showsTonight);
+}
+// How many jobs a branch has tonight on top of the must-do list: shared
+// "if time allows" jobs switched on, jobs added in Task Setting, and issues
+// turned into tasks. Shown as "+N jobs" on the outlet pills.
+function extraJobCount(outlet){
+  return assignedFor(outlet, operationalNow().getDay()).length + extrasTonight(outlet).length + issueTasksFor(outlet).length;
+}
 function tasksFor(outlet){
   // Most outlets are a single pool, so the branch's jobs apply as-is. An outlet
   // with named pools (JE today) needs the must-do list AND any shared "if time
@@ -1704,8 +1724,7 @@ function tasksFor(outlet){
   // from that night on, every night, until a technician marks it done -- so a
   // job nobody got to isn't silently forgotten. An older one-time job with no
   // start date keeps the original rule: the night it was added only.
-  const showsTonight = e => e.oneTime ? (e.fromDate ? e.fromDate <= today : e.addedDate === today) : onDay(e);
-  const extraList = (state.cfg.extra[outlet] || []).filter(showsTonight);
+  const extraList = extrasTonight(outlet);
   const asgNames = assignedFor(outlet, dow);
   const issueTasks = issueTasksFor(outlet);
 
@@ -2535,6 +2554,15 @@ function issueTasksFor(outlet){
 // traced this way even if it was converted before `addedBy` existed. An
 // ad-hoc job or Task Setting extra added before this all existed has no such
 // fallback -- that information was genuinely never captured for those.
+// Who is adding a job or task from Task Setting / Overview. The name typed in
+// last time on this phone is filled in, else the name picked on the
+// Technician tab.
+const ADDER_KEY = "drt.addedBy";
+function adderName(){ try{ return localStorage.getItem(ADDER_KEY) || state.me || ""; }catch(e){ return state.me || ""; } }
+function rememberAdder(v){ v = (v || "").trim().slice(0, 40); try{ if(v) localStorage.setItem(ADDER_KEY, v); }catch(e){} return v; }
+function adderField(id){
+  return `<label class="aj-row"><span class="aj-lbl">Added by</span><input type="text" id="${id}" list="${id}-list" maxlength="40" placeholder="Your name" value="${esc(adderName())}" autocomplete="off"><datalist id="${id}-list">${(state.roster || []).map(n => `<option value="${esc(n)}">`).join("")}</datalist></label>`;
+}
 function addedByOf(t){
   if(t.addedBy) return t.addedBy;
   if(t.kind === "issue" && t.issueId){
@@ -3392,7 +3420,7 @@ function formPhotosHtml(scope, what){
 // A photo arriving mid-form must not wipe what has been typed. render()
 // rebuilds the form from state, and the text isn't in state until Send -- so
 // carry the fields across the redraw by hand.
-const FORM_FIELDS = ["#issue-desc", "#issue-priority", "#newtask", "#addissue-outlet", "#addissue-desc", "#addissue-priority", "#quick-purpose", "#quick-note"];
+const FORM_FIELDS = ["#issue-desc", "#issue-priority", "#newtask", "#addissue-outlet", "#addissue-desc", "#addissue-priority", "#addissue-by", "#quick-purpose", "#quick-note"];
 // Same courtesy for a save nobody tapped for -- the location fix landing a few
 // seconds after Arrive/Leave. It redraws the screen like any save, so whatever
 // someone is halfway through typing is carried across it.
@@ -4345,7 +4373,7 @@ function tonightScheduleHtml(){
 function buildRound(){
   const sel = state.picking || [];
   const pills = OUTLETS.map(o => {
-    const extra = assignedFor(o.code, operationalNow().getDay()).length;
+    const extra = extraJobCount(o.code);
     const others = othersOn(o.code);
     const night = outletTonight(o.code);
     // Whoever is actually at the outlet is the more useful name to show; fall
@@ -4643,7 +4671,7 @@ function taskRow(s, t){
   return `<div class="task ${running?"running":""} ${finished?"finished":""}">
     <span class="task-main">
       <span class="task-name">${esc(t.name)}</span>
-      <span class="task-meta">${status}${tag}${del}</span>
+      <span class="task-meta">${status}${tag}${addedByOf(t) ? `<span class="task-by">Added by ${esc(addedByOf(t))}</span>` : ""}${del}</span>
       ${detail}
       ${conflictNote}
     </span>
@@ -5200,6 +5228,7 @@ function addIssueBlock(){
     </div>
     <textarea id="addissue-desc" rows="2" maxlength="500"
       placeholder="What needs to be done? e.g. Replace worn ladder pad at JEIP2"></textarea>
+    ${adderField("addissue-by")}
     ${formPhotosHtml("addissue", "problem")}
     <div class="row-2">
       <button class="btn primary sm" id="submit-addissue" style="flex:1" ${fpBusy("addissue") ? "disabled" : ""}>${fpBusy("addissue") ? "Wait for the photo…" : "Add task"}</button>
@@ -5919,6 +5948,7 @@ function addJobPanel(){
     ${pools}
     <div class="aj-row"><span class="aj-lbl">How often</span><div class="seg" role="group"><button type="button" data-ajmode="once" aria-pressed="${a.mode === "once"}">One-time</button><button type="button" data-ajmode="repeat" aria-pressed="${a.mode === "repeat"}">Repeats</button></div></div>
     ${when}
+    ${adderField("aj-by")}
     <label class="chk"><input type="checkbox" id="aj-req" ${a.req ? "checked" : ""}> Must do — the technician can't leave the outlet until it's done</label>
     <button class="btn primary" id="aj-add" ${ready ? "" : "disabled"}>${n > 1 ? `Add to ${n} branches` : n === 1 ? `Add to ${esc(a.branches[0])}` : "Add job"}</button>
     <details class="sched"><summary>Night dosing schedule — which branches each night</summary>
@@ -6339,17 +6369,19 @@ function wire(){
   on("#aj-name", e => { if(e.key === "Enter"){ const b = $("#aj-add"); if(b && !b.disabled) b.click(); } }, "keydown");
   on("#aj-date", e => { addJobState().date = e.target.value; render(); }, "change");
   on("#aj-req", e => { addJobState().req = e.target.checked; }, "change");
+  on("#aj-by", e => { rememberAdder(e.target.value); }, "change");
   on("#aj-add", () => {
     const a = addJobState(), v = a.name.trim(); if(!v || !a.branches.length) return;
     const kind = a.req ? "required" : "optional", once = a.mode === "once";
     const fromDate = once ? (a.date || todayKey()) : null, days = once ? [] : a.days.slice();
     const c = cfg(), today = todayKey(), dow = operationalNow().getDay();
+    const by = rememberAdder(($("#aj-by") || {}).value) || state.me || "Supervisor";
     const added = [];
     a.branches.forEach(outlet => {
       const pool = a.pool[outlet] || undefined;
       // addedBy: so a job nobody recognizes on the checklist can be traced back
       // to whoever on the team set it up.
-      const entry = {id:uid(), name:v, kind, oneTime:once, addedDate:today, addedBy: state.me || "Supervisor"};
+      const entry = {id:uid(), name:v, kind, oneTime:once, addedDate:today, addedBy: by};
       if(once) entry.fromDate = fromDate;
       if(pool) entry.pool = pool;
       if(days.length) entry.days = days;
@@ -6411,7 +6443,8 @@ function wire(){
     if(fpBusy("addissue")) return;
     const o = $("#addissue-outlet"), d = $("#addissue-desc"), p = $("#addissue-priority");
     state.addingIssue = false;
-    reportIssue(o ? o.value : "", d ? d.value : "", p ? p.value : "low", null, fpDone("addissue"));
+    const by = rememberAdder(($("#addissue-by") || {}).value) || null;
+    reportIssue(o ? o.value : "", d ? d.value : "", p ? p.value : "low", by, fpDone("addissue"));
     delete state.fp.addissue;
   });
 
