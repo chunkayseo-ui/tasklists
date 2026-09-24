@@ -680,10 +680,13 @@ details.panel[open] summary::after{content:"▴"}
     return ids.length ? ids : [label];
   }
   function el(tag, attrs){ var e = document.createElementNS(NS, tag); for(var k in attrs) e.setAttribute(k, attrs[k]); return e; }
-  function nearestLen(path, len, pt){
-    var best = 0, bd = 1e9, N = 600;
+  // Nearest point on the line to pt, searching only from minL onwards -- a loop
+  // that passes the same spot twice must not jump back to the first pass.
+  function nearestLen(path, len, pt, minL){
+    minL = minL || 0;
+    var best = minL, bd = 1e9, N = 600;
     for(var i = 0; i <= N; i++){
-      var l = len * i / N, p = path.getPointAtLength(l), d = (p.x - pt[0]) * (p.x - pt[0]) + (p.y - pt[1]) * (p.y - pt[1]);
+      var l = minL + (len - minL) * i / N, p = path.getPointAtLength(l), d = (p.x - pt[0]) * (p.x - pt[0]) + (p.y - pt[1]) * (p.y - pt[1]);
       if(d < bd){ bd = d; best = l; }
     }
     return best;
@@ -729,7 +732,7 @@ details.panel[open] summary::after{content:"▴"}
     var secn = Array.prototype.slice.call(svg.querySelectorAll(".secn"));
     var chev = Array.prototype.slice.call(svg.querySelectorAll(".chev"));
     var routes = {};
-    ["a", "b"].forEach(function(r){
+    ["a", "b", "c", "d"].forEach(function(r){
       var base = svg.querySelector(".rt-" + r); if(!base) return;
       var over = base.cloneNode(false); over.removeAttribute("class");
       over.setAttribute("stroke-width", "7"); base.after(over);
@@ -796,21 +799,23 @@ details.panel[open] summary::after{content:"▴"}
     badges.forEach(function(b){ if(b.rect) tags.appendChild(b.rect); tags.appendChild(b.els[1]); });
 
     // where each step leaves the walking lines
-    var revealAfter = [], cur = {A:0, B:0};
+    var revealAfter = [], cur = {};
+    Object.keys(routes).forEach(function(r){ cur[r] = 0; });
+    function copyCur(){ var o = {}; Object.keys(cur).forEach(function(r){ o[r] = cur[r]; }); return o; }
     steps.forEach(function(s){
-      var from = {A:cur.A, B:cur.B};
+      var from = copyCur();
       if(s.walk && routes[s.walk.r]){
         var R = routes[s.walk.r];
-        cur[s.walk.r] = s.walk.to ? Math.max(from[s.walk.r], nearestLen(R.base, R.len, s.walk.to)) : R.len;
+        cur[s.walk.r] = s.walk.to ? Math.max(from[s.walk.r], nearestLen(R.base, R.len, s.walk.to, from[s.walk.r])) : R.len;
       }
       var lead = null;
-      if(s.walk && s.walk.lead && routes[s.walk.r]){ var RL = routes[s.walk.r]; lead = Math.max(from[s.walk.r], Math.min(cur[s.walk.r], nearestLen(RL.base, RL.len, s.walk.lead))); }
+      if(s.walk && s.walk.lead && routes[s.walk.r]){ var RL = routes[s.walk.r]; lead = Math.max(from[s.walk.r], Math.min(cur[s.walk.r], nearestLen(RL.base, RL.len, s.walk.lead, from[s.walk.r]))); }
       var seg = null;   // points along the part of the line walked while vacuuming
       if(s.walk && routes[s.walk.r]){
         var RS = routes[s.walk.r], s0 = lead !== null ? lead : from[s.walk.r], s1 = cur[s.walk.r]; seg = [];
         for(var q = 0; q <= 160; q++){ var l = s0 + (s1 - s0) * q / 160, pt = RS.base.getPointAtLength(l); seg.push([l, pt.x, pt.y]); }
       }
-      revealAfter.push({from:from, to:{A:cur.A, B:cur.B}, lead:lead, seg:seg});
+      revealAfter.push({from:from, to:copyCur(), lead:lead, seg:seg});
     });
 
     // The camera: the whole pool trimmed to what is drawn, and for each step a
@@ -3912,6 +3917,8 @@ const VAC_PHOTOS = {
   // normalMin: how long a proper vacuum usually takes here, first photo to last.
   // Leave null until it's known; a job much quicker than it gets flagged.
   Tengah: {card:"TENGAH", normalMin:null, list:[
+    {id:"S1", when:"prep", label:"Vacuum port opened", hint:"Close-up of the vacuum port open, before connecting the hose."},
+    {id:"S2", when:"prep", label:"Vacuum valve opened", hint:"Close-up of the vacuum valve handle in the open position."},
     {id:"P1", when:"start", label:"Set-up at the vacuum port", hint:"Hose, vacuum head and telescopic pole connected at the vacuum port, top right corner."},
     {id:"P2", when:"start", label:"Corner 1 – left side", hint:"Stand on the left deck level with the top half of the arm. Look right along it towards the port."},
     {id:"P3", when:"start", label:"Corner 2 – bottom of the leg", hint:"Stand at the bottom right of the leg. Look diagonally up across the leg."},
@@ -3946,6 +3953,10 @@ const VAC_PHOTOS = {
     {id:"E4", when:"end", label:"Vacuum port closed", hint:"Close-up of the port with the cover on."}
   ]},
   BK: {card:"BK", normalMin:null, list:[
+    {id:"S1", when:"prep", label:"Vacuum port opened", hint:"Close-up of the vacuum port open, before connecting the hose."},
+    {id:"S2", when:"prep", label:"Vacuum valve opened", hint:"Close-up of the vacuum valve handle in the open position."},
+    {id:"S3", when:"prep", label:"Skimmer control valve half open", hint:"Close-up of the skimmer control valve set to half open."},
+    {id:"S4", when:"prep", label:"Pump cover – no bubbles", hint:"Photo through the pump cover showing no air bubbles."},
     {id:"P1", when:"start", label:"Set-up", hint:"Hose, vacuum head and telescopic pole connected at the vacuum port, bottom left. Stand at the bottom-left corner of the deck."},
     {id:"P2", when:"start", label:"Corner 1 – right half, bottom", hint:"After the right half. Stand on the bottom deck. Look up the right half of the pool."},
     {id:"P3", when:"start", label:"Corner 2 – left half, top", hint:"After the left half. Stand at the top of the left deck. Look down the left half of the pool."},
@@ -3964,6 +3975,10 @@ const VAC_PHOTOS = {
   ]},
   // JE Indoor Pool 2 -- start on the bottom deck by the vacuum port, clockwise.
   JEIP2: {card:"JEIP2", normalMin:null, list:[
+    {id:"S1", when:"prep", label:"Vacuum port opened", hint:"Close-up of the vacuum port open, before connecting the hose."},
+    {id:"S2", when:"prep", label:"Vacuum valve opened", hint:"Close-up of the vacuum valve handle in the open position."},
+    {id:"S3", when:"prep", label:"Skimmer control valve half open", hint:"Close-up of the skimmer control valve set to half open."},
+    {id:"S4", when:"prep", label:"Pump cover – no bubbles", hint:"Photo through the pump cover showing no air bubbles."},
     {id:"P1", when:"start", label:"Set-up", hint:"Hose, vacuum head and telescopic pole connected at the vacuum port, bottom left. Stand on the bottom deck and look back at the port."},
     {id:"P2", when:"start", label:"Corner 1 – top, left half", hint:"Stand on the top deck. Look down the left half of the pool."},
     {id:"P3", when:"start", label:"Corner 2 – bottom, right half", hint:"Stand on the bottom deck. Look up the right half of the pool."},
@@ -3974,6 +3989,10 @@ const VAC_PHOTOS = {
   ]},
   // JE Outdoor Pool 2 -- start at the bottom left corner by the lower stairs, clockwise.
   JEOP2: {card:"JEOP2", normalMin:null, list:[
+    {id:"S1", when:"prep", label:"Vacuum port opened", hint:"Close-up of the vacuum port open, before connecting the hose."},
+    {id:"S2", when:"prep", label:"Vacuum valve opened", hint:"Close-up of the vacuum valve handle in the open position."},
+    {id:"S3", when:"prep", label:"Skimmer control valve half open", hint:"Close-up of the skimmer control valve set to half open."},
+    {id:"S4", when:"prep", label:"Pump cover – no bubbles", hint:"Photo through the pump cover showing no air bubbles."},
     {id:"P1", when:"start", label:"Set-up", hint:"Hose, vacuum head and telescopic pole connected at the vacuum port, lower left. Stand on the left deck just above it."},
     {id:"P2", when:"start", label:"Corner 1 – top, left half", hint:"Stand on the top deck. Look down the left half of the pool."},
     {id:"P3", when:"start", label:"Corner 2 – bottom, right half", hint:"Stand on the bottom deck. Look up the right half of the pool."},
@@ -3984,6 +4003,10 @@ const VAC_PHOTOS = {
   ]},
   // TPY -- vacuum port bottom left; two pillars stand in the pool.
   TPY: {card:"TPY", normalMin:null, list:[
+    {id:"S1", when:"prep", label:"Vacuum port opened", hint:"Close-up of the vacuum port open, before connecting the hose."},
+    {id:"S2", when:"prep", label:"Vacuum valve opened", hint:"Close-up of the vacuum valve handle in the open position."},
+    {id:"S3", when:"prep", label:"Skimmer control valve half open", hint:"Close-up of the skimmer control valve set to half open."},
+    {id:"S4", when:"prep", label:"Pump cover – no bubbles", hint:"Photo through the pump cover showing no air bubbles."},
     {id:"P1", when:"start", label:"Set-up", hint:"Hose, vacuum head and telescopic pole connected at the vacuum port, bottom left. Stand on the bottom deck and look back at the port."},
     {id:"P2", when:"start", label:"Corner 1 – top left, by the ladder", hint:"Stand at the top by the stairs. Look down the left end of the pool."},
     {id:"P3", when:"start", label:"Corner 2 – bottom right", hint:"Stand at the right end of the bottom deck. Look up the right end of the pool."},
@@ -4018,6 +4041,8 @@ const VAC_PHOTOS = {
   ]},
   // JE Outdoor Pool 1 -- vacuum port upper left, one clockwise lap.
   JEOP1: {card:"JEOP1", normalMin:null, list:[
+    {id:"S1", when:"prep", label:"Vacuum port opened", hint:"Close-up of the vacuum port open, before connecting the hose."},
+    {id:"S2", when:"prep", label:"Vacuum valve opened", hint:"Close-up of the vacuum valve handle in the open position."},
     {id:"P1", when:"start", label:"Set-up", hint:"Hose, vacuum head and telescopic pole connected at the vacuum port, upper left."},
     {id:"P2", when:"start", label:"Corner 1 – top, left half", hint:"Stand on the top deck. Look down the left half of the pool."},
     {id:"P3", when:"start", label:"Corner 2 – bottom, right half", hint:"Stand on the bottom deck. Look up the right half of the pool."},
@@ -4028,6 +4053,9 @@ const VAC_PHOTOS = {
   ]},
   // JE Indoor Pool 1 -- hose goes on the skimmer port, not a vacuum port.
   JEIP1: {card:"JEIP1", normalMin:null, list:[
+    {id:"S1", when:"prep", label:"Skimmer cover and basket opened", hint:"Close-up of the skimmer with the cover and basket open."},
+    {id:"S2", when:"prep", label:"Vacuum valve opened", hint:"Close-up of the vacuum valve handle in the open position."},
+    {id:"S3", when:"prep", label:"Skimmer control valve closed", hint:"Close-up of the skimmer control valve closed. The other skimmer valves are left as they are."},
     {id:"P1", when:"start", label:"Set-up", hint:"Hose, vacuum head and telescopic pole connected at the skimmer port, left side."},
     {id:"P2", when:"start", label:"Corner 1 – top end", hint:"Stand on the top deck. Look down the left half of the pool."},
     {id:"P3", when:"start", label:"Corner 2 – bottom end", hint:"Stand on the bottom deck. Look up the right half of the pool."},
