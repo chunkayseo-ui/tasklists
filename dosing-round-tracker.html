@@ -1291,7 +1291,7 @@ function outletTonight(code){
   Object.values(state.rounds).forEach(r => {
     if(r.date !== todayKey() || !r.stops || (isTestRound(r) && !isTestMe())) return;
     const s = r.stops.find(x => x.outlet === code);
-    if(s && !isQuick(s) && s.arriveAt) stops.push({s, person:r.person});
+    if(s && !isQuick(s) && s.arriveAt) stops.push({s: (r.closedAt && !s.departAt) ? Object.assign({}, s, {departAt:r.closedAt}) : s, person:r.person});
   });
   if(!stops.length) return {k:"open", names:[], left:0};
   const names = [...new Set(stops.map(x => x.person))];
@@ -1306,7 +1306,7 @@ function othersOn(code){
   const mine = myId();
   const names = new Set();
   Object.values(state.rounds).forEach(r => {
-    if(r.id === mine || r.date !== todayKey() || !r.stops || isTestRound(r) !== isTestMe()) return;
+    if(r.id === mine || r.closedAt || r.date !== todayKey() || !r.stops || isTestRound(r) !== isTestMe()) return;
     if(r.stops.some(s => s.outlet === code)) names.add(r.person);
   });
   return [...names];
@@ -1933,6 +1933,7 @@ function runningTask(r){
   return null;
 }
 function crewState(r){
+  if(r && r.closedAt) return {k:"idle", label:"Earlier round · reset " + clockOf(r.closedAt)};
   if(!r || !r.stops.some(everVisited)) return {k:"idle", label:"Not started"};
   const a = activeStop(r);
   if(a){
@@ -2114,7 +2115,7 @@ function withRound(fn, errMsg){
 // touches another pool's identical-looking task.
 async function syncExtraToLiveRounds(outlet, job, action){
   const today = todayKey();
-  const jobs = Object.values(state.rounds).filter(r => r.date === today);
+  const jobs = Object.values(state.rounds).filter(r => r.date === today && !r.closedAt);
   const matches = t => t.name === job.name && t.kind === job.kind && (t.pool||null) === (job.pool||null);
   for(const orig of jobs){
     const r = clone(orig);
@@ -2151,7 +2152,7 @@ async function syncTaskToOtherRounds(outlet, task, patch){
   const mine = myId(), today = todayKey();
   if(isTestMe()) return;
   const matches = t => t.name === task.name && t.kind === task.kind && (t.pool||null) === (task.pool||null);
-  const others = Object.values(state.rounds).filter(r => r.id !== mine && r.date === today && !isTestRound(r));
+  const others = Object.values(state.rounds).filter(r => r.id !== mine && r.date === today && !isTestRound(r) && !r.closedAt);
   for(const orig of others){
     const r = clone(orig);
     const s = r.stops.find(x => x.outlet === outlet && !x.departAt);
@@ -2755,7 +2756,7 @@ function convertIssueToTask(id){
 // departed yet. Matched by issueId so it's never added twice.
 async function syncIssueTaskToLiveRounds(outlet, issue){
   const today = todayKey();
-  const jobs = Object.values(state.rounds).filter(r => r.date === today);
+  const jobs = Object.values(state.rounds).filter(r => r.date === today && !r.closedAt);
   for(const orig of jobs){
     const r = clone(orig);
     const s = r.stops.find(x => x.outlet === outlet && !x.departAt);
@@ -4738,7 +4739,9 @@ function taskRow(s, t){
                : running  ? '<span class="tag st-prog">In Progress</span>'
                : t.cantFinish ? '<span class="tag st-cant">Can\'t finish</span>'
                           : '<span class="tag st-open">Open</span>';
+  // A job added in Task Setting only carries a tag when it's a must-do.
   const tag = t.kind==="required" ? '<span class="tag req">Must do</span>'
+            : (t.kind==="optional" && t.extraId) ? ""
             : t.kind==="optional" ? '<span class="tag opt">If time allows</span>'
             : t.kind==="issue"    ? '<span class="tag urgent">Reported issue</span>'
             : '<span class="tag add">Added</span>';
@@ -6214,7 +6217,7 @@ function branchJobsList(){
         ${catTag(e.category)}
         ${e.stuck ? `<span class="tag st-cant">Couldn't finish ${esc(fmtDate(e.stuck.date))}</span>` : ""}
         ${e.pool ? `<span class="tag pool">${esc(e.pool)}</span>` : ""}
-        ${e.kind === "required" ? '<span class="tag req">Must do</span>' : '<span class="tag opt">If time allows</span>'}
+        ${e.kind === "required" ? '<span class="tag req">Must do</span>' : ""}
         ${when}
         ${e.assignee ? `<span class="tag for">For ${esc(e.assignee)}</span>` : ""}
         ${e.assignee && e.notified ? (e.notified.ok ? `<span class="note" style="font-size:12.5px">✓ Telegram sent ${esc(clockOf(e.notified.at))}</span>` : `<span class="note dev" style="font-size:12.5px">Telegram not sent — ${esc(e.notified.err || "")} <button class="link" data-renotify="${o.code}|${e.id}" style="font-size:12.5px;padding:0">send again</button></span>`) : ""}
@@ -6367,6 +6370,7 @@ function wire(){
       const now = new Date(), keep = clone(r);
       keep.id = id + "__" + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
       keep.closedAt = now.toISOString(); keep.headingTo = null;
+      (keep.stops || []).forEach(st => { if(st.arriveAt && !st.departAt) st.departAt = keep.closedAt; });
       try{ await saveRound(keep); }catch(e){ flash("Couldn't save the old round, so it wasn't reset. Try again."); return; }
     }
     delete state.rounds[id];
