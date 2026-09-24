@@ -1770,7 +1770,7 @@ function tasksFor(outlet){
   if(!pools){
     const req = state.cfg.required.map(n => ({id:uid(), name:n, kind:"required", startedAt:null, doneAt:null, claimedBy:null}));
     const asg = asgNames.map(n => ({id:uid(), name:n, kind:"optional", startedAt:null, doneAt:null, claimedBy:null}));
-    const ex  = extraList.map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null, category:e.category||null, lastStuck:e.stuck||null}));
+    const ex  = extraList.map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null, category:e.category||null, lastStuck:e.stuck||null, stuckHistory:e.history||null}));
     return req.concat(asg).concat(ex).concat(issueTasks);
   }
 
@@ -1783,12 +1783,12 @@ function tasksFor(outlet){
   // that pool was added after the standing ones.
   const wholeOutlet = extraList
     .filter(e => !e.pool)
-    .map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null, category:e.category||null, lastStuck:e.stuck||null}));
+    .map(e => ({id:uid(), name:e.name, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null, category:e.category||null, lastStuck:e.stuck||null, stuckHistory:e.history||null}));
   const perPool = pools.flatMap(p => {
     const req = state.cfg.required.map(n => ({id:uid(), name:n, pool:p, kind:"required", startedAt:null, doneAt:null, claimedBy:null}));
     const asg = asgNames.map(n => ({id:uid(), name:n, pool:p, kind:"optional", startedAt:null, doneAt:null, claimedBy:null}));
     const ex  = extraList.filter(e => e.pool === p)
-      .map(e => ({id:uid(), name:e.name, pool:p, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null, category:e.category||null, lastStuck:e.stuck||null}));
+      .map(e => ({id:uid(), name:e.name, pool:p, kind:e.kind==="required"?"required":"optional", startedAt:null, doneAt:null, claimedBy:null, addedBy:e.addedBy||null, extraId:e.id, assignee:e.assignee||null, category:e.category||null, lastStuck:e.stuck||null, stuckHistory:e.history||null}));
     return req.concat(asg).concat(ex);
   });
   return wholeOutlet.concat(issueTasks).concat(perPool);
@@ -1999,8 +1999,22 @@ function requiredLeft(s){ return isQuick(s) ? 0 : s.tasks.filter(t => t.kind==="
 const CANT_REASONS = ["Need parts / tools", "Need a contractor", "Not enough time tonight", "Can't access the area", "Other"];
 function cantLine(c, prefix){
   if(!c) return "";
-  const when = c.date && c.date !== todayKey() ? fmtDate(c.date) : (c.at ? clockOf(c.at) : "");
+  const when = (c.date && c.date !== todayKey() ? fmtDate(c.date) + " " : "") + (c.at ? clockOf(c.at) : "");
   return `${prefix}${esc(c.reason)}${c.note ? " — " + esc(c.note) : ""} · ${esc(c.by || "")}${when ? " · " + esc(when) : ""}`;
+}
+// Every "can't finish" for a job, oldest first -- earlier visits (kept on the
+// Task Setting job) and tonight's -- so a new reason never hides the old ones.
+function attemptsFor(s, t){
+  let list = [];
+  if(t.extraId && s){ const e = ((state.cfg.extra || {})[s.outlet] || []).find(x => x.id === t.extraId); if(e && e.history) list = e.history.slice(); }
+  if(!list.length && t.stuckHistory) list = t.stuckHistory.slice();
+  const add = h => { if(h && !list.some(x => x.at === h.at)) list.push(h); };
+  add(t.lastStuck); (t.cantHistory || []).forEach(add); add(t.cantFinish);
+  return list.sort((a, b) => String(a.at || "") < String(b.at || "") ? -1 : 1);
+}
+function attemptsHtml(list, wrap){
+  if(!list.length) return "";
+  return list.map((h, i) => wrap(`<span class="cant-read">⚠ ${list.length > 1 ? "Try " + (i + 1) + ": " : ""}${cantLine(h, "")}</span>${h.photos && h.photos.length ? photoStripHtml(h.photos, (x, j) => "Try " + (i + 1) + " photo " + (j + 1)) : ""}`)).join("");
 }
 function markExtraStuck(outlet, id, rec){
   const c = clone(state.cfg); const e = ((c.extra || {})[outlet] || []).find(x => x.id === id); if(!e) return;
@@ -2014,21 +2028,25 @@ function cantFinishTask(code, tid, reason, note, photos){
   if(!t0 || t0.doneAt) return;
   if(t0.startedAt && t0.claimedBy && t0.claimedBy !== state.me){ flash(t0.claimedBy + " is on this job — only they can stop it."); return; }
   if(!reason){ flash("Pick why it can't be finished."); return; }
-  let rec = null, key = null, extra = null, vacQ = [], vac = null;
+  const dScope = "done|" + code + "|" + tid, dKey = code + "|" + tid;
+  photos = (photos || []).concat(fpDone(dScope));
+  if(!(note || "").trim() && state.doneNote[dKey]) note = state.doneNote[dKey];
+  let rec = null, key = null, extra = null, vacQ = [], vac = null, hist = [];
   return withRound(r => {
     const s = r.stops.find(x => x.outlet === code); if(!s) return false;
     const t = s.tasks.find(x => x.id === tid); if(!t || t.doneAt) return false;
     rec = {reason, note:(note || "").trim().slice(0, 300), photos:(photos || []).filter(x => x && x.fileId), by:state.me, at:new Date().toISOString(), date:todayKey(), startedAt:t.startedAt || null};
     if(t.startedAt && vacSpec(code, t)){ const vq = vacLeftUnfinished(code, t, r.id); if(vq){ t.vac = vq.vac; vac = vq.vac; vacQ = vq.queued; } }
-    t.cantFinish = rec; t.startedAt = null; t.claimedBy = null;
+    t.cantHistory = (t.cantHistory || []).concat([rec]);
+    t.cantFinish = rec; t.startedAt = null; t.claimedBy = null; hist = t.cantHistory;
     key = {name:t.name, kind:t.kind, pool:t.pool || null};
     extra = t.extraId ? {outlet:s.outlet, id:t.extraId} : null;
   }, "Couldn't save that. Try again.").then(() => {
     if(!rec) return;
-    syncTaskToOtherRounds(code, key, Object.assign({cantFinish:rec, startedAt:null, claimedBy:null}, vac ? {vac} : {}));
+    syncTaskToOtherRounds(code, key, Object.assign({cantFinish:rec, cantHistory:hist, startedAt:null, claimedBy:null}, vac ? {vac} : {}));
     vacQ.forEach(q => { photoQ.add(q.item); delete state.vac[q.key]; });
     if(extra && !isTestMe()) markExtraStuck(extra.outlet, extra.id, rec);
-    state.cant = null; delete state.fp["cant|" + code];
+    state.cant = null; delete state.fp["cant|" + code]; delete state.fp[dScope]; delete state.doneNote[dKey];
     flash(extra ? "Noted — it stays on the list for the next visit." : "Noted — the supervisor can see why.");
     render();
   });
@@ -2052,7 +2070,7 @@ function cantFormHtml(s, t){
   return `<div class="cant-form">
     <b>Can't finish “${esc(t.name)}”${t.pool ? " (" + esc(t.pool) + ")" : ""} — why?</b>
     <div class="aj-chips">${chips}</div>
-    <textarea id="cant-note" rows="2" maxlength="300" placeholder="What's needed / how far you got (optional)"></textarea>
+    <textarea id="cant-note" rows="2" maxlength="300" placeholder="What's needed / how far you got (optional)">${esc(state.doneNote[key] || "")}</textarea>
     ${formPhotosHtml(scope, "problem")}
     <div class="row-2">
       <button class="btn warn sm" style="flex:1" data-cantsave="${key}" ${c.reason && !fpBusy(scope) ? "" : "disabled"}>${fpBusy(scope) ? "Wait for the photo…" : "Save — can't finish"}</button>
@@ -2474,7 +2492,7 @@ function claimTask(code, tid){
     }
     t.startedAt = new Date().toISOString();
     t.claimedBy = state.me;
-    if(t.cantFinish){ t.lastStuck = t.cantFinish; t.cantFinish = null; }
+    if(t.cantFinish){ t.cantHistory = t.cantHistory && t.cantHistory.some(h => h.at === t.cantFinish.at) ? t.cantHistory : (t.cantHistory || []).concat([t.cantFinish]); t.cantFinish = null; }
     claimed = {name:t.name, kind:t.kind, pool:t.pool||null, startedAt:t.startedAt, claimedBy:t.claimedBy};
     stopOutlet = s.outlet;
   }, "Couldn't claim that job. Try again.").then(async () => {
@@ -2532,6 +2550,7 @@ function finishTask(code, tid){
     const t = s.tasks.find(x=>x.id===tid); if(!t || !t.startedAt || t.doneAt) return false;
     if(t.claimedBy !== state.me) return false;
     t.doneAt = new Date().toISOString();
+    if(t.extraId){ const e = ((state.cfg.extra || {})[s.outlet] || []).find(x => x.id === t.extraId); if(e && e.history && e.history.length) t.stuckHistory = e.history.slice(); }
     if(donePhotos.length) t.donePhotos = donePhotos;
     if(doneNote) t.doneNote = doneNote;
     finished = {name:t.name, kind:t.kind, pool:t.pool||null, doneAt:t.doneAt};
@@ -4785,8 +4804,10 @@ function taskRow(s, t){
                : "") + (t.photos && t.photos.length ? `<span class="wt-read">${photoStripHtml(t.photos, (x, i) => "Job photo " + (i+1))}</span>` : "")
                + (finished && t.doneNote ? `<span class="wt-read">📝 ${esc(t.doneNote)}</span>` : "")
                + (finished && t.donePhotos && t.donePhotos.length ? `<span class="wt-read">${photoStripHtml(t.donePhotos, (x, i) => "Work photo " + (i+1))}</span>` : "")
-               + (t.cantFinish ? `<span class="wt-read cant-read">⚠ ${cantLine(t.cantFinish, "")}</span>${t.cantFinish.photos && t.cantFinish.photos.length ? `<span class="wt-read">${photoStripHtml(t.cantFinish.photos, (x, i) => "Can't finish photo " + (i+1))}</span>` : ""}${(!finished && t.vac) ? `<span class="wt-read">${vacSummaryHtml(s.outlet, t)}</span>` : ""}`
-                  : (!finished && t.lastStuck) ? `<span class="wt-read cant-read">Not finished last time: ${cantLine(t.lastStuck, "")}</span>` : "");
+               + (() => { const at = attemptsFor(s, t); if(!at.length) return "";
+                   const head = t.cantFinish ? "" : `<span class="wt-read cant-read" style="font-weight:600">${finished ? "Before it was done:" : "Not finished before:"}</span>`;
+                   return head + attemptsHtml(at, x => `<span class="wt-read">${x}</span>`); })()
+               + ((t.cantFinish && !finished && t.vac) ? `<span class="wt-read">${vacSummaryHtml(s.outlet, t)}</span>` : "");
   const canCant = !finished && !s.departAt && !t.cantFinish && !isQuick(s) && (!running || mine);
   const cantBtn = canCant ? `<button class="link cant-link" data-cantopen="${key}">Can't finish</button>` : "";
   const cantForm = (state.cant && state.cant.key === key && canCant) ? cantFormHtml(s, t) : "";
@@ -5274,8 +5295,7 @@ function cantFinishBlock(rounds){
     const cancelling = state.stuckCancel === k;
     return `<div class="stuck-row">
       <div><strong>${esc(o)}</strong>${e.pool ? ` <span class="tag pool">${esc(e.pool)}</span>` : ""} — ${esc(e.name)} ${catTag(e.category)}${e.assignee ? `<span class="tag for">For ${esc(e.assignee)}</span>` : ""}</div>
-      <div class="cant-read">⚠ ${cantLine(st, "")}${tries > 1 ? ` <span class="muted">(${tries} tries)</span>` : ""}</div>
-      ${st.photos && st.photos.length ? photoStripHtml(st.photos, (x, i) => "Photo " + (i+1)) : ""}
+      ${attemptsHtml((e.history && e.history.length) ? e.history : [st], x => `<div>${x}</div>`)}
       ${cancelling ? `<div class="stuck-acts"><input type="text" id="stuck-cancel-why" maxlength="120" placeholder="Why cancel? (optional)" style="flex:1;min-width:160px"><button class="btn warn sm" data-stuckcancelok="${k}">Cancel the job</button><button class="btn sm" data-stuckcancelno>Back</button></div>`
       : `<div class="stuck-acts">
         <button class="btn sm primary" data-stuckkeep="${k}">Keep for next visit</button>
