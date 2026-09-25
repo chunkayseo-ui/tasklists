@@ -4506,8 +4506,8 @@ function vacSummaryHtml(code, t){
 function techView(){
   if(!state.me) return pickPerson();
   if(!VAC_MODE && vacDayFor(state.me) && !myRound() && !/[?&]mode=night\b/.test(location.search)){
-    setTimeout(() => location.replace(location.pathname + "?mode=vacuum"), 0);
-    return `<div class="card" style="padding:20px"><b>Opening your Friday Vacuum Round…</b> <a href="?mode=vacuum">Tap here if it doesn't open</a></div>`;
+    setTimeout(() => location.replace("vacuum-round.html"), 0);
+    return `<div class="card" style="padding:20px"><b>Opening your Friday Vacuum Round…</b> <a href="vacuum-round.html">Tap here if it doesn't open</a></div>`;
   }
   const r = myRound();
   if(r) setTimeout(autoAddAssigned, 0);
