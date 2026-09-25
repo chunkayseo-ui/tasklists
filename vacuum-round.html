@@ -1952,10 +1952,42 @@ const everVisited = s => !!(s && (s.arriveAt || (s.visits && s.visits.length)));
 // taken; without the claimedBy check here, a teammate's claim showing up in
 // my own round would look like MY current job and wrongly block me from
 // claiming something else of my own.
+// A paused job (on a break) is not "running": it doesn't hold the one-job-at-
+// a-time rule, and stepping out is allowed while it waits.
 function runningTask(r){
   if(!r) return null;
-  for(const s of r.stops){ const t = s.tasks.find(x => x.startedAt && !x.doneAt && x.claimedBy === r.person); if(t) return {stop:s, task:t}; }
+  for(const s of r.stops){ const t = s.tasks.find(x => x.startedAt && !x.doneAt && !x.paused && x.claimedBy === r.person); if(t) return {stop:s, task:t}; }
   return null;
+}
+// Minutes on the job, with breaks taken out; and the total break time.
+function breakMins(t, upTo){
+  let m = 0; (t.breaks || []).forEach(b => { m += mins(b.from, b.to); });
+  if(t.paused) m += mins(t.paused, upTo || new Date().toISOString());
+  return m;
+}
+function taskMins(t){
+  if(!t.startedAt) return 0;
+  const end = t.doneAt || new Date().toISOString();
+  return Math.max(0, mins(t.startedAt, end) - breakMins(t, end));
+}
+function pauseTask(code, tid){
+  let key = null;
+  withRound(r => {
+    const s = r.stops.find(x => x.outlet === code); if(!s) return false;
+    const t = s.tasks.find(x => x.id === tid); if(!t || !t.startedAt || t.doneAt || t.paused) return false;
+    if(t.claimedBy !== state.me) return false;
+    t.paused = new Date().toISOString(); key = {name:t.name, kind:t.kind, pool:t.pool||null, paused:t.paused};
+  }, "Couldn't pause that. Try again.").then(() => { if(key) syncTaskToOtherRounds(code, key, {paused:key.paused}); });
+}
+function resumeTask(code, tid){
+  let key = null, breaks = null;
+  withRound(r => {
+    const s = r.stops.find(x => x.outlet === code); if(!s) return false;
+    const t = s.tasks.find(x => x.id === tid); if(!t || !t.paused) return false;
+    if(t.claimedBy !== state.me) return false;
+    t.breaks = (t.breaks || []).concat([{from:t.paused, to:new Date().toISOString()}]); t.paused = null;
+    key = {name:t.name, kind:t.kind, pool:t.pool||null}; breaks = t.breaks;
+  }, "Couldn't resume that. Try again.").then(() => { if(key) syncTaskToOtherRounds(code, key, {paused:null, breaks}); });
 }
 function crewState(r){
   if(r && r.closedAt) return {k:"idle", label:"Earlier round · reset " + clockOf(r.closedAt)};
@@ -2279,8 +2311,8 @@ function depart(code){
 function stepOut(code){
   const r0 = myRound(), s0 = r0 && r0.stops.find(x => x.outlet === code);
   if(!s0 || !s0.arriveAt || s0.departAt) return;
-  const running = s0.tasks.find(t => t.startedAt && !t.doneAt && t.claimedBy === r0.person);
-  if(running){ flash("Finish “" + running.name + "” first, then step out."); return; }
+  const running = s0.tasks.find(t => t.startedAt && !t.doneAt && !t.paused && t.claimedBy === r0.person);
+  if(running){ flash("Finish “" + running.name + "” first — or pause it for a break — then step out."); return; }
   let n = -1;
   withRound(r => {
     const s = r.stops.find(x => x.outlet === code); if(!s || !s.arriveAt || s.departAt) return false;
@@ -4272,8 +4304,10 @@ const vacSpec = (code, t) => relayCfg() ? vacSpecFor(code, t) : null;
 state.vac = state.vac || {};
 const vacLocal = key => (state.vac[key] = state.vac[key] || {});
 const vacSaved = t => (t && t.vac && t.vac.photos) || {};
+const vacSkipped = t => (t && t.vacSkipped) || {};
 function vacSlotState(key, t, id){
   const saved = vacSaved(t)[id], loc = vacLocal(key)[id];
+  if(!saved && vacSkipped(t)[id]) return "skipped";
   if(loc && (loc.status === "preparing" || loc.status === "uploading" || loc.status === "failed")) return loc.status;
   if(saved) return saved.pending ? "queued" : "done";
   return "todo";
@@ -4286,10 +4320,35 @@ function vacSaveState(key, t, spec){
   const next = vacNext(key, t, spec);
   if(next) return {ok:false, label:`Take ${next.id} next — ${next.label}`};
   if(st.some(x => x === "failed")) return {ok:true, label:"Save now · photos upload later", queue:true};
-  return {ok:true, label:"Vacuum done · save"};
+  const sk = Object.keys(vacSkipped(t)).filter(id => spec.list.some(p => p.id === id && !vacSaved(t)[id])).length;
+  return {ok:true, label: sk ? `Save · partly done (${sk} section${sk > 1 ? "s" : ""} skipped)` : "Vacuum done · save"};
 }
 const vacPayload = (code, poolKey, t, slot, ph, n) => ({kind:"job", outlet:code, pool:poolKey, job:`${t.name} · ${slot.id} ${slot.label}`,
   person:state.me, takenAt:ph.takenAt, date:todayKey(), tool:"none", wantReading:false, imageBase64:ph.base64, photoNo:n});
+// Out of time (swimmers arriving, pool opening): the vacuuming sections still
+// to do can be skipped with a reason, so the close-down steps can be done and
+// the job saved as partly done. Prep and close-down steps can never be skipped.
+const VAC_SKIP_REASONS = ["Swimmers arriving", "Pool opening", "Out of time", "Other"];
+function vacSkip(code, tid, ids, reason){
+  if(!reason){ flash("Say why the section is skipped."); return; }
+  let key = null, sk = null;
+  withRound(r => {
+    const s = r.stops.find(x => x.outlet === code); if(!s) return false;
+    const t = s.tasks.find(x => x.id === tid); if(!t || t.doneAt || t.claimedBy !== state.me) return false;
+    const spec = vacSpec(code, t); if(!spec) return false;
+    t.vacSkipped = Object.assign({}, t.vacSkipped || {});
+    ids.forEach(id => { const p = spec.list.find(x => x.id === id); if(p && p.when === "start") t.vacSkipped[id] = {reason, at:new Date().toISOString(), by:state.me}; });
+    key = {name:t.name, kind:t.kind, pool:t.pool||null}; sk = t.vacSkipped;
+  }, "Couldn't save the skip. Try again.").then(() => { state.vacSkipForm = null; if(key) syncTaskToOtherRounds(code, key, {vacSkipped:sk}); });
+}
+function vacUnskip(code, tid, id){
+  let key = null, sk = null;
+  withRound(r => {
+    const s = r.stops.find(x => x.outlet === code); if(!s) return false;
+    const t = s.tasks.find(x => x.id === tid); if(!t || !t.vacSkipped || !t.vacSkipped[id]) return false;
+    delete t.vacSkipped[id]; key = {name:t.name, kind:t.kind, pool:t.pool||null}; sk = t.vacSkipped;
+  }, "Couldn't undo that.").then(() => { if(key) syncTaskToOtherRounds(code, key, {vacSkipped:sk}); });
+}
 function vacTaskOf(key){
   const [code, tid] = key.split("|");
   const r = myRound(); const s = r && r.stops.find(x => x.outlet === code); const t = s && s.tasks.find(x => x.id === tid);
@@ -4370,7 +4429,8 @@ function vacuumPanel(s, t){
       : `<div class="ph-empty" aria-hidden="true">📷</div>`;
     let status, actions = "";
     const pb = vacBadge(spec.card, p.id);
-    if(st === "done") status = `<span class="ph-status ok">${pb}${esc(p.label)} · ${clockOf(at)}</span>`;
+    if(st === "skipped"){ const k = vacSkipped(t)[p.id]; status = `<span class="ph-status" style="color:#B42318">${pb}${esc(p.label)} · <b>skipped</b> — ${esc(k.reason)}</span>`; actions = `<button class="link" type="button" data-vacunskip="${key}|${p.id}">undo skip</button>`; }
+    else if(st === "done") status = `<span class="ph-status ok">${pb}${esc(p.label)} · ${clockOf(at)}</span>`;
     else if(st === "queued") status = `<span class="ph-status ok">${pb}taken ${clockOf(at)}, uploads later</span>`;
     else if(st === "preparing" || st === "uploading") status = `<span class="ph-status">${pb}${st}…</span>`;
     else if(st === "failed"){
@@ -4378,10 +4438,24 @@ function vacuumPanel(s, t){
       actions = `<button class="btn sm" type="button" data-vacretry="${key}|${p.id}">Retry upload</button>`;
     } else if(isNext){
       status = `<span class="ph-status">${pb}<b>${esc(p.label)}</b><br>${esc(p.hint)}</span>`;
-      actions = `<button class="btn sm primary" type="button" data-vacbtn="${key}|${p.id}">📷 Take ${p.id}</button><input type="file" accept="image/*" capture="environment" hidden data-vacin="${key}|${p.id}">`;
+      actions = t.paused ? `<span class="muted">Resume the job to take this photo.</span>`
+        : `<button class="btn sm primary" type="button" data-vacbtn="${key}|${p.id}">📷 Take ${p.id}</button><input type="file" accept="image/*" capture="environment" hidden data-vacin="${key}|${p.id}">${p.when === "start" && p.id !== spec.list.find(x => x.when === "start").id ? `<button class="link" type="button" data-vacskipopen="${key}|${p.id}">Skip this section</button>` : ""}`;
     } else status = `<span class="ph-status" style="color:var(--ink-3)">${pb}${esc(p.label)}</span>`;
     return `<div class="wt-photo${st === "todo" && !isNext ? "" : " has"}">${img}<div class="ph-main">${status}<div class="ph-actions">${actions}</div></div></div>`;
   };
+  // "Out of time" -- skip every vacuuming section still to do, in one go
+  const restIds = spec.list.filter(p => p.when === "start" && p.id !== spec.list.find(x => x.when === "start").id && vacSlotState(key, t, p.id) === "todo").map(p => p.id);
+  const sf = state.vacSkipForm;
+  const skipForm = (sf && sf.key === key) ? `<div class="cant-form">
+      <b>Skip ${sf.ids.length > 1 ? "the rest of the vacuuming (" + sf.ids.join(", ") + ")" : sf.ids[0]} — why?</b>
+      <div class="aj-chips">${VAC_SKIP_REASONS.map(x => `<button type="button" class="tog" data-vacskipreason="${esc(x)}" aria-pressed="${sf.reason === x}">${esc(x)}</button>`).join("")}</div>
+      <p class="note" style="margin:0">The close-down steps (E) still have to be done and photographed before the job can be saved.</p>
+      <div class="row-2"><button class="btn warn sm" style="flex:1" data-vacskipsave="${key}" ${sf.reason ? "" : "disabled"}>Skip — go to close-down</button><button class="btn sm" style="flex:1" data-vacskipcancel>Cancel</button></div>
+    </div>` : "";
+  const skipRest = (!t.paused && restIds.length && !(sf && sf.key === key)) ? `<button type="button" class="btn sm" data-vacskiprest="${key}" style="align-self:flex-start;color:#B42318;border-color:#F5B5AE">⏭ Out of time — skip the rest of the vacuuming (${restIds.length} section${restIds.length > 1 ? "s" : ""})</button>` : "";
+  const pauseBtn = t.paused
+    ? `<div class="cant-form" style="border-color:var(--warn);background:#FFF8E6"><b>⏸ On a break since ${clockOf(t.paused)} · ${liveDur(t.paused)}</b><span class="note" style="margin:0">The job's time is not counting. You can step out of the outlet and come back. Photos taken so far are kept.</span><button type="button" class="btn primary sm" data-vacresume="${key}" style="align-self:flex-start">▶ Resume the vacuum</button></div>`
+    : `<button type="button" class="btn sm" data-vacpause="${key}" style="align-self:flex-start">⏸ Take a break (prayer / rest) — pause the job</button>`;
   const group = (when, title) => { const items = spec.list.filter(p => p.when === when); return items.length ? `<span class="wt-lbl" style="margin-top:4px">${title}</span>${items.map(slotHtml).join("")}` : ""; };
   const sst = vacSaveState(key, t, spec);
   const card = spec.card ? ` <a href="${VAC_ROUTE_URL}#${encodeURIComponent(spec.card)}" target="_blank" rel="noopener">Open the route card</a> to see where each one is taken.` : "";
@@ -4392,8 +4466,9 @@ function vacuumPanel(s, t){
       if(m && vacMap.hidden) return `<button type="button" class="btn sm vac-map-show" data-vacmaptoggle>🗺️ Show route map${p ? ` · next ${esc(p.id)}` : ""}</button>`;
       return m ? `<figure class="vac-map${vacMap.noPhotos ? " no-photos" : ""}" data-vacmap="${esc(spec.card)}"><button type="button" class="vac-photos-btn" data-vacphotostoggle aria-pressed="${vacMap.noPhotos ? "false" : "true"}">📷 ${vacMap.noPhotos ? "Show" : "Hide"} photo points</button><button type="button" class="vac-map-hide" data-vacmaptoggle aria-label="Hide route map">Hide map ✕</button>${m}${(window.VacPlay && VacPlay.has(vacMapSvg(spec.card))) ? `<button type="button" class="vac-play-btn" data-vacplay="${esc(spec.card)}">▶ Play the vacuum steps</button>` : ""}<figcaption>${p ? `<b>Next: ${esc(p.id)} · ${esc(p.label)}</b> — ${p.when !== "start" ? "a close-up, taken at the ringed badge." : "stand at the ringed badge and point the camera along its arrow."}` : "All photos taken."}</figcaption></figure>`
                : (spec.card && !vacMap.tried ? `<p class="note" style="margin:0" data-vacmap="${esc(spec.card)}">Loading the route card…</p>` : ""); })()}
-    <div class="stack" style="gap:8px">${group("prep", "Before starting — preparation")}${group("start", "At the start and each corner")}${group("end", "After vacuuming the pool")}</div>
-    <button class="btn primary big" data-vacsave="${key}" ${sst.ok ? "" : "disabled"}>${esc(sst.label)}</button>
+    ${pauseBtn}
+    <div class="stack" style="gap:8px">${group("prep", "Before starting — preparation")}${group("start", "At the start and each corner")}${skipForm}${skipRest}${group("end", "After vacuuming the pool")}</div>
+    <button class="btn primary big" data-vacsave="${key}" ${sst.ok || t.paused ? "" : "disabled"} ${t.paused ? "disabled" : ""}>${esc(t.paused ? "Paused — resume first" : sst.label)}</button>
   </div>`;
 }
 function finishVacuum(code, tid){
@@ -4406,9 +4481,14 @@ function finishVacuum(code, tid){
     const l = loc[p.id];
     if(l && l.status === "failed" && l.base64){ const qid = uid(); photos[p.id] = {pending:true, queueId:qid, takenAt:l.takenAt}; queued.push({qid, p, l, n:i+1}); }
   });
-  const a = photos[spec.list[0].id], b = photos[spec.list[spec.list.length-1].id];
+  if(t0.paused){ flash("Resume the job first."); return; }
+  const skipped = {}; Object.keys(vacSkipped(t0)).forEach(id => { if(spec.list.some(p => p.id === id) && !photos[id]) skipped[id] = vacSkipped(t0)[id]; });
+  const ids = spec.list.map(p => p.id).filter(id => photos[id]);
+  const a = photos[ids[0]], b = photos[ids[ids.length-1]];
   const firstAt = (a && a.takenAt) || null, lastAt = (b && b.takenAt) || null;
-  const vac = {photos, firstAt, lastAt, minutes:(firstAt && lastAt) ? mins(firstAt, lastAt) : null, normalMin:spec.normalMin || null};
+  const brk = breakMins(t0, lastAt || undefined);
+  const vac = Object.assign({photos, firstAt, lastAt, minutes:(firstAt && lastAt) ? Math.max(0, mins(firstAt, lastAt) - brk) : null, normalMin:spec.normalMin || null},
+    brk ? {breakMin:brk} : {}, Object.keys(skipped).length ? {skipped} : {});
   let finished = null;
   withRound(r => {
     const s = r.stops.find(x => x.outlet === code); if(!s) return false;
@@ -4499,7 +4579,10 @@ function vacSummaryHtml(code, t){
   const quick = (v.normalMin && v.minutes !== null && v.minutes < v.normalMin * 0.6) ? ` <span class="dev">⚠ much quicker than the usual ${dur(v.normalMin)}</span>` : "";
   const missing = spec && got.length < spec.list.length ? ` <span class="dev">⚠ ${spec.list.length - got.length} photo${spec.list.length - got.length > 1 ? "s" : ""} missing</span>` : "";
   const left = v.unfinished ? ` <span class="dev">⚠ left without finishing — ${got.length}${spec ? " of " + spec.list.length : ""} photos</span>` : "";
-  return `Vacuum photo proof · ${got.length}${spec ? " of " + spec.list.length : ""} photos${len}${quick}${left}${v.unfinished ? "" : missing}${pending ? ` · <span class="muted">📷 ${pending} upload${pending > 1 ? "s" : ""} pending</span>` : ""}
+  const skIds = Object.keys(v.skipped || {});
+  const skipped = skIds.length ? ` <span class="dev">⚠ partly done — skipped ${skIds.map(id => id + (spec && spec.list.find(p => p.id === id) ? " " + spec.list.find(p => p.id === id).label : "")).join(", ")} (${esc(v.skipped[skIds[0]].reason)})</span>` : "";
+  const brk = v.breakMin ? ` · ${dur(v.breakMin)} break` : "";
+  return `Vacuum photo proof · ${got.length}${spec ? " of " + spec.list.length : ""} photos${len}${brk}${quick}${left}${skipped}${(v.unfinished || skIds.length) ? "" : missing}${pending ? ` · <span class="muted">📷 ${pending} upload${pending > 1 ? "s" : ""} pending</span>` : ""}
     ${vacTimelineHtml(spec && spec.card, got)}${photoStripHtml(up, x => `${x.id}${x.label ? " " + x.label : ""}${x.takenAt ? " · " + clockOf(x.takenAt) : ""}`)}`;
 }
 
@@ -4769,7 +4852,7 @@ function taskRow(s, t){
   // teammate at the same outlet sees who has it, but can't act on it.
   const mine = !!t.claimedBy && t.claimedBy === state.me && !conflict;
   const status = finished ? '<span class="tag st-done">Done</span>'
-               : running  ? '<span class="tag st-prog">In Progress</span>'
+               : running  ? (t.paused ? '<span class="tag st-prog">⏸ Paused · on a break</span>' : '<span class="tag st-prog">In Progress</span>')
                : t.cantFinish ? '<span class="tag st-cant">Can\'t finish</span>'
                           : '<span class="tag st-open">Open</span>';
   // A job added in Task Setting only carries a tag when it's a must-do.
@@ -4784,10 +4867,10 @@ function taskRow(s, t){
   const range = rangeOf(t);
   if(finished){
     if(mine){
-      time = `<span class="task-time" style="color:var(--ok)">${dur(mins(t.startedAt,t.doneAt))}${range?" · "+range:""}</span>`;
+      time = `<span class="task-time" style="color:var(--ok)">${dur(taskMins(t))}${range?" · "+range:""}${breakMins(t, t.doneAt) ? " · " + dur(breakMins(t, t.doneAt)) + " break" : ""}</span>`;
     } else if(!conflict){
       // Someone else's finished job, no dispute: say who and when.
-      time = `<span class="task-time muted">${t.claimedBy?esc(t.claimedBy)+" · ":""}${range||dur(mins(t.startedAt,t.doneAt))}</span>`;
+      time = `<span class="task-time muted">${t.claimedBy?esc(t.claimedBy)+" · ":""}${range||dur(taskMins(t))}</span>`;
     } else {
       // Conflicting copies: showing this round's own name/time next to it
       // would misattribute the other round's real timing to this one, so
@@ -4813,7 +4896,7 @@ function taskRow(s, t){
   } else if(running){
     const who = esc(t.claimedBy || "Claimed");
     time = mine
-      ? `<span class="task-time" style="color:var(--warn)">${liveDur(t.startedAt)}</span>`
+      ? `<span class="task-time" style="color:var(--warn)">${t.paused ? "⏸ " + dur(taskMins(t)) + " · break " + liveDur(t.paused) : dur(taskMins(t))}</span>`
       : `<span class="task-time muted">${who}${t.startedAt?" · since "+clockOf(t.startedAt):""}</span>`;
     // Deliberately not colored like "Done" (which reads as already-finished) —
     // the name button IS the finish action, so it's labeled and colored to
@@ -5001,8 +5084,8 @@ function stopCard(s, i, r, isHeading){
     // Same row-with-bar treatment the supervisor's "Time by job" uses, so a
     // finished stop reads the same way here as it does on the supervisor board.
     const doneTasks = s.tasks.filter(t=>t.doneAt);
-    const maxM = doneTasks.length ? Math.max(1, ...doneTasks.map(t=>mins(t.startedAt,t.doneAt))) : 1;
-    const rows = doneTasks.map(t => { const m = mins(t.startedAt,t.doneAt); return `<div class="brow">
+    const maxM = doneTasks.length ? Math.max(1, ...doneTasks.map(t=>taskMins(t))) : 1;
+    const rows = doneTasks.map(t => { const m = taskMins(t); return `<div class="brow">
       <span class="lbl">${esc(t.name)}</span>
       <span class="val">${dur(m)}</span>
       <span class="track"><span class="fill" style="width:${Math.max(3,m/maxM*100)}%"></span></span>
@@ -5170,7 +5253,7 @@ function stopJobList(s){
     // asked for the duration back alongside it rather than in place of it.
     // Falls back to just the duration if a job's startedAt is somehow
     // missing (very old data from before per-task timing existed).
-    const tStatus = t.doneAt ? `<span class="tag st-done">Done · ${t.startedAt ? clockOf(t.startedAt)+"–"+clockOf(t.doneAt)+" · "+dur(mins(t.startedAt,t.doneAt)) : dur(mins(t.startedAt,t.doneAt))}</span>`
+    const tStatus = t.doneAt ? `<span class="tag st-done">Done · ${t.startedAt ? clockOf(t.startedAt)+"–"+clockOf(t.doneAt)+" · "+dur(taskMins(t)) : dur(taskMins(t))}${breakMins(t, t.doneAt) ? " · " + dur(breakMins(t, t.doneAt)) + " break" : ""}</span>`
                   : t.startedAt ? '<span class="tag st-prog">In Progress</span>'
                   : '<span class="tag st-open">Open</span>';
     const kindTag = t.kind==="required" ? '<span class="tag req">Must do</span>'
@@ -5326,7 +5409,13 @@ function cantFinishBlock(rounds){
     const k = s.outlet + "|" + t.kind + "|" + t.name + "|" + (t.pool || ""); if(seen.has(k)) return; seen.add(k);
     other.push({s, t});
   })));
-  if(!waiting.length && !other.length) return `<p class="note" style="margin:0">Nothing reported as can't finish.</p>`;
+  const partly = [];
+  rounds.filter(r => !isTestRound(r)).forEach(r => r.stops.forEach(s => (s.tasks || []).forEach(t => {
+    if(!(t.doneAt && t.vac && t.vac.skipped)) return;
+    const k = "vac|" + s.outlet + "|" + t.name + "|" + (t.pool || ""); if(seen.has(k)) return; seen.add(k);
+    partly.push({s, t, r});
+  })));
+  if(!waiting.length && !other.length && !partly.length) return `<p class="note" style="margin:0">Nothing reported as can't finish.</p>`;
   const rosterOpts = sel => (state.roster || []).map(n => `<option value="${esc(n)}" ${sel === n ? "selected" : ""}>${esc(n)}</option>`).join("");
   const rows = waiting.map(({o, e}) => {
     const k = o + "|" + e.id, st = e.stuck, tries = (e.history || []).length;
@@ -5349,7 +5438,12 @@ function cantFinishBlock(rounds){
       <div class="cant-read">⚠ ${cantLine(t.cantFinish, "")}</div>
       ${t.cantFinish.photos && t.cantFinish.photos.length ? photoStripHtml(t.cantFinish.photos, (x, i) => "Photo " + (i+1)) : ""}
     </div>`).join("");
-  return `${waiting.length ? `<p class="note" style="margin:0">Jobs you added that a technician couldn't finish. They stay on the branch's list until you decide.</p>` : ""}<div class="stack" style="gap:8px">${rows}${others}</div>`;
+  const partlyRows = partly.map(({s, t, r}) => { const sk = t.vac.skipped, ids = Object.keys(sk); const spec = vacSpecFor(s.outlet, t);
+    return `<div class="stuck-row" style="border-left-color:var(--warn)">
+      <div><strong>${esc(stopLabel(s))}</strong>${t.pool ? ` <span class="tag pool">${esc(t.pool)}</span>` : ""} — ${esc(t.name)} <span class="tag st-done">Done</span> <span class="muted" style="font-size:13px">partly</span></div>
+      <div class="cant-read">⚠ Skipped ${ids.map(id => id + (spec && spec.list.find(p => p.id === id) ? " " + spec.list.find(p => p.id === id).label : "")).join(", ")} — ${esc(sk[ids[0]].reason)} · ${esc(t.claimedBy || r.person)} · ${clockOf(sk[ids[0]].at)}</div>
+    </div>`; }).join("");
+  return `${waiting.length ? `<p class="note" style="margin:0">Jobs you added that a technician couldn't finish. They stay on the branch's list until you decide.</p>` : ""}<div class="stack" style="gap:8px">${rows}${others}${partlyRows}</div>`;
 }
 function editExtra(o, id, fn){
   const c = clone(state.cfg), e = ((c.extra || {})[o] || []).find(x => x.id === id); if(!e) return null;
@@ -5511,7 +5605,7 @@ function overviewView(){
 
   <div class="stack" style="gap:9px" id="cant-section">
     <h2 class="sec">Couldn't finish</h2>
-    ${cantFinishBlock(rounds)}
+    ${cantFinishBlock(allRounds)}
   </div>
 
   <div class="stack" style="gap:9px">
@@ -5639,7 +5733,7 @@ function mgrView(){
       <td>${it.t.kind==="required"?'<span class="tag req">Must do</span>':it.t.kind==="optional"?'<span class="tag opt">If time allows</span>':it.t.kind==="issue"?'<span class="tag urgent">Reported issue</span>':'<span class="tag add">Added</span>'}</td>
       <td>${status}</td>
       <td>${it.t.claimedBy ? esc(it.t.claimedBy) : addedByOf(it.t) ? `<span class="muted">added by ${esc(addedByOf(it.t))}</span>` : '<span class="muted">—</span>'}</td>
-      <td class="num">${finished ? dur(mins(it.t.startedAt,it.t.doneAt)) : (running ? '<span style="color:var(--accent)">running</span>' : '<span class="muted">—</span>')}</td>
+      <td class="num">${finished ? dur(taskMins(it.t)) : (running ? '<span style="color:var(--accent)">running</span>' : '<span class="muted">—</span>')}</td>
     </tr>`;
   }).join("");
 
@@ -6575,6 +6669,16 @@ function wire(){
   document.querySelectorAll("[data-vacin]").forEach(i => i.addEventListener("change", () => { const f = i.files && i.files[0]; const [key, id] = splitLast(i.dataset.vacin); if(f) onVacPhotoPicked(key, id, f); }));
   each("[data-vacretry]", b => { const [key, id] = splitLast(b.dataset.vacretry); const ph = vacLocal(key)[id]; if(!ph || !ph.base64) return; ph.status = "uploading"; render(); uploadVacPhoto(key, id); });
   each("[data-vacsave]", b => { const [o,t] = two(b.dataset.vacsave); finishVacuum(o,t); });
+  each("[data-vacpause]", b => { const [o,t] = two(b.dataset.vacpause); pauseTask(o,t); });
+  each("[data-vacresume]", b => { const [o,t] = two(b.dataset.vacresume); resumeTask(o,t); });
+  each("[data-vacskipopen]", b => { const [key, id] = splitLast(b.dataset.vacskipopen); state.vacSkipForm = {key, ids:[id], reason:""}; render(); });
+  each("[data-vacskiprest]", b => { const key = b.dataset.vacskiprest; const {code, t} = vacTaskOf(key); const spec = vacSpec(code, t); if(!spec) return;
+    const first = spec.list.find(x => x.when === "start"); const ids = spec.list.filter(p => p.when === "start" && p.id !== first.id && vacSlotState(key, t, p.id) === "todo").map(p => p.id);
+    state.vacSkipForm = {key, ids, reason:""}; render(); });
+  each("[data-vacskipreason]", b => { if(state.vacSkipForm){ state.vacSkipForm.reason = b.dataset.vacskipreason; render(); } });
+  each("[data-vacskipcancel]", () => { state.vacSkipForm = null; render(); });
+  each("[data-vacskipsave]", b => { const sf = state.vacSkipForm; if(!sf) return; const [o,t] = two(b.dataset.vacskipsave); vacSkip(o, t, sf.ids, sf.reason); });
+  each("[data-vacunskip]", b => { const [key, id] = splitLast(b.dataset.vacunskip); const [o,t] = two(key); vacUnskip(o, t, id); });
   each("[data-dmphotobtn]", b => { const i = document.querySelector(`[data-dmphoto="${b.dataset.dmphotobtn}"]`); if(i){ i.value = ""; i.click(); } });
   document.querySelectorAll("[data-dmphoto]").forEach(i => i.addEventListener("change", () => { const f = i.files && i.files[0]; if(f) onDosingPhotoPicked(i.dataset.dmphoto, f); }));
   each("[data-dmphotoretry]", b => {
