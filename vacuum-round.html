@@ -445,9 +445,11 @@ details.panel[open] summary::after{content:"▴"}
 .aj-row input[type=date]{font:500 15px "IBM Plex Sans",sans-serif;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
 .aj-row input[type=text]{flex:1;min-width:150px;width:auto;font:500 15px "IBM Plex Sans",sans-serif;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
 .tag.once.late{background:#FDECEA;color:#B42318;border-color:#F5B5AD}
-.sched summary{cursor:pointer;font-size:13.5px;color:var(--ink-2);list-style:none}
-.sched summary::before{content:"▸ ";color:var(--ink-3)}
-.sched[open] summary::before{content:"▾ "}
+.sched summary{cursor:pointer;font-size:13.5px;font-weight:600;color:var(--accent);list-style:none;display:inline-flex;align-items:center;gap:5px;padding:5px 8px;margin:-5px -8px;border-radius:6px;text-decoration:underline;text-underline-offset:2px}
+.sched summary:hover,.sched summary:active{background:rgba(37,107,76,.08)}
+.sched summary::-webkit-details-marker{display:none}
+.sched summary::before{content:"▾";display:inline-block;color:var(--accent);transition:transform .15s;font-size:11px}
+.sched[open] summary::before{transform:rotate(180deg)}
 .sched-t{border-collapse:collapse;margin-top:6px;font-size:13.5px}
 .sched-t th{font-family:"IBM Plex Mono",monospace;font-weight:600;text-align:left;padding:3px 10px 3px 0;color:var(--ink-3)}
 .sched-t td{padding:3px 0;color:var(--ink-2)}
@@ -6422,9 +6424,9 @@ function routesView(){
 // night when nobody visits that branch. Fri/Sat/Sun: every branch.
 const NIGHT_SCHEDULE = {
   1:["JE","TENGAH","BK","LENTOR","HB","CC"],
-  2:["WWW","HB","CC","BK","LENTOR","JE"],
+  2:["WWW","HB","CC","BK","LENTOR","JE","HS"],
   3:["HB","CC","TPY","JE","TENGAH"],
-  4:["HB","CC","HS","DR","JE"]
+  4:["HB","CC","HS","DR","JE","BK"]
 };
 const nightBranches = dow => NIGHT_SCHEDULE[dow] || OUTLETS.map(o => o.code);
 const dowOfKey = key => { const [y,m,d] = key.split("-").map(Number); return new Date(y, m-1, d).getDay(); };
