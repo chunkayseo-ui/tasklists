@@ -4101,8 +4101,9 @@ function vacSecPhotos(card){
     const src = vacMapSvg(card);
     const steps = src && src.getAttribute("data-steps") ? JSON.parse(src.getAttribute("data-steps")) : [];
     let pend = [], last = null;
+    vacMap.secTitles = vacMap.secTitles || {}; vacMap.secTitles[card] = {};
     steps.forEach(st => {
-      if(st.sec) pend.push(String(st.sec));
+      if(st.sec){ pend.push(String(st.sec)); vacMap.secTitles[card][String(st.sec)] = String(st.t || "").replace(/^\d+\s*·\s*/, ""); }
       const ph = (st.photos || []).filter(id => /^P\d+$/.test(id));
       if(ph.length && pend.length){ pend.forEach(n => { out[n] = ph.slice(); }); pend = []; last = ph; }
     });
@@ -4110,6 +4111,14 @@ function vacSecPhotos(card){
   }catch(e){ out = {}; }
   vacMap.secs[card] = out;
   return out;
+}
+// The section to vacuum now: the one whose first proof photo is the next
+// photo due. Nothing while the next photo is a prep, set-up or close-down one.
+function vacCurrentSec(card, nextId){
+  if(!nextId || !/^P\d+$/.test(nextId)) return null;
+  const secs = vacSecPhotos(card);
+  const n = Object.keys(secs).find(k => secs[k][0] === nextId);
+  return n ? {n, title:((vacMap.secTitles || {})[card] || {})[n] || ""} : null;
 }
 function vacMapHtml(card, nextId, doneIds, skipIds, partial){
   doneIds = doneIds || []; skipIds = skipIds || [];
@@ -4229,6 +4238,47 @@ function vacMapHtml(card, nextId, doneIds, skipIds, partial){
       });
       // Under the photo layer so badges, ticks and crosses stay on top.
       svg.insertBefore(wash, layer);
+    }
+    // While vacuuming: the section to do now pulses, and a dot runs along its
+    // strokes and on to the next photo point -- "vacuum this, then take P5".
+    const cur = vacCurrentSec(card, nextId);
+    const nb = cur && badges.find(x => x.ids.includes(nextId) && x.rect);
+    if(cur && nb){
+      const n = cur.n;
+      const strokes = Array.from(svg.querySelectorAll(".vac-pattern path")).filter(pth => new RegExp("-" + n + "\\)").test(pth.getAttribute("marker-end") || ""));
+      const tints = Array.from(svg.querySelectorAll(`.vac-sections [data-sec="${n}"]`));
+      (tints.length ? tints : strokes).forEach(el => {
+        const a = document.createElementNS(NS, "animate");
+        const base = parseFloat(el.getAttribute("opacity") || "1");
+        [["attributeName", "opacity"], ["values", `${base};${Math.min(1, base + 0.45)};${base}`], ["dur", "1.4s"], ["repeatCount", "indefinite"]].forEach(([k, v]) => a.setAttribute(k, v));
+        el.appendChild(a);
+      });
+      strokes.forEach(el => el.setAttribute("opacity", "1"));
+      if(strokes.length){
+        const bx = parseFloat(nb.rect.getAttribute("x")) + parseFloat(nb.rect.getAttribute("width")) / 2;
+        const by = parseFloat(nb.rect.getAttribute("y")) + parseFloat(nb.rect.getAttribute("height")) / 2;
+        const d = strokes.map(pth => pth.getAttribute("d")).join(" ") + ` L${bx} ${by}`;
+        const pid = "vm-run-" + card.toLowerCase() + "-" + n;
+        const run = document.createElementNS(NS, "path");
+        [["id", pid], ["d", d], ["fill", "none"], ["stroke", "none"]].forEach(([k, v]) => run.setAttribute(k, v));
+        layer.appendChild(run);
+        let len = 1200;
+        try{
+          const box = document.createElement("div"); box.style.cssText = "position:absolute;left:-9999px;top:0;width:640px;visibility:hidden";
+          box.appendChild(svg); document.body.appendChild(box); len = run.getTotalLength() || len; box.remove();
+        }catch(e){}
+        const dur = Math.max(6, Math.min(22, len / 150)) + 2;
+        const cycle = dur;
+        const start = -((Date.now() / 1000) % cycle);
+        const dot = document.createElementNS(NS, "g");
+        dot.setAttribute("class", "vm-dot");
+        dot.innerHTML = `<circle r="11" fill="#FFD23F" opacity="0.35"><animate attributeName="r" values="9;14;9" dur="1s" repeatCount="indefinite"/></circle><circle r="6.5" fill="#FFD23F" stroke="#0F2430" stroke-width="2"/>`;
+        const am = document.createElementNS(NS, "animateMotion");
+        [["dur", dur + "s"], ["repeatCount", "indefinite"], ["begin", start + "s"], ["calcMode", "linear"], ["keyPoints", "0;1;1"], ["keyTimes", "0;0.9;1"], ["rotate", "0"]].forEach(([k, v]) => am.setAttribute(k, v));
+        const mp = document.createElementNS(NS, "mpath"); mp.setAttribute("href", "#" + pid); mp.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", "#" + pid);
+        am.appendChild(mp); dot.appendChild(am);
+        layer.appendChild(dot);
+      }
     }
     badges.forEach(b => {
       if(!b.rect) return;
@@ -4579,7 +4629,7 @@ function vacuumPanel(s, t){
     <p class="note" style="margin:0">Take each photo in order, from where the route card shows it. The time is printed on every photo.${card}${first ? ` First photo ${clockOf(first)} — ${liveDur(first)} so far.` : ""}</p>
     ${(() => { vacMapLoad(); const m = spec.card ? vacMapHtml(spec.card, next && next.id, spec.list.filter(x => ["done","queued","failed"].includes(vacSlotState(key, t, x.id))).map(x => x.id), Object.keys(vacSkipped(t)), true) : ""; const p = next && spec.list.find(x => x.id === next.id);
       if(m && vacMap.hidden) return `<button type="button" class="btn sm vac-map-show" data-vacmaptoggle>🗺️ Show route map${p ? ` · next ${esc(p.id)}` : ""}</button>`;
-      return m ? `<figure class="vac-map${vacMap.noPhotos ? " no-photos" : ""}" data-vacmap="${esc(spec.card)}"><button type="button" class="vac-photos-btn" data-vacphotostoggle aria-pressed="${vacMap.noPhotos ? "false" : "true"}">📷 ${vacMap.noPhotos ? "Show" : "Hide"} photo points</button><button type="button" class="vac-map-hide" data-vacmaptoggle aria-label="Hide route map">Hide map ✕</button>${m}${(window.VacPlay && VacPlay.has(vacMapSvg(spec.card))) ? `<button type="button" class="vac-play-btn" data-vacplay="${esc(spec.card)}">▶ Play the vacuum steps</button>` : ""}<figcaption>${p ? `<b>Next: ${esc(p.id)} · ${esc(p.label)}</b> — ${p.when !== "start" ? "a close-up, taken at the ringed badge." : "stand at the ringed badge and point the camera along its arrow."}` : "All photos taken."}</figcaption></figure>`
+      return m ? `<figure class="vac-map${vacMap.noPhotos ? " no-photos" : ""}" data-vacmap="${esc(spec.card)}"><button type="button" class="vac-photos-btn" data-vacphotostoggle aria-pressed="${vacMap.noPhotos ? "false" : "true"}">📷 ${vacMap.noPhotos ? "Show" : "Hide"} photo points</button><button type="button" class="vac-map-hide" data-vacmaptoggle aria-label="Hide route map">Hide map ✕</button>${m}${(window.VacPlay && VacPlay.has(vacMapSvg(spec.card))) ? `<button type="button" class="vac-play-btn" data-vacplay="${esc(spec.card)}">▶ Play the vacuum steps</button>` : ""}<figcaption>${p ? (() => { const cs = vacCurrentSec(spec.card, p.id); return (cs ? `<b>Vacuum section ${esc(cs.n)}${cs.title ? " · " + esc(cs.title) : ""}</b> — follow the moving dot. Then <b>take ${esc(p.id)} · ${esc(p.label)}</b>` : `<b>Next: ${esc(p.id)} · ${esc(p.label)}</b>`) + " — " + (p.when !== "start" ? "a close-up, taken at the ringed badge." : "stand at the ringed badge and point the camera along its arrow."); })() : "All photos taken."}</figcaption></figure>`
                : (spec.card && !vacMap.tried ? `<p class="note" style="margin:0" data-vacmap="${esc(spec.card)}">Loading the route card…</p>` : ""); })()}
     ${pauseBtn}
     <div class="stack" style="gap:8px">${group("prep", "Before starting — preparation")}${group("start", "At the start and each corner")}${skipForm}${skipRest}${group("end", "After vacuuming the pool")}</div>
