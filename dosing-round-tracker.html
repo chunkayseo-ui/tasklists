@@ -4089,6 +4089,28 @@ function vacBadgeIds(label){
   }
   return ids.length ? ids : null;
 }
+// Which photo points prove each coloured section of the pool, read from the
+// card's own Play steps ("1 · Left half" -> P2 ...). A section with no photo
+// of its own is proved by the next photo taken after it; a trailing section
+// with none is tied to the last photo before it.
+function vacSecPhotos(card){
+  vacMap.secs = vacMap.secs || {};
+  if(card in vacMap.secs) return vacMap.secs[card];
+  let out = {};
+  try{
+    const src = vacMapSvg(card);
+    const steps = src && src.getAttribute("data-steps") ? JSON.parse(src.getAttribute("data-steps")) : [];
+    let pend = [], last = null;
+    steps.forEach(st => {
+      if(st.sec) pend.push(String(st.sec));
+      const ph = (st.photos || []).filter(id => /^P\d+$/.test(id));
+      if(ph.length && pend.length){ pend.forEach(n => { out[n] = ph.slice(); }); pend = []; last = ph; }
+    });
+    if(pend.length && last) pend.forEach(n => { out[n] = last.slice(); });
+  }catch(e){ out = {}; }
+  vacMap.secs[card] = out;
+  return out;
+}
 function vacMapHtml(card, nextId, doneIds, skipIds, partial){
   doneIds = doneIds || []; skipIds = skipIds || [];
   const k = card + "|" + (nextId || "") + "|" + doneIds.join(",") + "|" + skipIds.join(",") + "|" + (partial ? 1 : 0);
@@ -4118,16 +4140,48 @@ function vacMapHtml(card, nextId, doneIds, skipIds, partial){
     // While vacuuming, the NEXT point is what matters, so done ones dim; on a
     // finished job the vacuumed sections stay in full colour and the skipped
     // ones fade right out, so the map reads "done vs not done" at a glance.
-    const fade = nextId ? {next:1, todo:0.8, done:0.3, skipped:0.22} : {next:1, todo:0.45, done:1, skipped:0.15};
+    // While vacuuming, the NEXT point is what matters, so done ones dim. On a
+    // finished job the vacuumed sections keep their colour and everything
+    // not vacuumed -- skipped, or never reached -- is turned grey and faded,
+    // so the map reads "done vs not done" at a glance.
+    const fade = nextId ? {next:1, todo:0.8, done:0.3, skipped:0.5} : {next:1, todo:0.5, done:1, skipped:0.5};
+    const grey = st => st === "skipped" || (st === "todo" && !nextId);
+    if(!svg.querySelector("#vm-grey")){
+      const defs = document.createElementNS(NS, "defs");
+      defs.innerHTML = `<filter id="vm-grey"><feColorMatrix type="saturate" values="0"/></filter>`;
+      svg.insertBefore(defs, svg.firstChild);
+    }
     Array.from(layer.children).forEach(el => {
       const tag = el.tagName.toLowerCase();
       let b = badges.find(x => x.t === el || x.rect === el);
+      const isBadge = !!b;
       if(!b){ const c = ((el.getAttribute("fill") || "") + "|" + (el.getAttribute("stroke") || "")).toLowerCase(); b = Object.values(byCol).find(x => x.col && c.includes(x.col)); }
       if(!b) return;
       const st = stateOf(b);
       const base = parseFloat(el.getAttribute("opacity") || "1");
       if(st === "next" && tag === "path") el.setAttribute("opacity", "0.8");
       else if(st !== "next") el.setAttribute("opacity", String(Math.round(base * fade[st] * 100) / 100));
+      if(grey(st) && !isBadge){ el.setAttribute("filter", "url(#vm-grey)"); el.classList.add("vm-grey"); }
+    });
+    // The pool itself: every coloured section whose photo was skipped (or,
+    // on a finished job, never taken) goes grey and faded, so what was not
+    // vacuumed shows on the water, not only on the badge.
+    const secs = vacSecPhotos(card);
+    Object.keys(secs).forEach(n => {
+      const ids = secs[n];
+      const skipped = ids.every(id => skipIds.includes(id));
+      const notDone = !nextId && partial && !ids.every(id => doneIds.includes(id) || skipIds.includes(id));
+      if(!skipped && !notDone) return;
+      const els = Array.from(svg.querySelectorAll(`[data-sec="${n}"]`));
+      svg.querySelectorAll(".vac-pattern path, .vac-sections path").forEach(pth => {
+        const mk = pth.getAttribute("marker-end") || "";
+        if(new RegExp("-" + n + "\\)").test(mk) && !els.includes(pth)) els.push(pth);
+      });
+      els.forEach(el => {
+        el.setAttribute("filter", "url(#vm-grey)"); el.classList.add("vm-grey");
+        const base = parseFloat(el.getAttribute("opacity") || "1");
+        el.setAttribute("opacity", String(Math.round(base * 0.45 * 100) / 100));
+      });
     });
     badges.forEach(b => {
       if(!b.rect) return;
