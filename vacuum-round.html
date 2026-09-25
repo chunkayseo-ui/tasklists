@@ -4328,6 +4328,10 @@ const VAC_PHOTOS = {
   ]},
   // Same order as the photo badges on the route card (vacuum-route-maps.html#WWW).
   WWW: {card:"WWW", normalMin:null, list:[
+    {id:"S1", when:"prep", label:"Vacuum port opened", hint:"Close-up of the vacuum port open, before connecting the hose."},
+    {id:"S2", when:"prep", label:"Vacuum valve opened", hint:"Close-up of the vacuum valve handle in the open position."},
+    {id:"S3", when:"prep", label:"Skimmer control valve half open", hint:"Close-up of the skimmer control valve set to half open."},
+    {id:"S4", when:"prep", label:"Pump cover – no bubbles", hint:"Photo through the pump cover showing no air bubbles."},
     {id:"P1", when:"start", label:"Set-up", hint:"Hose, vacuum head and telescopic pole connected at the vacuum port, left side."},
     {id:"P2", when:"start", label:"Corner 1 – bottom", hint:"Stand on the bottom deck. Look up the left half towards the port."},
     {id:"P3", when:"start", label:"Corner 2 – top right", hint:"Stand on the top deck at the right. Look down the right half of the pool."},
@@ -4336,9 +4340,13 @@ const VAC_PHOTOS = {
     {id:"E2", when:"end", label:"Vacuum port closed", hint:"Close-up of the port with the cover on."},
     {id:"E3", when:"end", label:"Vacuum valve closed", hint:"Close-up of the valve handle in the closed position."}
   ]},
-  // CC has a skimmer control valve: half-closed for suction while vacuuming,
-  // so opening it again is the last close-down photo.
+  // CC has 2 skimmer control valves; the one used for vacuuming is fully
+  // closed before starting (don't touch the other one), and opened again
+  // as the last close-down photo.
   CC: {card:"CC", normalMin:null, list:[
+    {id:"S1", when:"prep", label:"Vacuum port opened", hint:"Close-up of the vacuum port open, before connecting the hose."},
+    {id:"S2", when:"prep", label:"Vacuum valve opened", hint:"Close-up of the vacuum valve handle in the open position."},
+    {id:"S3", when:"prep", label:"Skimmer control valve closed", hint:"Close-up of the skimmer control valve closed. The other skimmer valves are left as they are."},
     {id:"P1", when:"start", label:"Set-up", hint:"Hose, vacuum head and telescopic pole connected at the vacuum port, on the wide ledge."},
     {id:"P2", when:"start", label:"Corner 1 – Loop A, bottom", hint:"Stand on the bottom deck below the port. Look up the right half of the left pool."},
     {id:"P3", when:"start", label:"Corner 2 – Loop A, top left", hint:"Stand on the top deck at the left. Look down the left half of the left pool."},
