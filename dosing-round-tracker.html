@@ -586,6 +586,14 @@ details.panel[open] summary::after{content:"▴"}
 .wt-read{display:block;width:100%;font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.45;color:var(--ink-2);margin-top:1px}
 .wt-read b{color:var(--accent);font-weight:600}
 .job-row-read{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-2);margin-top:4px;line-height:1.45}
+details.vac-fold{margin-top:6px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2)}
+details.vac-fold>summary{list-style:none;cursor:pointer;padding:8px 10px;font-size:13px;color:var(--ink-2);display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
+details.vac-fold>summary::-webkit-details-marker{display:none}
+details.vac-fold .vf-more{margin-left:auto;color:var(--accent);font-weight:600;text-decoration:underline;white-space:nowrap}
+details.vac-fold .vf-more::after{content:" ▾";display:inline-block}
+details.vac-fold[open] .vf-more::after{content:" ▴"}
+details.vac-fold[open]>summary{border-bottom:1px solid var(--line)}
+details.vac-fold>.job-row-read{padding:4px 10px 10px;margin:0}
 .vac-tl{margin:8px 0 10px;max-width:460px;font:13px/1.35 "IBM Plex Sans",sans-serif;color:var(--ink)}
 .vac-tl .r{display:grid;grid-template-columns:40px 1fr auto;align-items:center;gap:8px;min-height:24px}
 .vac-tl .r .vac-pb{justify-self:center;margin:0}
@@ -2604,6 +2612,15 @@ function finishTask(code, tid){
   if(t0 && t0.claimedBy === state.me && vacSpec(code, t0)){ finishVacuum(code, tid); return; }
   const dScope = "done|" + code + "|" + tid, dKey = code + "|" + tid;
   if(fpBusy(dScope)){ flash("Wait for the photo to finish uploading."); return; }
+  // Pump panel / salt chlorinator check: every panel and chlorinator photo first.
+  let panelPhotos = null;
+  if(t0 && t0.claimedBy === state.me && panelPhotosOn(t0)){
+    const slots = panelPhotoSlots(code, t0);
+    if(slots.some(sl => fpBusy(ppScope(code, tid, sl.id)))){ flash("Wait for the photo to finish uploading."); return; }
+    const miss = panelPhotosMissing(code, t0);
+    if(miss.length){ flash("Take the photo" + (miss.length > 1 ? "s" : "") + " first: " + miss.map(x => x.label).join(", ") + "."); return; }
+    panelPhotos = slots.map(sl => Object.assign({slot:sl.id, label:sl.label}, fpDone(ppScope(code, tid, sl.id)).slice(-1)[0]));
+  }
   const donePhotos = fpDone(dScope), doneNote = (state.doneNote[dKey] || "").trim().slice(0, 500);
   let finished = null, stopOutlet = null, issueId = null;
   withRound(r => {
@@ -2613,13 +2630,14 @@ function finishTask(code, tid){
     t.doneAt = new Date().toISOString();
     if(t.extraId){ const e = ((state.cfg.extra || {})[s.outlet] || []).find(x => x.id === t.extraId); if(e && e.history && e.history.length) t.stuckHistory = e.history.slice(); }
     if(donePhotos.length) t.donePhotos = donePhotos;
+    if(panelPhotos) t.panelPhotos = panelPhotos;
     if(doneNote) t.doneNote = doneNote;
     finished = {name:t.name, kind:t.kind, pool:t.pool||null, doneAt:t.doneAt};
     stopOutlet = s.outlet;
     issueId = t.issueId || null;
   }, "Couldn't mark that done. Try again.").then(() => {
-    if(finished){ delete state.fp[dScope]; delete state.doneNote[dKey]; }
-    if(finished) syncTaskToOtherRounds(stopOutlet, finished, Object.assign({doneAt:finished.doneAt}, donePhotos.length ? {donePhotos} : {}, doneNote ? {doneNote} : {}));
+    if(finished){ delete state.fp[dScope]; delete state.doneNote[dKey]; Object.keys(state.fp).filter(k => k.startsWith("pp|" + code + "|" + tid + "|")).forEach(k => delete state.fp[k]); }
+    if(finished) syncTaskToOtherRounds(stopOutlet, finished, Object.assign({doneAt:finished.doneAt}, donePhotos.length ? {donePhotos} : {}, panelPhotos ? {panelPhotos} : {}, doneNote ? {doneNote} : {}));
     // A job that started life as a reported issue closes the loop on the
     // Overview board the moment it's actually finished — no separate
     // "mark resolved" step for the supervisor to remember.
@@ -3215,6 +3233,64 @@ function closePumpPanel(){
   box.classList.remove("open");
   box.querySelector(".pb-body").innerHTML = "";   // stop the page ticking behind the scenes
 }
+// Proof photos on "Check Salt Chlorinator and Pump panel": one photo per pump
+// panel and one per salt chlorinator. Most outlets have one panel, plus one
+// salt chlorinator if they're on SALT_CHLORINATOR; these ones differ
+// (numbers from Chun Kay, 25 Sep 2026). A JE pool's job is one panel each.
+const PANEL_PHOTO_SET = {TENGAH:{panels:2, salt:2}, LENTOR:{panels:2, salt:1}, HB:{panels:2, salt:0}, WWW:{panels:1, salt:2}};
+function panelPhotoSlots(code, t){
+  code = String(code || "").toUpperCase();
+  const n = panelPoolOf(t) ? {panels:1, salt:0}
+          : (PANEL_PHOTO_SET[code] || {panels:1, salt: SALT_CHLORINATOR.includes(code) ? 1 : 0});
+  const out = [];
+  for(let i = 1; i <= n.panels; i++) out.push({id:"panel" + i, label:"Pump panel" + (n.panels > 1 ? " " + i : "")});
+  for(let i = 1; i <= n.salt; i++) out.push({id:"salt" + i, label:"Salt chlorinator" + (n.salt > 1 ? " " + i : "")});
+  return out;
+}
+const ppScope = (code, tid, slot) => `pp|${code}|${tid}|${slot}`;
+// Only asked for when the photo relay is set up -- without it there's nowhere
+// for the photo to go, and the job finishes as before.
+const panelPhotosOn = t => !!relayCfg() && isPanelTask(t);
+function panelPhotosMissing(code, t){
+  return panelPhotoSlots(code, t).filter(sl => !fpDone(ppScope(code, t.id, sl.id)).length);
+}
+function panelPhotosHtml(s, t){
+  if(!panelPhotosOn(t)) return "";
+  const slots = panelPhotoSlots(s.outlet, t);
+  let got = 0;
+  const rows = slots.map(sl => {
+    const scope = ppScope(s.outlet, t.id, sl.id), ph = fpList(scope).slice(-1)[0];
+    if(ph && ph.status === "done") got++;
+    const img = ph && ph.dataUrl ? `<img src="${ph.dataUrl}" alt="">` : `<div class="ph-empty" aria-hidden="true">📷</div>`;
+    const status = !ph ? `<span class="ph-status"><b>${esc(sl.label)}</b> · not taken yet</span>`
+      : ph.status === "done" ? `<span class="ph-status ok">${esc(sl.label)} ✓</span>`
+      : ph.status === "failed" ? `<span class="ph-status err">${esc(sl.label)} · ${esc(ph.error || "Upload failed.")}</span>`
+      : `<span class="ph-status"><b>${esc(sl.label)}</b> · ${ph.status === "preparing" ? "preparing" : "uploading"}…</span>`;
+    const done = ph && ph.status === "done";
+    const retry = (ph && ph.status === "failed") ? `<button class="btn sm" type="button" data-fpretry="${esc(scope)}|${ph.id}">Retry</button>` : "";
+    return `<div class="wt-photo${ph ? " has" : ""}" data-ppslot="${esc(sl.id)}">${img}<div class="ph-main">${status}
+      <div class="ph-actions"><button class="btn sm${done ? "" : " primary"}" type="button" data-fpcam="${esc(scope)}">📷 ${done ? "Retake" : "Take photo"}</button>${retry}</div></div>
+      <input type="file" accept="image/*" capture="environment" hidden data-fpin-cam="${esc(scope)}"></div>`;
+  }).join("");
+  return `<div class="stack pp-photos" style="gap:8px;margin-top:10px">
+    <b>Photos · ${got} of ${slots.length}</b>${rows}
+    <span class="note" style="margin:0">One photo of each. The job can be marked done once all ${slots.length} are in.</span></div>`;
+}
+// The whole block under a claimed pump-panel job: the "show the panel" button
+// (outlets whose panel is drawn on the check-timer page), the photos, a note.
+function panelTaskBlock(s, t){
+  const key = s.outlet + "|" + t.id;
+  const photos = panelPhotosHtml(s, t);
+  if(!photos) return hasPanel(s.outlet) ? pumpPanelBlock(s, t) : jobDonePanel(s, t);
+  const code = String(s.outlet || "").toUpperCase(), pool = panelPoolOf(t);
+  return `<div class="wt">
+    <div class="wt-head"><span class="wt-title">Pump panel${panelPhotoSlots(s.outlet, t).some(x => /^salt/.test(x.id)) ? " & salt chlorinator" : ""} · ${esc(pool || code)}</span></div>
+    ${hasPanel(s.outlet) ? `<p class="note" style="margin:0 0 10px">See what the door and the timers should show right now, then compare with the real panel.</p>
+    <button class="panel-open" data-openpanel="${esc(code)}" data-openpool="${esc(pool)}">🔌 Show the pump panel</button>` : ""}
+    ${photos}
+    <textarea rows="2" maxlength="500" data-donenote="${key}" placeholder="Note (optional) — e.g. a fault light, a timer that was wrong" style="margin-top:10px;width:100%">${esc(state.doneNote[key] || "")}</textarea>
+  </div>`;
+}
 
 function waterTestPanel(s, t){
   const key = s.outlet+"|"+t.id, w = wtState(key), poolKey = dosingKeyFor(s.outlet, t.pool);
@@ -3646,6 +3722,7 @@ function renderKeepingForm(){
 const fpBusy = scope => fpList(scope).some(ph => ph.status === "preparing" || ph.status === "uploading");
 const fpDone = scope => fpList(scope).filter(ph => ph.status === "done").map(ph => ({fileId:ph.fileId, url:ph.url, thumb:ph.thumb || null}));
 async function onFormPhotoPicked(scope, file, meta){
+  if(scope.startsWith("pp|")) state.fp[scope] = [];   // one photo per panel/chlorinator: a retake replaces it
   const list = fpList(scope);
   const ph = {id: uid(), status:"preparing", n: list.length + 1};
   list.push(ph); renderKeepingForm();
@@ -5109,6 +5186,7 @@ function taskRow(s, t){
                : (!finished && t.plannedDose && isDosingTask(t)) ? `<span class="wt-read">${plannedDoseSummary(t.plannedDose)}</span>`
                : "") + (t.photos && t.photos.length ? `<span class="wt-read">${photoStripHtml(t.photos, (x, i) => "Job photo " + (i+1))}</span>` : "")
                + (finished && t.doneNote ? `<span class="wt-read">📝 ${esc(t.doneNote)}</span>` : "")
+               + (finished && t.panelPhotos && t.panelPhotos.length ? `<span class="wt-read">${photoStripHtml(t.panelPhotos, x => x.label)}</span>` : "")
                + (finished && t.donePhotos && t.donePhotos.length ? `<span class="wt-read">${photoStripHtml(t.donePhotos, (x, i) => "Work photo " + (i+1))}</span>` : "")
                + (() => { const at = attemptsFor(s, t); if(!at.length) return "";
                    const head = t.cantFinish ? "" : `<span class="wt-read cant-read" style="font-weight:600">${finished ? "Before it was done:" : "Not finished before:"}</span>`;
@@ -5123,7 +5201,7 @@ function taskRow(s, t){
   const panel = (running && mine && vacSpec(s.outlet, t)) ? vacuumPanel(s, t)
               : (running && mine && isWaterTestTask(t)) ? waterTestPanel(s, t)
               : (running && mine && isDosingTask(t)) ? dosingPanel(s, t)
-              : (running && mine && isPanelTask(t) && hasPanel(s.outlet)) ? pumpPanelBlock(s, t)
+              : (running && mine && isPanelTask(t) && (hasPanel(s.outlet) || panelPhotosOn(t))) ? panelTaskBlock(s, t)
               : (running && mine) ? jobDonePanel(s, t)
               : "";
 
@@ -5427,6 +5505,24 @@ function overviewStats(rounds){
 
 // Every outlet, whether or not anyone's covering it tonight -- "not started"
 // is as much a status a supervisor needs to see as "in progress" or "done".
+// A manual vacuum's record (every photo with its time, the gaps between them,
+// the photo strip, the route map) is a long block, and on the Routes tab it
+// pushed every other job off the screen. So in the job list it folds up to a
+// one-line summary -- photos, time, and any warning -- and opens on a tap.
+// Open/closed is remembered across redraws like the other panels.
+function vacFoldHtml(s, t){
+  const v = t.vac, n = Object.keys(v.photos || {}).length;
+  const sk = Object.keys(t.doneAt ? (v.skipped || {}) : vacSkipped(t)).length;
+  const bits = [`📷 ${n} photo${n === 1 ? "" : "s"}${t.doneAt ? "" : " so far"}`];
+  if(t.doneAt && v.minutes !== null && v.minutes !== undefined) bits.push(dur(v.minutes));
+  const warn = v.unfinished ? "left without finishing" : sk ? `partly done — ${sk} skipped` : "";
+  const k = "vacfold|" + (s.outlet || "") + "|" + t.id;
+  // Not a "panel": an open panel holds back live updates (see externalUpdate),
+  // and a supervisor following a vacuum wants those to keep coming.
+  return `<details class="vac-fold" data-panel="${esc(k)}" ${state.panelsOpen[k] ? "open" : ""}>
+    <summary>${bits.join(" · ")}${warn ? ` <span class="dev">⚠ ${esc(warn)}</span>` : ""}<span class="vf-more">Details</span></summary>
+    <div class="job-row-read">${vacSummaryHtml(s.outlet || s.code || t.outlet, t)}</div></details>`;
+}
 // A stop's job list, rendered the same way the Routes tab's expanded X/Y
 // breakdown does -- reused here so an outlet card on Overview and a stop on
 // Routes read identically.
@@ -5463,9 +5559,10 @@ function stopJobList(s){
     // a still-open dosing job shows the dose the water test worked out.
     const detail = ((t.doneAt && t.reading) ? `<div class="job-row-read">${readingSummary(t.reading)}</div>`
                  : (t.doneAt && t.dosed) ? `<div class="job-row-read">${dosedSummary(t.dosed)}</div>`
-                 : (t.vac && t.vac.photos) ? `<div class="job-row-read">${vacSummaryHtml(s.outlet || s.code || t.outlet, t)}</div>`
+                 : (t.vac && t.vac.photos) ? vacFoldHtml(s, t)
                  : (!t.doneAt && t.plannedDose && isDosingTask(t)) ? `<div class="job-row-read">${plannedDoseSummary(t.plannedDose)}</div>`
-                 : "") + (t.photos && t.photos.length ? `<div class="job-row-read">${photoStripHtml(t.photos, (x, i) => "Job photo " + (i+1))}</div>` : "");
+                 : "") + (t.photos && t.photos.length ? `<div class="job-row-read">${photoStripHtml(t.photos, (x, i) => "Job photo " + (i+1))}</div>` : "")
+                 + (t.panelPhotos && t.panelPhotos.length ? `<div class="job-row-read">${photoStripHtml(t.panelPhotos, x => x.label)}</div>` : "");
     return `<div class="job-row">
       <div class="job-row-name">${t.pool?`<span class="tag pool">${esc(t.pool)}</span> `:""}${esc(t.name)}</div>
       <div class="job-row-tags">${kindTag}${who}${tStatus}</div>${detail}
@@ -6664,7 +6761,7 @@ function wire(){
     }));
   // Remember open/closed per panel across redraws — the view is rebuilt on every
   // save and every incoming update, which would otherwise slam an open panel shut.
-  document.querySelectorAll("details.panel[data-panel]").forEach(d =>
+  document.querySelectorAll("details.panel[data-panel],details.vac-fold[data-panel]").forEach(d =>
     d.addEventListener("toggle", () => { state.panelsOpen[d.dataset.panel] = d.open; }));
   const two = v => v.split("|");
 
@@ -6800,6 +6897,9 @@ function wire(){
     if(type === "job") return {kind:"job", code, what:"Job", text: ($("#newtask")||{}).value};
     if(type === "done"){ const tid = scope.split("|")[2]; const r = myRound(); const st = r && r.stops.find(x => x.outlet === code); const tk = st && st.tasks.find(x => x.id === tid);
       return {kind:"job", code, what:"Job done", text: (tk ? tk.name : "") + (state.doneNote[code + "|" + tid] ? " — " + state.doneNote[code + "|" + tid] : "")}; }
+    if(type === "pp"){ const [, , tid, slot] = scope.split("|"); const r = myRound(); const st = r && r.stops.find(x => x.outlet === code); const tk = st && st.tasks.find(x => x.id === tid);
+      const sl = tk ? panelPhotoSlots(code, tk).find(x => x.id === slot) : null;
+      return {kind:"job", code: (tk && tk.pool) || code, what: sl ? sl.label : "Pump panel", text: tk ? tk.name : ""}; }
     if(type === "cant") return {kind:"job", code, what:"Can't finish", text: ((state.cant && state.cant.reason) || "") + (($("#cant-note")||{}).value ? " — " + $("#cant-note").value : "")};
     return {kind:"issue", code: ($("#addissue-outlet")||{}).value || "?", what:"Issue", text: ($("#addissue-desc")||{}).value};
   };
