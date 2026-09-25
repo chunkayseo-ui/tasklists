@@ -1176,7 +1176,17 @@ function normalizeAssigned(assigned){
 function assignedFor(outlet, dayIdx){
   return ((state.cfg.assigned[outlet] || {})[dayIdx]) || [];
 }
-const SUGGESTIONS = ["Manual vacuum","Fix door","Soap dispenser","Replace light","Clear drain","Top up chemicals","Report to office"];
+// Vacuum round: the same page opened as dosing-round-tracker.html?mode=vacuum
+// (or vacuum-round.html). A morning vacuum round of the pools picked that day,
+// saved alongside the night rounds so supervisors see it on Overview/Routes,
+// but kept apart from them: it never counts as a night visit, and jobs are not
+// mirrored between the two kinds of round.
+const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
+const isVacRound = r => !!r && r.kind === "vacuum";
+const sameMode = r => isVacRound(r) === VAC_MODE;
+const SUGGESTIONS = VAC_MODE
+  ? ["Brush walls & steps","Clear skimmer baskets","Clean waterline","Check pump room","Report to office"]
+  : ["Manual vacuum","Fix door","Soap dispenser","Replace light","Clear drain","Top up chemicals","Report to office"];
 
 /* ================= helpers ================= */
 const $ = s => document.querySelector(s);
@@ -1269,7 +1279,7 @@ const state = {
   addJob:null             // the "Add a job" panel on Task Setting, kept here so a re-render never wipes it
                           // on the Task Setting tab. Defaults to today the first time that tab is opened.
 };
-const myId = () => state.me ? todayKey()+"__"+slug(state.me) : null;
+const myId = () => state.me ? todayKey()+"__"+slug(state.me)+(VAC_MODE ? "__vac" : "") : null;
 // "Test" is a practice name anyone can pick: its rounds are tagged TEST, left
 // out of Overview and every count, never touch anyone else's round or the
 // Task Setting job list, and Reset simply clears them.
@@ -1289,7 +1299,7 @@ const myRound = () => state.rounds[myId()] || null;
 function outletTonight(code){
   const stops = [];
   Object.values(state.rounds).forEach(r => {
-    if(r.date !== todayKey() || !r.stops || (isTestRound(r) && !isTestMe())) return;
+    if(r.date !== todayKey() || !r.stops || !sameMode(r) || (isTestRound(r) && !isTestMe())) return;
     const s = r.stops.find(x => x.outlet === code);
     if(s && !isQuick(s) && s.arriveAt) stops.push({s: (r.closedAt && !s.departAt) ? Object.assign({}, s, {departAt:r.closedAt}) : s, person:r.person});
   });
@@ -1306,7 +1316,7 @@ function othersOn(code){
   const mine = myId();
   const names = new Set();
   Object.values(state.rounds).forEach(r => {
-    if(r.id === mine || r.closedAt || r.date !== todayKey() || !r.stops || isTestRound(r) !== isTestMe()) return;
+    if(r.id === mine || r.closedAt || !sameMode(r) || r.date !== todayKey() || !r.stops || isTestRound(r) !== isTestMe()) return;
     if(r.stops.some(s => s.outlet === code)) names.add(r.person);
   });
   return [...names];
@@ -1726,7 +1736,7 @@ function assignedTonight(outlet){
 }
 // Branches where tonight's jobs are assigned to me -- already ticked on the
 // outlet picker, and added to my round by themselves if it's already going.
-const assignedToMe = () => state.me ? OUTLETS.map(o => o.code).filter(c => assignedTonight(c).includes(state.me)) : [];
+const assignedToMe = () => (state.me && !VAC_MODE) ? OUTLETS.map(o => o.code).filter(c => assignedTonight(c).includes(state.me)) : [];
 const pickSel = () => state.picking || assignedToMe();
 // My round is already under way and a job for me lands at a branch that
 // isn't on it: add the branch, once (removing it by hand is respected).
@@ -1744,9 +1754,18 @@ function autoAddAssigned(){
   }, "Couldn't add the branch assigned to you.").then(() => { state.autoAdding = false; flash("Added " + want.join(", ") + " — a job there is assigned to you."); }, () => { state.autoAdding = false; });
 }
 function extraJobCount(outlet){
+  if(VAC_MODE) return 0;
   return assignedFor(outlet, operationalNow().getDay()).length + extrasTonight(outlet).length + issueTasksFor(outlet).length;
 }
+// Vacuum round: one Manual vacuum job per pool (photo proof, route map and
+// Play guide come with it, same as a night vacuum job).
+function vacTasksFor(outlet){
+  const pools = (OUTLETS.find(o => o.code === outlet) || {}).pools;
+  const mk = p => Object.assign({id:uid(), name:"Manual vacuum", kind:"required", startedAt:null, doneAt:null, claimedBy:null, category:"Maintenance Works"}, p ? {pool:p} : {});
+  return pools ? pools.map(mk) : [mk(null)];
+}
 function tasksFor(outlet){
+  if(VAC_MODE) return vacTasksFor(outlet);
   // Most outlets are a single pool, so the branch's jobs apply as-is. An outlet
   // with named pools (JE today) needs the must-do list AND any shared "if time
   // allows" job repeated once per pool -- every physical pool needs its own
@@ -1820,7 +1839,7 @@ function seedTasksFor(outlet){
   const today = todayKey();
   const stops = [];
   Object.values(state.rounds).forEach(r => {
-    if(r.date !== today || !r.stops) return;
+    if(r.date !== today || !r.stops || !sameMode(r) || r.closedAt) return;
     const s = r.stops.find(x => x.outlet === outlet);
     if(s) stops.push(s);
   });
@@ -2086,7 +2105,7 @@ async function startRound(codes){
   state.picking = null;
   await saveRound({
     id: myId(), date: todayKey(), person: state.me, personSlug: slug(state.me),
-    createdAt: new Date().toISOString(), headingTo: null,
+    createdAt: new Date().toISOString(), headingTo: null, ...(VAC_MODE ? {kind:"vacuum"} : {}),
     stops: codes.map(c => ({outlet:c, arriveAt:null, departAt:null, fixIn:null, fixOut:null, tasks: seedTasksFor(c)}))
   });
 }
@@ -2115,7 +2134,7 @@ function withRound(fn, errMsg){
 // touches another pool's identical-looking task.
 async function syncExtraToLiveRounds(outlet, job, action){
   const today = todayKey();
-  const jobs = Object.values(state.rounds).filter(r => r.date === today && !r.closedAt);
+  const jobs = Object.values(state.rounds).filter(r => r.date === today && !r.closedAt && !isVacRound(r));
   const matches = t => t.name === job.name && t.kind === job.kind && (t.pool||null) === (job.pool||null);
   for(const orig of jobs){
     const r = clone(orig);
@@ -2152,7 +2171,7 @@ async function syncTaskToOtherRounds(outlet, task, patch){
   const mine = myId(), today = todayKey();
   if(isTestMe()) return;
   const matches = t => t.name === task.name && t.kind === task.kind && (t.pool||null) === (task.pool||null);
-  const others = Object.values(state.rounds).filter(r => r.id !== mine && r.date === today && !isTestRound(r) && !r.closedAt);
+  const others = Object.values(state.rounds).filter(r => r.id !== mine && r.date === today && !isTestRound(r) && !r.closedAt && sameMode(r));
   for(const orig of others){
     const r = clone(orig);
     const s = r.stops.find(x => x.outlet === outlet && !x.departAt);
@@ -2756,7 +2775,7 @@ function convertIssueToTask(id){
 // departed yet. Matched by issueId so it's never added twice.
 async function syncIssueTaskToLiveRounds(outlet, issue){
   const today = todayKey();
-  const jobs = Object.values(state.rounds).filter(r => r.date === today && !r.closedAt);
+  const jobs = Object.values(state.rounds).filter(r => r.date === today && !r.closedAt && !isVacRound(r));
   for(const orig of jobs){
     const r = clone(orig);
     const s = r.stops.find(x => x.outlet === outlet && !x.departAt);
@@ -2811,6 +2830,10 @@ function reopenIssue(id){
 
 /* ================= render ================= */
 function render(){
+  if(VAC_MODE){
+    state.role = "tech";
+    if(!render.vacDone){ render.vacDone = true; document.title = "Vacuum Round"; const h = document.querySelector(".brand h1"); if(h) h.textContent = "Vacuum Round"; const seg = document.querySelector(".top .seg"); if(seg) seg.style.display = "none"; }
+  }
   renderConn();
   $("#hdr-date").textContent = DAYNAME[operationalNow().getDay()]+" "+todayKey();
   $("#btn-tech").setAttribute("aria-pressed", state.role==="tech");
@@ -4537,10 +4560,10 @@ function buildRound(){
   return `
   <div class="card" style="padding:20px">
     <div class="sec-head" style="margin-bottom:4px"><h2 class="sec">Today's round</h2><span class="eyebrow">${esc(state.me)}</span></div>
-    <p class="note" style="margin:0 0 10px">Tap the outlets you're covering today, then Start round.${anyTaken ? " Outlets someone else has already covered or picked up are marked — you can still take them too." : ""}</p>
+    <p class="note" style="margin:0 0 10px">${VAC_MODE ? "Tap the branches you're vacuuming today, then Start round. Each pool comes with its vacuum job, route map, photo points and Play guide." : "Tap the outlets you're covering today, then Start round."}${anyTaken ? " Outlets someone else has already covered or picked up are marked — you can still take them too." : ""}</p>
     ${assignedToMe().length ? `<p class="note" style="margin:0 0 10px;color:#5B21B6"><strong>${esc(assignedToMe().join(", "))}</strong> ${assignedToMe().length > 1 ? "are" : "is"} already ticked — a job there is assigned to you.</p>` : ""}
-    ${tonightScheduleHtml()}
-    ${fcStripHtml(OUTLETS.map(o => o.code))}
+    ${VAC_MODE ? "" : tonightScheduleHtml()}
+    ${VAC_MODE ? "" : fcStripHtml(OUTLETS.map(o => o.code))}
     <div class="pill-grid">${pills}</div>
     ${anyTaken ? `<div class="pill-key">
       <span><i class="k-done"></i>done tonight${doneN?` (${doneN})`:""}</span>
@@ -5452,7 +5475,8 @@ function issueBoard(){
 }
 
 function overviewView(){
-  const rounds = roundsForDate(todayKey()).filter(r => !isTestRound(r));
+  const allRounds = roundsForDate(todayKey()).filter(r => !isTestRound(r));
+  const rounds = allRounds.filter(r => !isVacRound(r));
   const stats = overviewStats(rounds);
   const openN = Object.values(state.issues).filter(i => i.status!=="resolved").length;
   const urgentN = Object.values(state.issues).filter(i => i.status!=="resolved" && i.priority==="urgent").length;
@@ -5472,7 +5496,7 @@ function overviewView(){
 
   <div class="stack" style="gap:9px">
     <h2 class="sec">Technicians right now</h2>
-    ${rounds.length ? `<div class="crew">${rounds.map(r => crewRow(r,true)).join("")}</div>` : `<p class="note" style="margin:0">No rounds started tonight yet.</p>`}
+    ${allRounds.length ? `<div class="crew">${allRounds.map(r => crewRow(r,true)).join("")}</div>` : `<p class="note" style="margin:0">No rounds started tonight yet.</p>`}
   </div>
 
   <div class="stack" style="gap:9px" id="cant-section">
@@ -5517,7 +5541,7 @@ function crewRow(r, isToday, opts){
   const locs = visited.length ? `<div class="crew-locs">${visited.map(s =>
       locHtml(s, "in", {prefix: stopLabel(s) + " · in " + clockOf(s.arriveAt)})).join("")}</div>` : "";
   return `<div class="crew-row"><div class="crew-top">
-      <span class="crew-name">${esc(r.person)}</span>
+      <span class="crew-name">${esc(r.person)}</span>${isVacRound(r) ? '<span class="tag cat">Vacuum round</span>' : ""}
       ${isTestRound(r) ? '<span class="tag req">TEST</span>' : ""}
       ${chip}
       <span class="crew-where mono">${t.tasksDone} jobs · ${dur(t.onSite)} on site · ${dur(t.travel)} travel</span>
@@ -6040,7 +6064,7 @@ function routeCard(r, proj, byCode){
     </div>` : "";
   return `<div class="card route-card">
     <div class="route-head">
-      <span class="crew-name">${esc(r.person)}</span>
+      <span class="crew-name">${esc(r.person)}</span>${isVacRound(r) ? '<span class="tag cat">Vacuum round</span>' : ""}
       ${isTestRound(r) ? '<span class="tag req">TEST</span>' : ""}
       <span class="chip ${cs.k}"><span class="dot"></span>${esc(cs.label)}</span>
     </div>
