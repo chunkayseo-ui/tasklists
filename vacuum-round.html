@@ -4164,26 +4164,73 @@ function vacMapHtml(card, nextId, doneIds, skipIds, partial){
       else if(st !== "next") el.setAttribute("opacity", String(Math.round(base * fade[st] * 100) / 100));
       if(grey(st) && !isBadge){ el.setAttribute("filter", "url(#vm-grey)"); el.classList.add("vm-grey"); }
     });
-    // The pool itself: every coloured section whose photo was skipped (or,
-    // on a finished job, never taken) goes grey and faded, so what was not
-    // vacuumed shows on the water, not only on the badge.
+    // The pool itself: each coloured section is washed over according to its
+    // photos -- green "DONE" where it was vacuumed, grey "SKIPPED" / "NOT
+    // DONE" where it was not -- so the map reads at a glance on the water,
+    // not only on the little badges. Only on a finished or partly-done job.
     const secs = vacSecPhotos(card);
-    Object.keys(secs).forEach(n => {
-      const ids = secs[n];
-      const skipped = ids.every(id => skipIds.includes(id));
-      const notDone = !nextId && partial && !ids.every(id => doneIds.includes(id) || skipIds.includes(id));
-      if(!skipped && !notDone) return;
-      const els = Array.from(svg.querySelectorAll(`[data-sec="${n}"]`));
-      svg.querySelectorAll(".vac-pattern path, .vac-sections path").forEach(pth => {
-        const mk = pth.getAttribute("marker-end") || "";
-        if(new RegExp("-" + n + "\\)").test(mk) && !els.includes(pth)) els.push(pth);
+    const secKeys = Object.keys(secs);
+    if(secKeys.length && (partial || skipIds.length)){
+      const wash = document.createElementNS(NS, "g");
+      wash.setAttribute("class", "vm-wash");
+      const labels = [];
+      let box = null;
+      try{
+        box = document.createElement("div");
+        box.style.cssText = "position:absolute;left:-9999px;top:0;width:640px;visibility:hidden";
+        box.appendChild(svg); document.body.appendChild(box);
+      }catch(e){ box = null; }
+      secKeys.forEach(n => {
+        const ids = secs[n];
+        const skipped = ids.every(id => skipIds.includes(id));
+        const done = !skipped && ids.every(id => doneIds.includes(id) || skipIds.includes(id));
+        const notDone = !skipped && !done && !nextId && partial;
+        let st = skipped ? "skipped" : (notDone ? "notdone" : (done && !nextId ? "done" : null));
+        if(!st) return;
+        const paths = [];
+        svg.querySelectorAll(".vac-pattern path").forEach(pth => { if(new RegExp("-" + n + "\\)").test(pth.getAttribute("marker-end") || "")) paths.push(pth); });
+        if(!paths.length) return;
+        const col = st === "done" ? "#16A34A" : "#6B7280";
+        let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+        paths.forEach(pth => {
+          const w = document.createElementNS(NS, "path");
+          w.setAttribute("d", pth.getAttribute("d")); w.setAttribute("fill", "none");
+          w.setAttribute("stroke", col); w.setAttribute("stroke-width", "24"); w.setAttribute("stroke-linecap", "round"); w.setAttribute("stroke-linejoin", "round");
+          w.setAttribute("opacity", st === "done" ? "0.45" : "0.82");
+          wash.appendChild(w);
+          try{ const bb = pth.getBBox(); if(bb.width || bb.height){ x1 = Math.min(x1, bb.x); y1 = Math.min(y1, bb.y); x2 = Math.max(x2, bb.x + bb.width); y2 = Math.max(y2, bb.y + bb.height); } }catch(e){}
+        });
+        if(st !== "done"){
+          svg.querySelectorAll(`[data-sec="${n}"]`).forEach(el => { el.setAttribute("filter", "url(#vm-grey)"); el.classList.add("vm-grey"); });
+        }
+        if(isFinite(x1)){
+          const cw = x2 - x1, ch = y2 - y1;
+          const txt = st === "done" ? "✓ DONE" : (st === "skipped" ? "✕ SKIPPED" : "NOT DONE");
+          const fs = Math.max(11, Math.min(18, Math.min(cw, ch) / 4));
+          labels.push({x:(x1 + x2) / 2, y:(y1 + y2) / 2, txt, fs, col: st === "done" ? "#166534" : "#374151"});
+        }
       });
-      els.forEach(el => {
-        el.setAttribute("filter", "url(#vm-grey)"); el.classList.add("vm-grey");
-        const base = parseFloat(el.getAttribute("opacity") || "1");
-        el.setAttribute("opacity", String(Math.round(base * 0.45 * 100) / 100));
+      if(box){ try{ box.remove(); }catch(e){} }
+      // Two narrow sections side by side (the two halves of a leg, say) would
+      // print their labels on top of each other: merge same-word labels that
+      // overlap into one, centred between them.
+      const merged = [];
+      labels.forEach(l => {
+        const w = l.txt.length * l.fs * 0.62, h = l.fs * 1.2;
+        const hit = merged.find(m => m.txt === l.txt && Math.abs(m.x - l.x) < (w + m.txt.length * m.fs * 0.62) / 2 && Math.abs(m.y - l.y) < h);
+        if(hit){ hit.x = (hit.x * hit.n + l.x) / (hit.n + 1); hit.y = (hit.y * hit.n + l.y) / (hit.n + 1); hit.n++; hit.fs = Math.max(hit.fs, l.fs); }
+        else merged.push(Object.assign({n:1}, l));
       });
-    });
+      merged.forEach(l => {
+        const t = document.createElementNS(NS, "text");
+        [["x", l.x], ["y", l.y], ["text-anchor", "middle"], ["dominant-baseline", "middle"], ["font-family", "IBM Plex Sans, Arial, sans-serif"], ["font-weight", "800"], ["font-size", l.fs],
+         ["fill", l.col], ["stroke", "#ffffff"], ["stroke-width", "3.5"], ["paint-order", "stroke"], ["class", "vm-label"]].forEach(([a, v]) => t.setAttribute(a, v));
+        t.textContent = l.txt;
+        wash.appendChild(t);
+      });
+      // Under the photo layer so badges, ticks and crosses stay on top.
+      svg.insertBefore(wash, layer);
+    }
     badges.forEach(b => {
       if(!b.rect) return;
       const st = stateOf(b);
