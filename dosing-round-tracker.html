@@ -1183,6 +1183,11 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
+// Who does the Friday Vacuum Round, and on which days (Sun=0 .. Sat=6). On
+// those days the normal page opens straight into it for them (add ?mode=night
+// to the address to get the night round instead).
+const VAC_STAFF = {fik:[5]};
+const vacDayFor = name => (VAC_STAFF[slug(name || "")] || []).includes(operationalNow().getDay());
 const sameMode = r => isVacRound(r) === VAC_MODE;
 const SUGGESTIONS = VAC_MODE
   ? ["Brush walls & steps","Clear skimmer baskets","Clean waterline","Check pump room","Report to office"]
@@ -2832,7 +2837,7 @@ function reopenIssue(id){
 function render(){
   if(VAC_MODE){
     state.role = "tech";
-    if(!render.vacDone){ render.vacDone = true; document.title = "Vacuum Round"; const h = document.querySelector(".brand h1"); if(h) h.textContent = "Vacuum Round"; const seg = document.querySelector(".top .seg"); if(seg) seg.style.display = "none"; }
+    if(!render.vacDone){ render.vacDone = true; document.title = "Friday Vacuum Round"; const h = document.querySelector(".brand h1"); if(h) h.textContent = "Friday Vacuum Round"; const seg = document.querySelector(".top .seg"); if(seg) seg.style.display = "none"; }
   }
   renderConn();
   $("#hdr-date").textContent = DAYNAME[operationalNow().getDay()]+" "+todayKey();
@@ -4500,6 +4505,10 @@ function vacSummaryHtml(code, t){
 /* ---------- technician ---------- */
 function techView(){
   if(!state.me) return pickPerson();
+  if(!VAC_MODE && vacDayFor(state.me) && !myRound() && !/[?&]mode=night\b/.test(location.search)){
+    setTimeout(() => location.replace(location.pathname + "?mode=vacuum"), 0);
+    return `<div class="card" style="padding:20px"><b>Opening your Friday Vacuum Round…</b> <a href="?mode=vacuum">Tap here if it doesn't open</a></div>`;
+  }
   const r = myRound();
   if(r) setTimeout(autoAddAssigned, 0);
   const banner = isTestMe() ? `<div class="card" style="padding:12px 14px;margin-bottom:12px;border:2px dashed var(--warn);background:#FFF8E6"><strong>🧪 Practice mode.</strong> This round is marked TEST — it isn't counted and doesn't change anyone else's jobs. <strong>Reset today's round</strong> clears it completely.</div>` : "";
@@ -5541,7 +5550,7 @@ function crewRow(r, isToday, opts){
   const locs = visited.length ? `<div class="crew-locs">${visited.map(s =>
       locHtml(s, "in", {prefix: stopLabel(s) + " · in " + clockOf(s.arriveAt)})).join("")}</div>` : "";
   return `<div class="crew-row"><div class="crew-top">
-      <span class="crew-name">${esc(r.person)}</span>${isVacRound(r) ? '<span class="tag cat">Vacuum round</span>' : ""}
+      <span class="crew-name">${esc(r.person)}</span>${isVacRound(r) ? '<span class="tag cat">Friday Vacuum Round</span>' : ""}
       ${isTestRound(r) ? '<span class="tag req">TEST</span>' : ""}
       ${chip}
       <span class="crew-where mono">${t.tasksDone} jobs · ${dur(t.onSite)} on site · ${dur(t.travel)} travel</span>
@@ -6064,7 +6073,7 @@ function routeCard(r, proj, byCode){
     </div>` : "";
   return `<div class="card route-card">
     <div class="route-head">
-      <span class="crew-name">${esc(r.person)}</span>${isVacRound(r) ? '<span class="tag cat">Vacuum round</span>' : ""}
+      <span class="crew-name">${esc(r.person)}</span>${isVacRound(r) ? '<span class="tag cat">Friday Vacuum Round</span>' : ""}
       ${isTestRound(r) ? '<span class="tag req">TEST</span>' : ""}
       <span class="chip ${cs.k}"><span class="dot"></span>${esc(cs.label)}</span>
     </div>
