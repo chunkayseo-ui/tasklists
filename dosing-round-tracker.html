@@ -1285,7 +1285,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-09-27.2";
+const APP_BUILD = "2026-09-27.3";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -3256,7 +3256,7 @@ function newestBuild(){
 function peopleForVersions(){
   const names = new Map();
   (state.roster || []).forEach(n => names.set(slug(n), n));
-  Object.entries(state.versions || {}).forEach(([k, v]) => { if(!names.has(k)) names.set(k, (v && v.name) || k); });
+  ((teamData() || {}).staff || []).forEach(x => { if(x && x.name && !names.has(slug(x.name))) names.set(slug(x.name), x.name); });   // roster + Team tab only, so stray names (test phones) stay out
   return [...names.entries()].filter(([k]) => k !== "test");
 }
 function versionsCard(){
