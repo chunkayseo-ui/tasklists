@@ -1285,7 +1285,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-09-27.3";
+const APP_BUILD = "2026-09-27.4";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -3115,6 +3115,7 @@ function render(){
     : state.role==="team" ? teamView()
     : state.role==="tasksetting" ? taskSettingView() : mgrView();
   if(state.role === "overview") $("#view").insertAdjacentHTML("afterbegin", oldVersionWarning());
+  scheduleDraftSave();
   $("#view").insertAdjacentHTML("beforeend", `<p class="app-ver">Version ${esc(APP_BUILD)}${state.newBuild ? ` · <b>${esc(state.newBuild)} ready</b>` : ""}</p>`);
   wire();
 }
@@ -3281,6 +3282,81 @@ function oldVersionWarning(){
   const old = [...working].filter(n => { const v = (state.versions || {})[slug(n)]; return !v || cmpBuild(v.build, newest) < 0; });
   if(!old.length) return "";
   return `<div class="card ver-warn"><b>⚠ ${esc(old.join(", "))} ${old.length > 1 ? "are" : "is"} on an old version of the tracker.</b> Old pages can undo other people's saved jobs — ask ${old.length > 1 ? "them" : "him"} to close the tracker and open the link again.</div>`;
+}
+
+
+/* ---------- A job in progress survives the browser closing ----------
+ * Chun Kay, 27 Sep: close the gap where a job that's started but not yet
+ * Done loses its photos and readings if the phone closes the browser (Android
+ * often does this while the camera is open). Everything a technician enters
+ * into an open job lives in state.wt (water test chips), state.dm (dosing
+ * amounts + scale photos), state.fp (panel / done / can't-finish photos),
+ * state.vac (vacuum photos not yet on the job) and state.doneNote -- so
+ * after every redraw, every keystroke, and when the app goes to the
+ * background, a copy is kept on the phone ("drt.draft") and put back when the
+ * page opens again the same day for the same person.
+ * Photos: uploaded ones keep their Drive link (and a small picture); ones
+ * that were still uploading keep the picture itself and come back as
+ * "didn't finish uploading -- tap Retry". Half-prepared ones are dropped.
+ */
+const DRAFT_KEY = "drt.draft";
+const DRAFT_STORES = ["wt", "dm", "fp", "vac", "doneNote"];
+const isPhotoObj = v => v && typeof v === "object" && !Array.isArray(v) && typeof v.status === "string"
+  && /^(preparing|uploading|failed|done)$/.test(v.status) && ("base64" in v || "dataUrl" in v || "fileId" in v || "takenAt" in v || "n" in v);
+function draftClean(v, lean){
+  if(Array.isArray(v)) return v.map(x => draftClean(x, lean)).filter(x => x !== undefined);
+  if(!v || typeof v !== "object") return v;
+  if(isPhotoObj(v)){
+    if(v.status === "preparing") return undefined;
+    const c = {}; Object.keys(v).forEach(k => { if(k !== "base64" && k !== "dataUrl") c[k] = v[k]; });
+    if(v.status === "done"){
+      c.dataUrl = v.thumb || null;   // it's in Drive: keep the small Drive picture, never the full photo (phone storage is shared with the offline photo queue)
+    } else if(v.base64 && !lean){
+      c.base64 = v.base64; c.dataUrl = v.dataUrl || null;
+      c.status = "failed"; c.relayRefused = false;
+      c.error = "This photo hadn't finished uploading when the app closed. Tap Retry.";
+    } else {
+      c.status = "failed"; c.relayRefused = true; c.dataUrl = null;
+      c.error = "This photo was lost when the app closed — take it again.";
+    }
+    return c;
+  }
+  const o = {}; Object.keys(v).forEach(k => { const x = draftClean(v[k], lean); if(x !== undefined) o[k] = x; });
+  return o;
+}
+function saveDraft(){
+  clearTimeout(saveDraft.t); saveDraft.t = null;
+  if(!state.me) return;
+  const stores = {}; let any = false;
+  DRAFT_STORES.forEach(k => { const v = state[k]; if(v && typeof v === "object" && Object.keys(v).length){ stores[k] = v; any = true; } });
+  try{
+    if(!any){ localStorage.removeItem(DRAFT_KEY); return; }
+    const base = {date: todayKey(), me: state.me, vac: !!VAC_MODE, at: new Date().toISOString()};
+    try{ const full = JSON.stringify(Object.assign({}, base, {stores: draftClean(stores, false)}));
+      if(full.length > 1.5e6) throw new Error("too big");   // leave room for the offline photo queue and unsent saves
+      localStorage.setItem(DRAFT_KEY, full); }
+    catch(e){ localStorage.setItem(DRAFT_KEY, JSON.stringify(Object.assign({}, base, {stores: draftClean(stores, true), lean: true}))); }   // phone storage full: keep the readings and Drive links, drop the pictures
+  }catch(e){}
+}
+function scheduleDraftSave(){ if(!saveDraft.t) saveDraft.t = setTimeout(saveDraft, 400); }
+document.addEventListener("input", scheduleDraftSave, true);
+document.addEventListener("change", scheduleDraftSave, true);
+document.addEventListener("visibilitychange", () => { if(document.hidden) saveDraft(); });
+window.addEventListener("pagehide", saveDraft);
+function restoreDraft(){
+  let d = null; try{ d = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null"); }catch(e){}
+  if(!d || !d.stores) return false;
+  if(d.date !== todayKey() || d.me !== state.me || !!d.vac !== !!VAC_MODE){
+    if(d.date !== todayKey()) try{ localStorage.removeItem(DRAFT_KEY); }catch(e){}
+    return false;
+  }
+  let got = false;
+  DRAFT_STORES.forEach(k => {
+    const v = d.stores[k]; if(!v || typeof v !== "object") return;
+    state[k] = Object.assign({}, v, state[k] || {});
+    if(Object.keys(v).length) got = true;
+  });
+  return got;
 }
 
 /* ================= water test & dosing calculator (inside the tracker) =================
@@ -7405,8 +7481,8 @@ function wire(){
     d.addEventListener("toggle", () => { state.panelsOpen[d.dataset.panel] = d.open; }));
   const two = v => v.split("|");
 
-  on("#who-go", () => { const v=$("#who").value; if(!v) return; state.me=v; localStorage.setItem("drt.me",v); render(); recordVersion(true); });
-  on("#switch-user", () => { state.me=""; localStorage.removeItem("drt.me"); render(); });
+  on("#who-go", () => { const v=$("#who").value; if(!v) return; state.me=v; localStorage.setItem("drt.me",v); restoreDraft(); render(); recordVersion(true); });
+  on("#switch-user", () => { saveDraft(); state.me=""; localStorage.removeItem("drt.me"); DRAFT_STORES.forEach(k => { state[k] = {}; }); render(); });
   on("#reset-round", async () => {
     const id = myId(); if(!id) return;
     // Work already done (jobs finished, photos taken) is never thrown away:
@@ -7913,7 +7989,10 @@ try{ state.vacWork = JSON.parse(localStorage.getItem("drt.vacWork") || "null") |
 state.team = teamLocal.read();
 state.teamPerson = null;
 try{ state.roster = JSON.parse(localStorage.getItem("drt.roster")||"[]"); }catch(e){}
+const draftBack = restoreDraft();
 render();
+if(draftBack && myRound() && myRound().stops.some(st => (st.tasks || []).some(t => t.startedAt && !t.doneAt && t.claimedBy === state.me)))
+  setTimeout(() => flash("Picked up where you left off — the photos and readings for your open job are back."), 600);
 initDb();
 window.addEventListener("online", () => flushPending());
 
