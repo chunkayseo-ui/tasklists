@@ -629,7 +629,9 @@ details.panel[open] summary::after{content:"▴"}
 .lv-box{border-top:1px solid var(--line);padding-top:10px}
 .lv-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13.5px}
 .lv-row .cal-chip{display:inline-block;font-size:12.5px;padding:2px 7px}
-.lv-by{font-size:12px}.lv-row .link{margin-left:auto}
+.lv-by{font-size:12px}.lv-row .link[data-lvrm]{margin-left:auto}
+.lv-row .lv-ph{font-weight:600}
+.lv-mc{display:flex;flex-direction:column;gap:6px;border:1px dashed var(--line);border-radius:9px;padding:8px 10px;background:var(--surface-2)}
 .lv-form select,.lv-form input{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);min-width:0;flex:1}
 .lv-to{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--ink-2)}
 @media (min-width:700px){ .cal-d{min-height:84px;padding:5px} .cal-chip{font-size:12px} }
@@ -3747,7 +3749,7 @@ const readerOn = () => !!(relayCfg() && state.cfg.photo.read);
 // and when, and show on the issue card and the job row afterwards.
 state.fp = state.fp || {};
 const fpList = scope => (state.fp[scope] = state.fp[scope] || []);
-function formPhotosHtml(scope, what){
+function formPhotosHtml(scope, what, hint){
   if(!relayCfg()) return "";
   const photos = fpList(scope);
   const rows = photos.map(ph => {
@@ -3767,7 +3769,7 @@ function formPhotosHtml(scope, what){
     </div>
     <input type="file" accept="image/*" capture="environment" hidden data-fpin-cam="${esc(scope)}">
     <input type="file" accept="image/*" hidden data-fpin-gal="${esc(scope)}">
-    <span class="note" style="margin:0">Optional. A photo of the ${esc(what)} helps whoever picks this up.</span>
+    <span class="note" style="margin:0">${esc(hint || "Optional. A photo of the " + what + " helps whoever picks this up.")}</span>
   </div>`;
 }
 // A photo arriving mid-form must not wipe what has been typed. render()
@@ -6613,6 +6615,7 @@ function leaveBlock(date){
   const f = state.lvForm = state.lvForm || {person:"", other:"", type:"mc", to:"", note:""};
   const rows = leaveOn(date).map(e => `<div class="lv-row"><span class="cal-chip leave lv-${esc(e.type)}">${esc(e.person)}</span>
     <b>${esc(leaveLabel(e.type))}</b>${e.note ? `<span class="muted">— ${esc(e.note)}</span>` : ""}
+    ${(e.photos || []).filter(x => x && x.fileId).map((x, i, a) => `<button type="button" class="link lv-ph" data-photoview="${esc(x.fileId)}" data-photocap="${esc(leaveLabel(e.type) + " · " + e.person + " · " + fmtDate(e.date))}">📎 ${esc(e.type === "mc" ? "MC" : "Photo")}${a.length > 1 ? " " + (i + 1) : ""}</button>`).join("")}
     <span class="muted lv-by">by ${esc(e.by || "?")}</span><button class="link" data-lvrm="${esc(e.id)}">remove</button></div>`).join("");
   const opts = `<option value="">Who?</option>` + (state.roster || []).map(n => `<option ${f.person === n ? "selected" : ""}>${esc(n)}</option>`).join("")
     + `<option value="__other" ${f.person === "__other" ? "selected" : ""}>Someone else…</option>`;
@@ -6626,7 +6629,8 @@ function leaveBlock(date){
       <div class="aj-chips">${types}</div>
       <label class="lv-to">Until (only if more than one day) <input type="date" id="lv-to" min="${date}" value="${esc(f.to)}"></label>
       <input id="lv-note" maxlength="120" placeholder="Note (optional) — e.g. back on Monday. No medical details." value="${esc(f.note)}">
-      <button class="btn sm primary" data-lvadd="${date}">Add — ${esc(fmtDate(date))}${range ? " to " + esc(fmtDate(f.to)) : ""}</button>
+      ${f.type === "mc" && relayCfg() ? `<div class="lv-mc"><b style="font-size:13.5px">MC photo</b>${formPhotosHtml("lv|" + date, "MC", "Optional. Take a photo of the MC, or upload a screenshot of an e-MC. Saved with the MC for every day it covers.")}</div>` : ""}
+      <button class="btn sm primary" data-lvadd="${date}" ${fpBusy("lv|" + date) ? "disabled" : ""}>${fpBusy("lv|" + date) ? "Wait for the photo…" : `Add — ${esc(fmtDate(date))}${range ? " to " + esc(fmtDate(f.to)) : ""}`}</button>
     </div></div>`;
 }
 function calendarView(){
@@ -7081,8 +7085,14 @@ function wire(){
     const to = f.to && f.to > from ? f.to : from;
     const dates = []; const [y, mo, d] = from.split("-").map(Number);
     for(let dt = new Date(y, mo - 1, d); dateKey(dt) <= to && dates.length < 62; dt.setDate(dt.getDate() + 1)) dates.push(dateKey(dt));
+    const scope = "lv|" + from;
+    if(fpBusy(scope)){ flash("Wait for the photo to finish uploading."); return; }
+    const photos = f.type === "mc" ? fpDone(scope) : [];
     const at = new Date().toISOString(), entries = {};
-    dates.forEach(k => entries[k + "__" + slug(person)] = {date:k, person, type:f.type, note:(f.note || "").trim().slice(0, 120), by:state.me || "?", at});
+    dates.forEach(k => { const id = k + "__" + slug(person), old = (state.leave || {})[id];
+      const keep = (!photos.length && old && !old.removed && old.type === f.type && old.photos) ? old.photos : photos;
+      entries[id] = Object.assign({date:k, person, type:f.type, note:(f.note || "").trim().slice(0, 120), by:state.me || "?", at}, keep.length ? {photos:keep} : {}); });
+    delete state.fp[scope];
     state.lvForm = {person:f.person, other:f.other, type:f.type, to:"", note:""};
     saveLeave(entries);
     flash(`${person} · ${leaveLabel(f.type)} added${dates.length > 1 ? " for " + dates.length + " days" : ""}.`);
@@ -7203,6 +7213,8 @@ function wire(){
     if(type === "pp"){ const [, , tid, slot] = scope.split("|"); const r = myRound(); const st = r && r.stops.find(x => x.outlet === code); const tk = st && st.tasks.find(x => x.id === tid);
       const sl = tk ? panelPhotoSlots(code, tk).find(x => x.id === slot) : null;
       return {kind:"job", code: (tk && tk.pool) || code, what: sl ? sl.label : "Pump panel", text: tk ? tk.name : ""}; }
+    if(type === "lv"){ const f = state.lvForm || {}; const who = f.person === "__other" ? (f.other || "") : (f.person || "");
+      return {kind:"mc", code:"LEAVE", what:"MC", text: who + " · " + code}; }
     if(type === "cant") return {kind:"job", code, what:"Can't finish", text: ((state.cant && state.cant.reason) || "") + (($("#cant-note")||{}).value ? " — " + $("#cant-note").value : "")};
     return {kind:"issue", code: ($("#addissue-outlet")||{}).value || "?", what:"Issue", text: ($("#addissue-desc")||{}).value};
   };
