@@ -586,6 +586,49 @@ details.panel[open] summary::after{content:"▴"}
 .wt-read{display:block;width:100%;font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.45;color:var(--ink-2);margin-top:1px}
 .wt-read b{color:var(--accent);font-weight:600}
 .job-row-read{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-2);margin-top:4px;line-height:1.45}
+/* Calendar tab */
+.cal-card{padding:10px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
+.cal-h{font:600 11px/1 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);text-align:center;padding:4px 0}
+.cal-d{min-height:64px;border:1px solid var(--line);border-radius:7px;background:var(--surface);padding:3px;display:flex;flex-direction:column;gap:2px;align-items:stretch;text-align:left;font:inherit;cursor:pointer;min-width:0}
+.cal-d.blank{border:0;background:none;cursor:default}
+.cal-d.future{background:var(--surface-2);opacity:.75}
+.cal-d.today{border-color:var(--accent);border-width:2px}
+.cal-d.sel{box-shadow:0 0 0 2px var(--accent) inset;background:var(--accent-soft)}
+.cal-n{font:600 12px/1.2 "IBM Plex Mono",monospace;color:var(--ink-2)}
+.cal-chip{display:block;font:600 11px/1.3 system-ui,sans-serif;border-radius:4px;padding:1px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.cal-chip.leave{background:transparent;color:var(--ink-2);border:1px dashed var(--ink-3);font-weight:500}
+.cal-chip.leave.lv-mc{border-color:#B4452F;color:#8C2F1C}
+.cal-chip.leave.lv-al{border-color:#1F5FA8;color:#1F4E86}
+.cal-warn{display:inline-block;background:var(--warn);color:#fff;border-radius:50%;width:14px;height:14px;line-height:14px;text-align:center;font:700 10px/14px system-ui,sans-serif}
+.cal-live{color:#16A34A;font-size:10px}
+.cal-row{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line)}
+.cal-row .cal-chip{flex:none;font-size:13px;padding:3px 8px}
+.cal-row-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.cal-hrs,.cal-jobs{font-size:12.5px;color:var(--ink-2)}
+.cal-outs{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:13px}
+.cal-out{font-weight:600}.cal-out.quick{font-weight:400;color:var(--ink-3)}
+.cal-arrow{color:var(--ink-3)}
+.cal-left{margin:0;padding-left:18px;font-size:12.5px;color:var(--warn)}
+.cal-tw{overflow-x:auto}
+.cal-t{width:100%;min-width:0;border-collapse:collapse;font-size:13px}
+.cal-t tr:last-child td{border-bottom:0}
+.cal-t th{font:600 11px/1.2 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);text-align:left;padding:6px 6px;border-bottom:1px solid var(--line)}
+.cal-t td{padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+.cal-t .num{text-align:right;font-family:"IBM Plex Mono",monospace;white-space:nowrap}
+.cal-t .cal-chip{display:inline-block;font-size:12.5px;padding:2px 7px}
+.cal-top{font-size:11.5px;color:var(--ink-3);margin-top:3px}
+.cal-lv{font-size:12px;color:var(--ink-2);white-space:nowrap}
+.cal-t td .dev{font-size:11px}
+.cn-short{display:none}
+@media (max-width:560px){ .cal-grid .cn-full{display:none} .cal-grid .cn-short{display:inline} .cal-grid .cal-chip{text-overflow:clip;padding:1px 2px;font-size:10.5px} .cal-grid .cal-live{margin-left:1px} }
+.lv-box{border-top:1px solid var(--line);padding-top:10px}
+.lv-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13.5px}
+.lv-row .cal-chip{display:inline-block;font-size:12.5px;padding:2px 7px}
+.lv-by{font-size:12px}.lv-row .link{margin-left:auto}
+.lv-form select,.lv-form input{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);min-width:0;flex:1}
+.lv-to{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--ink-2)}
+@media (min-width:700px){ .cal-d{min-height:84px;padding:5px} .cal-chip{font-size:12px} }
 details.vac-fold{margin-top:6px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2)}
 details.vac-fold>summary{list-style:none;cursor:pointer;padding:8px 10px;font-size:13px;color:var(--ink-2);display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
 details.vac-fold>summary::-webkit-details-marker{display:none}
@@ -630,6 +673,7 @@ details.vac-fold>.job-row-read{padding:4px 10px 10px;margin:0}
       <button id="btn-overview" aria-pressed="false">Overview</button>
       <button id="btn-mgr" aria-pressed="false">Supervisor</button>
       <button id="btn-routes" aria-pressed="false">Routes</button>
+      <button id="btn-calendar" aria-pressed="false">Calendar</button>
       <button id="btn-tasksetting" aria-pressed="false">Task Setting</button>
     </div>
   </div>
@@ -1438,6 +1482,10 @@ async function initDb(){
   db.doc("dosing_config/roster").onSnapshot(
     s => { if(state.pending["dosing_config/roster"]) return;
       const d = s.exists ? s.data() : null; state.roster = (d && Array.isArray(d.members)) ? clone(d.members) : []; externalUpdate(); }, ()=>{});
+  db.doc("dosing_config/leave").onSnapshot(
+    s => { if(state.pending["dosing_config/leave"]) return;
+      const d = s.exists ? s.data() : null; state.leave = (d && d.entries && typeof d.entries === "object") ? clone(d.entries) : {};
+      leaveLocal.write(state.leave); externalUpdate(); }, ()=>{});
   db.doc("dosing_config/tasks").onSnapshot(
     s => {
       if(state.pending["dosing_config/tasks"]) return;
@@ -1505,6 +1553,25 @@ async function saveRound(round){
 async function saveRoster(members){
   state.roster = members; render();
   await persist("dosing_config/roster", {members}, () => localStorage.setItem("drt.roster", JSON.stringify(members)));
+}
+// MC / annual leave / off -- typed in on the Calendar tab for now (Chun Kay,
+// 27 Sep), to be joined up with the HR leave app once that exists. One entry
+// per person per day, id "<date>__<person-slug>", all kept in one config doc.
+// Removing an entry marks it removed rather than deleting the field, so a
+// merge from a phone that hasn't seen the removal yet can't bring it back
+// half-way. No medical details: the note is for "back on Mon" and the like.
+const LEAVE_TYPES = [{id:"mc", label:"MC"}, {id:"al", label:"Annual leave"}, {id:"off", label:"Off"}, {id:"other", label:"Other"}];
+const leaveLabel = id => (LEAVE_TYPES.find(x => x.id === id) || LEAVE_TYPES[3]).label;
+const leaveLocal = {
+  read(){ try{ return JSON.parse(localStorage.getItem("drt.leave") || "{}"); }catch(e){ return {}; } },
+  write(all){ try{ localStorage.setItem("drt.leave", JSON.stringify(all)); }catch(e){} }
+};
+const leaveOn = date => Object.entries(state.leave || {}).filter(([, e]) => e && !e.removed && e.date === date).map(([id, e]) => Object.assign({id}, e))
+  .sort((a, b) => a.person.localeCompare(b.person));
+async function saveLeave(entries){
+  state.leave = Object.assign({}, state.leave, entries); render();
+  const all = clone(state.leave);
+  await persist("dosing_config/leave", {entries: all}, () => leaveLocal.write(all), {merge:true});
 }
 async function saveCfg(cfg){
   state.cfg = cfg; render();
@@ -2897,6 +2964,7 @@ function render(){
   $("#btn-overview").setAttribute("aria-pressed", state.role==="overview");
   $("#btn-mgr").setAttribute("aria-pressed", state.role==="mgr");
   $("#btn-routes").setAttribute("aria-pressed", state.role==="routes");
+  $("#btn-calendar").setAttribute("aria-pressed", state.role==="calendar");
   $("#btn-tasksetting").setAttribute("aria-pressed", state.role==="tasksetting");
   // A small red count on the Overview tab itself -- so a supervisor glancing
   // at the nav bar (not even inside Overview yet) can tell something needs
@@ -2906,6 +2974,7 @@ function render(){
   $("#view").innerHTML = state.role==="tech" ? techView()
     : state.role==="overview" ? overviewView()
     : state.role==="routes" ? routesView()
+    : state.role==="calendar" ? calendarView()
     : state.role==="tasksetting" ? taskSettingView() : mgrView();
   wire();
 }
@@ -6459,6 +6528,202 @@ function routeCard(r, proj, byCode){
     <div class="route-foot">${mapsLink}</div>` : `<p class="note" style="padding:0 14px 14px">Not checked in anywhere yet tonight.</p>`}
   </div>`;
 }
+/* ---------- Calendar: who did the night dosing, month by month ---------- */
+// Chun Kay asked (27 Sep) for a month calendar of who did the night dosing
+// each day. It fills itself in from the rounds: whoever started a night round
+// and checked in somewhere that night shows on that day -- nobody types a
+// roster. Friday Vacuum Rounds and test rounds are left out. A month is
+// fetched once and cached (Refresh re-fetches); today's rounds come from the
+// live feed, so tonight fills in as it happens.
+state.monthCache = state.monthCache || {};
+const monthOf = key => String(key || "").slice(0, 7);
+function shiftMonth(m, d){ const [y, mo] = m.split("-").map(Number); const dt = new Date(y, mo - 1 + d, 1); return dt.getFullYear() + "-" + pad(dt.getMonth() + 1); }
+function monthName(m){ const [y, mo] = m.split("-").map(Number); return new Date(y, mo - 1, 1).toLocaleDateString("en-GB", {month:"long", year:"numeric"}); }
+function loadMonth(m, force){
+  if(!state.db) return;
+  const c = state.monthCache[m];
+  if(c && !force && !c.error) return;            // loaded, or on its way
+  state.monthCache[m] = {rounds: (c && c.rounds) || [], loading:true};
+  state.db.collection("dosing_rounds").where("date", ">=", m + "-01").where("date", "<=", m + "-31").get().then(snap => {
+    state.monthCache[m] = {rounds: snap.docs.map(d => normalizeRound(clone(Object.assign({id:d.id}, d.data())))), loading:false, at:Date.now()};
+    if(state.role === "calendar") render();
+  }, () => {
+    state.monthCache[m] = {rounds: (c && c.rounds) || [], loading:false, error:true};
+    if(state.role === "calendar") render();
+  });
+}
+function monthRounds(m){
+  const today = todayKey();
+  let list;
+  if(!state.db) list = Object.values(state.rounds);
+  else {
+    const c = state.monthCache[m];
+    list = ((c && c.rounds) || []).filter(r => r.date !== today);
+    if(monthOf(today) === m) list = list.concat(Object.values(state.rounds).filter(r => r.date === today));
+  }
+  return list.filter(r => r && r.date && monthOf(r.date) === m && !isTestRound(r) && !isVacRound(r) && (r.stops || []).some(everVisited));
+}
+// One person's night, from however many rounds they had that day (a "Reset
+// today's round" leaves the earlier one behind): where they went in the order
+// they got there, first arrival to last Leave, and the jobs at the outlets
+// they did duty at. A job that shows up in both rounds is counted once.
+function nightSummary(rounds, date){
+  const stops = rounds.flatMap(r => r.stops || []).filter(everVisited);
+  const visits = stops.flatMap(s => stopVisits(s).map(v => Object.assign({s}, v))).filter(v => v.arriveAt)
+    .sort((a, b) => a.arriveAt < b.arriveAt ? -1 : 1);
+  const seen = {}, outlets = [];
+  visits.forEach(v => {
+    const name = v.s.custom ? (v.s.customName || "Stop") : v.s.outlet;
+    if(seen[name]){ if(!isQuick(v.s)) seen[name].quick = false; return; }
+    seen[name] = {name, quick: isQuick(v.s)}; outlets.push(seen[name]);
+  });
+  const start = visits.length ? visits[0].arriveAt : null;
+  const departs = visits.map(v => v.departAt).filter(Boolean).sort();
+  const end = departs.length ? departs[departs.length - 1] : null;
+  const onSite = visits.some(v => !v.departAt);
+  const jobs = {};
+  stops.filter(s => !isQuick(s)).forEach(s => (s.tasks || []).forEach(t => {
+    const k = s.outlet + "|" + (t.pool || "") + "|" + t.name;
+    if(!jobs[k]) jobs[k] = {outlet: s.custom ? (s.customName || "Stop") : s.outlet, pool:t.pool || "", name:t.name, done:false};
+    if(t.doneAt) jobs[k].done = true;
+  }));
+  const all = Object.values(jobs), left = all.filter(j => !j.done);
+  return {outlets, start, end, onSite, live: onSite && date === todayKey(),
+    minutes: (start && end && end > start) ? mins(start, end) : null,
+    done: all.length - left.length, total: all.length, left};
+}
+// Each person keeps the same colour all month: roster order first, then
+// anyone else who turns up in the rounds.
+const CAL_COLOURS = [["#DCEEEE","#00474D"],["#FDE7C8","#6B3F00"],["#E4E0F7","#3D2A7A"],["#DDEEE5","#1D5A3E"],
+  ["#FBE0E6","#7A1F36"],["#DCE8F7","#1F3F6B"],["#EFE6D2","#584419"],["#E6E6E6","#333333"]];
+function calColourFor(names){
+  const order = (state.roster || []).map(slug);
+  names.forEach(n => { if(!order.includes(slug(n))) order.push(slug(n)); });
+  return n => CAL_COLOURS[Math.max(0, order.indexOf(slug(n))) % CAL_COLOURS.length];
+}
+// The chosen day's MC / leave / off notes, and the form to add one. The form
+// keeps what's been picked in state, so a live update redrawing the page
+// doesn't wipe it half-filled.
+function leaveBlock(date){
+  const f = state.lvForm = state.lvForm || {person:"", other:"", type:"mc", to:"", note:""};
+  const rows = leaveOn(date).map(e => `<div class="lv-row"><span class="cal-chip leave lv-${esc(e.type)}">${esc(e.person)}</span>
+    <b>${esc(leaveLabel(e.type))}</b>${e.note ? `<span class="muted">— ${esc(e.note)}</span>` : ""}
+    <span class="muted lv-by">by ${esc(e.by || "?")}</span><button class="link" data-lvrm="${esc(e.id)}">remove</button></div>`).join("");
+  const opts = `<option value="">Who?</option>` + (state.roster || []).map(n => `<option ${f.person === n ? "selected" : ""}>${esc(n)}</option>`).join("")
+    + `<option value="__other" ${f.person === "__other" ? "selected" : ""}>Someone else…</option>`;
+  const types = LEAVE_TYPES.map(x => `<button type="button" class="tog" data-lvtype="${x.id}" aria-pressed="${f.type === x.id}">${esc(x.label)}</button>`).join("");
+  const range = f.to && f.to > date;
+  return `<div class="lv-box stack" style="gap:8px">
+    <b>MC / leave / off</b>
+    ${rows || '<p class="note" style="margin:0">Nothing noted for this day.</p>'}
+    <div class="lv-form stack" style="gap:8px">
+      <div class="row-2"><select id="lv-person" aria-label="Who">${opts}</select>${f.person === "__other" ? `<input id="lv-other" placeholder="Name" value="${esc(f.other)}" aria-label="Name">` : ""}</div>
+      <div class="aj-chips">${types}</div>
+      <label class="lv-to">Until (only if more than one day) <input type="date" id="lv-to" min="${date}" value="${esc(f.to)}"></label>
+      <input id="lv-note" maxlength="120" placeholder="Note (optional) — e.g. back on Monday. No medical details." value="${esc(f.note)}">
+      <button class="btn sm primary" data-lvadd="${date}">Add — ${esc(fmtDate(date))}${range ? " to " + esc(fmtDate(f.to)) : ""}</button>
+    </div></div>`;
+}
+function calendarView(){
+  const today = todayKey(), cur = monthOf(today);
+  const m = state.calMonth || (state.calMonth = cur);
+  loadMonth(m);
+  const c = state.monthCache[m];
+  const [y, mo] = m.split("-").map(Number);
+  const nDays = new Date(y, mo, 0).getDate(), lead = (new Date(y, mo - 1, 1).getDay() + 6) % 7;
+  // byDay[date] = [{person, s: nightSummary}]
+  const grouped = {};
+  monthRounds(m).forEach(r => {
+    const k = r.date, p = slug(r.person || "?");
+    grouped[k] = grouped[k] || {};
+    (grouped[k][p] = grouped[k][p] || {person:r.person || "?", rounds:[]}).rounds.push(r);
+  });
+  const byDay = {};
+  Object.keys(grouped).forEach(d => {
+    byDay[d] = Object.values(grouped[d]).map(g => ({person:g.person, s:nightSummary(g.rounds, d)}))
+      .sort((a, b) => (a.s.start || "") < (b.s.start || "") ? -1 : 1);
+  });
+  const monthLeave = Object.values(state.leave || {}).filter(e => e && !e.removed && monthOf(e.date) === m);
+  const names = [...new Set(Object.values(byDay).flat().map(x => x.person).concat(monthLeave.map(e => e.person)))];
+  const col = calColourFor(names);
+  const chip = (n, extra) => { const [bg, fg] = col(n); return `<span class="cal-chip" style="background:${bg};color:${fg}">${esc(n)}${extra || ""}</span>`; };
+
+  const nav = `<div class="card datebar">
+    <button class="btn dnav" id="cal-prev" aria-label="Previous month">◀</button>
+    <div class="dmid"><div class="eyebrow">${m === cur ? "This month" : "&nbsp;"}</div><div class="mono">${esc(monthName(m))}</div></div>
+    <button class="btn dnav" id="cal-next" aria-label="Next month" ${m >= shiftMonth(cur, 3) ? "disabled" : ""}>▶</button>
+    ${state.db ? `<button class="link" id="cal-refresh" style="margin-left:6px">${c && c.loading ? "Loading…" : "Refresh"}</button>` : ""}
+  </div>`;
+  if(state.db && c && c.error && !c.rounds.length){
+    return `${nav}<div class="card empty">Couldn't load ${esc(monthName(m))}. Check your connection and tap Refresh.</div>`;
+  }
+
+  // ---- the month grid ----
+  const heads = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d => `<div class="cal-h">${d}</div>`).join("");
+  let cells = "";
+  for(let i = 0; i < lead; i++) cells += `<div class="cal-d blank"></div>`;
+  const sel = state.calDay && monthOf(state.calDay) === m ? state.calDay : (m === cur ? today : null);
+  for(let d = 1; d <= nDays; d++){
+    const key = m + "-" + pad(d), list = byDay[key] || [], future = key > today;
+    const open = list.some(x => x.s.left.length);
+    const nm = n => `<span class="cn-full">${esc(n)}</span><span class="cn-short">${esc(String(n).slice(0, 4))}</span>`;
+    const chips = list.map(x => { const [bg, fg] = col(x.person); return `<span class="cal-chip" style="background:${bg};color:${fg}">${nm(x.person)}${x.s.live ? '<span class="cal-live" title="On site now">●</span>' : ""}</span>`; }).join("")
+      + leaveOn(key).map(e => `<span class="cal-chip leave lv-${esc(e.type)}">${nm(e.person)} ${esc(e.type === "al" ? "AL" : e.type === "other" ? "…" : leaveLabel(e.type))}</span>`).join("");
+    cells += `<button type="button" class="cal-d${future ? " future" : ""}${key === today ? " today" : ""}${key === sel ? " sel" : ""}" data-calday="${key}"
+      aria-label="${esc(fmtDate(key))}: ${list.length ? esc(list.map(x => x.person).join(", ")) : "nobody"}">
+      <span class="cal-n">${d}${open ? ' <span class="cal-warn" title="Jobs left open">!</span>' : ""}</span>${chips}</button>`;
+  }
+  const loading = state.db && c && c.loading && !c.rounds.length;
+  const grid = `<div class="card cal-card"><div class="cal-grid">${heads}${cells}</div>
+    ${loading ? `<p class="note" style="margin:8px 0 0">Loading the month…</p>` : ""}
+    <p class="note" style="margin:8px 0 0">Tap a day to see where each person went, their hours and their jobs, or to add MC / leave / off. <span class="cal-warn">!</span> = jobs left open · <span class="cal-live">●</span> = on site now · <span class="cal-chip leave" style="display:inline-block">grey outline</span> = MC / leave / off.</p></div>`;
+
+  // ---- the chosen day ----
+  let dayBlock = "";
+  if(sel){
+    const list = byDay[sel] || [];
+    const rows = list.map(x => {
+      const s = x.s;
+      const hrs = !s.start ? "" : s.live ? `${clockOf(s.start)} – now · on site`
+        : s.onSite ? `${clockOf(s.start)} – ${s.end ? clockOf(s.end) : "?"} · <span class="dev">⚠ Leave not tapped at the last stop</span>`
+        : `${clockOf(s.start)} – ${clockOf(s.end)}${s.minutes !== null ? ` · <b>${dur(s.minutes)}</b>` : ""}`;
+      const outl = s.outlets.map(o => `<span class="cal-out${o.quick ? " quick" : ""}">${esc(o.name)}${o.quick ? " (drop-off)" : ""}</span>`).join('<span class="cal-arrow">→</span>');
+      const jobs = s.total ? `${s.done}/${s.total} jobs${s.left.length ? ` · <span class="dev">${s.left.length} left open</span>` : " · all done"}` : "no jobs";
+      const leftList = s.left.length ? `<ul class="cal-left">${s.left.map(j => `<li>${esc(j.outlet)}${j.pool ? " " + esc(j.pool) : ""} — ${esc(j.name)}</li>`).join("")}</ul>` : "";
+      return `<div class="cal-row">${chip(x.person)}<div class="cal-row-main">
+        <div class="mono cal-hrs">${hrs}</div><div class="cal-outs">${outl}</div><div class="mono cal-jobs">${jobs}</div>${leftList}</div></div>`;
+    }).join("");
+    dayBlock = `<div class="card stack" style="gap:10px">
+      <div class="sec-head" style="display:flex;align-items:center;gap:8px"><h2 class="sec" style="margin:0">${esc(fmtDate(sel))}</h2>
+        ${list.length ? `<button class="link" data-calroutes="${sel}" style="margin-left:auto">Open in Routes →</button>` : ""}</div>
+      ${rows || (sel > today ? "" : `<p class="note" style="margin:0">${sel === today ? "Nobody has started a night round yet tonight." : "No night round recorded on this day."}</p>`)}
+      ${leaveBlock(sel)}
+    </div>`;
+  }
+
+  // ---- month totals per person ----
+  const tot = {};
+  const totFor = n => tot[slug(n)] = tot[slug(n)] || {person:n, nights:0, minutes:0, done:0, total:0, left:0, outlets:{}, leave:{}};
+  Object.values(byDay).flat().forEach(x => {
+    const t = totFor(x.person);
+    t.nights++; t.minutes += x.s.minutes || 0; t.done += x.s.done; t.total += x.s.total; t.left += x.s.left.length;
+    x.s.outlets.filter(o => !o.quick).forEach(o => t.outlets[o.name] = (t.outlets[o.name] || 0) + 1);
+  });
+  monthLeave.forEach(e => { const t = totFor(e.person); t.leave[e.type] = (t.leave[e.type] || 0) + 1; });
+  const trows = Object.values(tot).sort((a, b) => b.nights - a.nights || a.person.localeCompare(b.person)).map(t => {
+    const top = Object.entries(t.outlets).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([o, n]) => `${esc(o)}×${n}`).join(" ");
+    const lv = LEAVE_TYPES.filter(x => t.leave[x.id]).map(x => `${x.id === "al" ? "AL" : x.label} ${t.leave[x.id]}`).join(" · ");
+    return `<tr><td>${chip(t.person)}${top ? `<div class="cal-top">${top}</div>` : ""}</td><td class="num">${t.nights}</td><td class="num">${t.minutes ? dur(t.minutes) : "–"}</td>
+      <td class="num">${t.total ? `${t.done}/${t.total}${t.left ? `<div class="dev">${t.left} open</div>` : ""}` : "–"}</td><td class="cal-lv">${lv || "–"}</td></tr>`;
+  }).join("");
+  const totals = `<div class="card stack" style="gap:8px"><h2 class="sec" style="margin:0">${esc(monthName(m))} — nights per person</h2>
+    ${trows ? `<div class="cal-tw"><table class="cal-t"><thead><tr><th>Person · outlets</th><th class="num">Nights</th><th class="num">Hours</th><th class="num">Jobs</th><th>Leave</th></tr></thead><tbody>${trows}</tbody></table></div>
+    <p class="note" style="margin:0">Hours = first arrival to last Leave each night, travel included. A night where Leave wasn't tapped at the last stop isn't counted in the hours.</p>`
+    : `<p class="note" style="margin:0">No night rounds recorded this month yet.</p>`}</div>`;
+
+  return `${nav}${grid}${dayBlock}${totals}`;
+}
+
 function routesView(){
   const viewDate = state.viewDate || todayKey();
   const isToday = viewDate === todayKey();
@@ -6789,6 +7054,38 @@ function wire(){
     state.picking = null; render();
   });
   each("[data-delround]", b => deleteRoundById(b.dataset.delround));
+
+  // Calendar tab
+  const calTo = m => { state.calMonth = m; state.calDay = m === monthOf(todayKey()) ? todayKey() : null; render(); };
+  on("#cal-prev", () => calTo(shiftMonth(state.calMonth, -1)));
+  on("#cal-next", () => calTo(shiftMonth(state.calMonth, 1)));
+  on("#cal-refresh", () => { loadMonth(state.calMonth, true); render(); });
+  each("[data-calday]", b => { state.calDay = b.dataset.calday; render(); });
+  each("[data-calroutes]", b => { state.viewDate = b.dataset.calroutes; state.role = "routes"; render(); window.scrollTo(0, 0); });
+  const lvf = () => (state.lvForm = state.lvForm || {person:"", other:"", type:"mc", to:"", note:""});
+  on("#lv-person", e => { lvf().person = e.target.value; render(); const o = $("#lv-other"); if(o) o.focus(); }, "change");
+  on("#lv-other", e => { lvf().other = e.target.value; }, "input");
+  on("#lv-to", e => { lvf().to = e.target.value; render(); }, "change");
+  on("#lv-note", e => { lvf().note = e.target.value; }, "input");
+  each("[data-lvtype]", b => { lvf().type = b.dataset.lvtype; render(); });
+  each("[data-lvadd]", b => {
+    const f = lvf(), from = b.dataset.lvadd;
+    const person = (f.person === "__other" ? (f.other || "") : f.person).trim();
+    if(!person){ flash("Pick who first."); return; }
+    const to = f.to && f.to > from ? f.to : from;
+    const dates = []; const [y, mo, d] = from.split("-").map(Number);
+    for(let dt = new Date(y, mo - 1, d); dateKey(dt) <= to && dates.length < 62; dt.setDate(dt.getDate() + 1)) dates.push(dateKey(dt));
+    const at = new Date().toISOString(), entries = {};
+    dates.forEach(k => entries[k + "__" + slug(person)] = {date:k, person, type:f.type, note:(f.note || "").trim().slice(0, 120), by:state.me || "?", at});
+    state.lvForm = {person:f.person, other:f.other, type:f.type, to:"", note:""};
+    saveLeave(entries);
+    flash(`${person} · ${leaveLabel(f.type)} added${dates.length > 1 ? " for " + dates.length + " days" : ""}.`);
+  });
+  each("[data-lvrm]", b => {
+    const e = (state.leave || {})[b.dataset.lvrm]; if(!e) return;
+    if(!confirm(`Remove ${e.person}'s ${leaveLabel(e.type)} on ${fmtDate(e.date)}?`)) return;
+    saveLeave({[b.dataset.lvrm]: Object.assign({}, e, {removed:true, removedBy:state.me || "?", removedAt:new Date().toISOString()})});
+  });
 
   each("[data-pick]", b => {
     const cur = pickSel(), c = b.dataset.pick;
@@ -7183,6 +7480,7 @@ $("#btn-overview").addEventListener("click", (e) => {
 });
 $("#btn-mgr").addEventListener("click",  () => { state.role="mgr";  render(); });
 $("#btn-routes").addEventListener("click", () => { state.role="routes"; render(); });
+$("#btn-calendar").addEventListener("click", () => { state.role="calendar"; render(); });
 $("#btn-tasksetting").addEventListener("click", () => { state.role="tasksetting"; render(); });
 
 /* ================= boot ================= */
@@ -7193,6 +7491,7 @@ state.cfg.assigned = normalizeAssigned(state.cfg.assigned);
   if(pruned.changed){ try{ localStorage.setItem("drt.cfg", JSON.stringify(state.cfg)); }catch(e){} } }
 state.rounds = normalizeRounds(local.read());
 state.issues = localIssues.read();
+state.leave = leaveLocal.read();
 try{ state.roster = JSON.parse(localStorage.getItem("drt.roster")||"[]"); }catch(e){}
 render();
 initDb();
