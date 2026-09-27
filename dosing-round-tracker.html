@@ -610,6 +610,7 @@ details.panel[open] summary::after{content:"▴"}
 .cal-out{font-weight:600}.cal-out.quick{font-weight:400;color:var(--ink-3)}
 .cal-arrow{color:var(--ink-3)}
 .cal-left{margin:0;padding-left:18px;font-size:12.5px;color:var(--warn)}
+.cal-left li.opt{color:var(--ink-3)}
 .cal-tw{overflow-x:auto}
 .cal-t{width:100%;min-width:0;border-collapse:collapse;font-size:13px}
 .cal-t tr:last-child td{border-bottom:0}
@@ -6584,11 +6585,12 @@ function nightSummary(rounds, date){
   const jobs = {};
   stops.filter(s => !isQuick(s)).forEach(s => (s.tasks || []).forEach(t => {
     const k = s.outlet + "|" + (t.pool || "") + "|" + t.name;
-    if(!jobs[k]) jobs[k] = {outlet: s.custom ? (s.customName || "Stop") : s.outlet, pool:t.pool || "", name:t.name, done:false};
+    if(!jobs[k]) jobs[k] = {outlet: s.custom ? (s.customName || "Stop") : s.outlet, pool:t.pool || "", name:t.name, done:false, must:false};
+    if(t.kind === "required") jobs[k].must = true;
     if(t.doneAt) jobs[k].done = true;
   }));
-  const all = Object.values(jobs), left = all.filter(j => !j.done);
-  return {outlets, start, end, onSite, live: onSite && date === todayKey(),
+  const all = Object.values(jobs), left = all.filter(j => !j.done).sort((a, b) => b.must - a.must);
+  return {outlets, start, end, onSite, live: onSite && date === todayKey(), mustLeft: left.filter(j => j.must).length,
     minutes: (start && end && end > start) ? mins(start, end) : null,
     done: all.length - left.length, total: all.length, left};
 }
@@ -6665,7 +6667,7 @@ function calendarView(){
   const sel = state.calDay && monthOf(state.calDay) === m ? state.calDay : (m === cur ? today : null);
   for(let d = 1; d <= nDays; d++){
     const key = m + "-" + pad(d), list = byDay[key] || [], future = key > today;
-    const open = list.some(x => x.s.left.length);
+    const open = list.some(x => x.s.mustLeft && !x.s.live);
     const nm = n => `<span class="cn-full">${esc(n)}</span><span class="cn-short">${esc(String(n).slice(0, 4))}</span>`;
     const chips = list.map(x => { const [bg, fg] = col(x.person); return `<span class="cal-chip" style="background:${bg};color:${fg}">${nm(x.person)}${x.s.live ? '<span class="cal-live" title="On site now">●</span>' : ""}</span>`; }).join("")
       + leaveOn(key).map(e => `<span class="cal-chip leave lv-${esc(e.type)}">${nm(e.person)} ${esc(e.type === "al" ? "AL" : e.type === "other" ? "…" : leaveLabel(e.type))}</span>`).join("");
@@ -6676,7 +6678,7 @@ function calendarView(){
   const loading = state.db && c && c.loading && !c.rounds.length;
   const grid = `<div class="card cal-card"><div class="cal-grid">${heads}${cells}</div>
     ${loading ? `<p class="note" style="margin:8px 0 0">Loading the month…</p>` : ""}
-    <p class="note" style="margin:8px 0 0">Tap a day to see where each person went, their hours and their jobs, or to add MC / leave / off. <span class="cal-warn">!</span> = jobs left open · <span class="cal-live">●</span> = on site now · <span class="cal-chip leave" style="display:inline-block">grey outline</span> = MC / leave / off.</p></div>`;
+    <p class="note" style="margin:8px 0 0">Tap a day to see where each person went, their hours and their jobs, or to add MC / leave / off. <span class="cal-warn">!</span> = a must-do job left open · <span class="cal-live">●</span> = on site now · <span class="cal-chip leave" style="display:inline-block">grey outline</span> = MC / leave / off.</p></div>`;
 
   // ---- the chosen day ----
   let dayBlock = "";
@@ -6688,8 +6690,9 @@ function calendarView(){
         : s.onSite ? `${clockOf(s.start)} – ${s.end ? clockOf(s.end) : "?"} · <span class="dev">⚠ Leave not tapped at the last stop</span>`
         : `${clockOf(s.start)} – ${clockOf(s.end)}${s.minutes !== null ? ` · <b>${dur(s.minutes)}</b>` : ""}`;
       const outl = s.outlets.map(o => `<span class="cal-out${o.quick ? " quick" : ""}">${esc(o.name)}${o.quick ? " (drop-off)" : ""}</span>`).join('<span class="cal-arrow">→</span>');
-      const jobs = s.total ? `${s.done}/${s.total} jobs${s.left.length ? ` · <span class="dev">${s.left.length} left open</span>` : " · all done"}` : "no jobs";
-      const leftList = s.left.length ? `<ul class="cal-left">${s.left.map(j => `<li>${esc(j.outlet)}${j.pool ? " " + esc(j.pool) : ""} — ${esc(j.name)}</li>`).join("")}</ul>` : "";
+      const other = s.left.length - s.mustLeft;
+      const jobs = s.total ? `${s.done}/${s.total} jobs${!s.left.length ? " · all done" : ""}${s.mustLeft ? ` · <span class="dev">${s.mustLeft} must-do left open</span>` : ""}${other ? ` · <span class="muted">${other} other not done</span>` : ""}` : "no jobs";
+      const leftList = s.left.length ? `<ul class="cal-left">${s.left.map(j => `<li class="${j.must ? "" : "opt"}">${esc(j.outlet)}${j.pool ? " " + esc(j.pool) : ""} — ${esc(j.name)}${j.must ? " (must do)" : ""}</li>`).join("")}</ul>` : "";
       return `<div class="cal-row">${chip(x.person)}<div class="cal-row-main">
         <div class="mono cal-hrs">${hrs}</div><div class="cal-outs">${outl}</div><div class="mono cal-jobs">${jobs}</div>${leftList}</div></div>`;
     }).join("");
@@ -6706,7 +6709,7 @@ function calendarView(){
   const totFor = n => tot[slug(n)] = tot[slug(n)] || {person:n, nights:0, minutes:0, done:0, total:0, left:0, outlets:{}, leave:{}};
   Object.values(byDay).flat().forEach(x => {
     const t = totFor(x.person);
-    t.nights++; t.minutes += x.s.minutes || 0; t.done += x.s.done; t.total += x.s.total; t.left += x.s.left.length;
+    t.nights++; t.minutes += x.s.minutes || 0; t.done += x.s.done; t.total += x.s.total; t.left += x.s.mustLeft;
     x.s.outlets.filter(o => !o.quick).forEach(o => t.outlets[o.name] = (t.outlets[o.name] || 0) + 1);
   });
   monthLeave.forEach(e => { const t = totFor(e.person); t.leave[e.type] = (t.leave[e.type] || 0) + 1; });
@@ -6714,7 +6717,7 @@ function calendarView(){
     const top = Object.entries(t.outlets).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([o, n]) => `${esc(o)}×${n}`).join(" ");
     const lv = LEAVE_TYPES.filter(x => t.leave[x.id]).map(x => `${x.id === "al" ? "AL" : x.label} ${t.leave[x.id]}`).join(" · ");
     return `<tr><td>${chip(t.person)}${top ? `<div class="cal-top">${top}</div>` : ""}</td><td class="num">${t.nights}</td><td class="num">${t.minutes ? dur(t.minutes) : "–"}</td>
-      <td class="num">${t.total ? `${t.done}/${t.total}${t.left ? `<div class="dev">${t.left} open</div>` : ""}` : "–"}</td><td class="cal-lv">${lv || "–"}</td></tr>`;
+      <td class="num">${t.total ? `${t.done}/${t.total}${t.left ? `<div class="dev">${t.left} must-do open</div>` : ""}` : "–"}</td><td class="cal-lv">${lv || "–"}</td></tr>`;
   }).join("");
   const totals = `<div class="card stack" style="gap:8px"><h2 class="sec" style="margin:0">${esc(monthName(m))} — nights per person</h2>
     ${trows ? `<div class="cal-tw"><table class="cal-t"><thead><tr><th>Person · outlets</th><th class="num">Nights</th><th class="num">Hours</th><th class="num">Jobs</th><th>Leave</th></tr></thead><tbody>${trows}</tbody></table></div>
