@@ -1286,7 +1286,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-09-27.4";
+const APP_BUILD = "2026-09-27.5";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -1294,7 +1294,12 @@ const isVacRound = r => !!r && r.kind === "vacuum";
 // those days the normal page opens straight into it for them (add ?mode=night
 // to the address to get the night round instead).
 const VAC_STAFF = {fik:[1,2,3,4,5]};
-const vacDayFor = name => (VAC_STAFF[slug(name || "")] || []).includes(operationalNow().getDay());
+// Which weekday it is for the morning staff: the night pages keep "yesterday"
+// until 6:30am (night rounds run past midnight), but Fik starts at 6am, so
+// for him the new day begins at 4am.
+const MORNING_CUTOFF_HOUR = 4;
+const morningNow = () => { const d = new Date(); if(d.getHours() < MORNING_CUTOFF_HOUR) d.setDate(d.getDate() - 1); return d; };
+const vacDayFor = name => (VAC_STAFF[slug(name || "")] || []).includes(morningNow().getDay());
 const sameMode = r => isVacRound(r) === VAC_MODE;
 const SUGGESTIONS = VAC_MODE
   ? ["Pressure jet","Manual vacuum","Brush walls & steps","Clear skimmer baskets","Clean waterline","Check pump room","Report to office"]
@@ -1316,8 +1321,11 @@ const dateKey = d => d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()
 // date, invisible until a supervisor manually looks up that date. Treating
 // the operational day as not changing until well past any realistic
 // knock-off time avoids all of that.
-const DAY_CUTOFF_HOUR = 6;
-const DAY_CUTOFF_MINUTE = 30;
+// The Morning Round page starts its day at 4am instead: Fik begins at 6am
+// (JE, 28 Sep) and with 6:30 his round was filed under the day before, then
+// "vanished" at 6:30 when the day flipped.
+const DAY_CUTOFF_HOUR = VAC_MODE ? MORNING_CUTOFF_HOUR : 6;
+const DAY_CUTOFF_MINUTE = VAC_MODE ? 0 : 30;
 // A technician can't arrive somewhere new without first tapping "Leave" at
 // wherever they were -- so a travel gap this short almost always means Leave
 // wasn't tapped until they were already at (or arriving at) the next stop,
