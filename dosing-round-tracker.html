@@ -651,6 +651,7 @@ button.tm-c{cursor:pointer;border:1px dashed var(--line)}
 .cal-top{font-size:11.5px;color:var(--ink-3);margin-top:3px}
 .cal-lv{font-size:12px;color:var(--ink-2);white-space:nowrap}
 .cal-sun{color:#B7791F;margin-right:1px}
+.mw-pick{display:flex;flex-direction:column;gap:6px;margin:0 0 12px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2)}
 .cal-chip.am{box-shadow:inset 0 0 0 1px #E0B45C}
 .cal-kind{font-size:12px;font-weight:600;color:#8A5A0B}
 .cal-am{font-size:10.5px;color:#8A5A0B;font-weight:600}
@@ -1276,14 +1277,15 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
-// Who does the Friday Vacuum Round, and on which days (Sun=0 .. Sat=6). On
+// Who does the Morning Round (was "Friday Vacuum Round"), and on which days
+// (Sun=0 .. Sat=6) -- Fik, Monday to Friday (Chun Kay, 27 Sep). On
 // those days the normal page opens straight into it for them (add ?mode=night
 // to the address to get the night round instead).
-const VAC_STAFF = {fik:[5]};
+const VAC_STAFF = {fik:[1,2,3,4,5]};
 const vacDayFor = name => (VAC_STAFF[slug(name || "")] || []).includes(operationalNow().getDay());
 const sameMode = r => isVacRound(r) === VAC_MODE;
 const SUGGESTIONS = VAC_MODE
-  ? ["Brush walls & steps","Clear skimmer baskets","Clean waterline","Check pump room","Report to office"]
+  ? ["Pressure jet","Manual vacuum","Brush walls & steps","Clear skimmer baskets","Clean waterline","Check pump room","Report to office"]
   : ["Manual vacuum","Fix door","Soap dispenser","Replace light","Clear drain","Top up chemicals","Report to office"];
 
 /* ================= helpers ================= */
@@ -1881,12 +1883,24 @@ function extraJobCount(outlet){
   if(VAC_MODE) return 0;
   return assignedFor(outlet, operationalNow().getDay()).length + extrasTonight(outlet).length + issueTasksFor(outlet).length;
 }
-// Vacuum round: one Manual vacuum job per pool (photo proof, route map and
-// Play guide come with it, same as a night vacuum job).
+// Morning Round: the work picked at the start (Manual vacuum, Pressure jet or
+// both), one job of each per pool. A Manual vacuum job brings its photo
+// proof, route map and Play guide, same as a night vacuum job; Pressure jet is
+// an ordinary job (photos + note) until its own sections are drawn up.
+const MORNING_WORK = [{id:"vac", name:"Manual vacuum"}, {id:"jet", name:"Pressure jet"}];
+function morningWork(){
+  const r = typeof myRound === "function" ? myRound() : null;
+  const w = (r && Array.isArray(r.work) && r.work.length) ? r.work : state.vacWork;
+  return (w && w.length) ? w : ["vac"];
+}
 function vacTasksFor(outlet){
   const pools = (OUTLETS.find(o => o.code === outlet) || {}).pools;
-  const mk = p => Object.assign({id:uid(), name:"Manual vacuum", kind:"required", startedAt:null, doneAt:null, claimedBy:null, category:"Maintenance Works"}, p ? {pool:p} : {});
-  return pools ? pools.map(mk) : [mk(null)];
+  const out = [];
+  MORNING_WORK.filter(w => morningWork().includes(w.id)).forEach(w => {
+    const mk = p => Object.assign({id:uid(), name:w.name, kind:"required", startedAt:null, doneAt:null, claimedBy:null, category:"Maintenance Works"}, p ? {pool:p} : {});
+    (pools ? pools.map(mk) : [mk(null)]).forEach(t => out.push(t));
+  });
+  return out;
 }
 function tasksFor(outlet){
   if(VAC_MODE) return vacTasksFor(outlet);
@@ -2262,6 +2276,7 @@ async function startRound(codes){
   await saveRound({
     id: myId(), date: todayKey(), person: state.me, personSlug: slug(state.me),
     createdAt: new Date().toISOString(), headingTo: null, ...(VAC_MODE ? {kind:"vacuum"} : {}),
+    ...(VAC_MODE ? {work: morningWork().slice()} : {}),
     stops: codes.map(c => ({outlet:c, arriveAt:null, departAt:null, fixIn:null, fixOut:null, tasks: seedTasksFor(c)}))
   });
 }
@@ -2998,7 +3013,7 @@ function reopenIssue(id){
 function render(){
   if(VAC_MODE){
     state.role = "tech";
-    if(!render.vacDone){ render.vacDone = true; document.title = "Friday Vacuum Round"; const h = document.querySelector(".brand h1"); if(h) h.textContent = "Friday Vacuum Round"; const seg = document.querySelector(".top .seg"); if(seg) seg.style.display = "none"; }
+    if(!render.vacDone){ render.vacDone = true; document.title = "Morning Round"; const h = document.querySelector(".brand h1"); if(h) h.textContent = "Morning Round"; const seg = document.querySelector(".top .seg"); if(seg) seg.style.display = "none"; }
   }
   renderConn();
   $("#hdr-date").textContent = DAYNAME[operationalNow().getDay()]+" "+todayKey();
@@ -4966,7 +4981,7 @@ function techView(){
   if(!state.me) return pickPerson();
   if(!VAC_MODE && vacDayFor(state.me) && !myRound() && !/[?&]mode=night\b/.test(location.search)){
     setTimeout(() => location.replace("vacuum-round.html"), 0);
-    return `<div class="card" style="padding:20px"><b>Opening your Friday Vacuum Round…</b> <a href="vacuum-round.html">Tap here if it doesn't open</a></div>`;
+    return `<div class="card" style="padding:20px"><b>Opening your Morning Round…</b> <a href="vacuum-round.html">Tap here if it doesn't open</a></div>`;
   }
   const r = myRound();
   if(r) setTimeout(autoAddAssigned, 0);
@@ -5028,7 +5043,8 @@ function buildRound(){
   return `
   <div class="card" style="padding:20px">
     <div class="sec-head" style="margin-bottom:4px"><h2 class="sec">Today's round</h2><span class="eyebrow">${esc(state.me)}</span></div>
-    <p class="note" style="margin:0 0 10px">${VAC_MODE ? "Tap the branches you're vacuuming today, then Start round. Each pool comes with its vacuum job, route map, photo points and Play guide." : "Tap the outlets you're covering today, then Start round."}${anyTaken ? " Outlets someone else has already covered or picked up are marked — you can still take them too." : ""}</p>
+    ${VAC_MODE ? `<div class="mw-pick"><b>Today's work</b><div class="aj-chips">${MORNING_WORK.map(w => `<button type="button" class="tog" data-mwork="${w.id}" aria-pressed="${(state.vacWork || ["vac"]).includes(w.id)}">${esc(w.name)}</button>`).join("")}</div></div>` : ""}
+    <p class="note" style="margin:0 0 10px">${VAC_MODE ? "Tick today's work, tap the branches, then Start round. Each pool gets a job for each piece of work — Manual vacuum comes with its route map, photo points and Play guide." : "Tap the outlets you're covering today, then Start round."}${anyTaken ? " Outlets someone else has already covered or picked up are marked — you can still take them too." : ""}</p>
     ${assignedToMe().length ? `<p class="note" style="margin:0 0 10px;color:#5B21B6"><strong>${esc(assignedToMe().join(", "))}</strong> ${assignedToMe().length > 1 ? "are" : "is"} already ticked — a job there is assigned to you.</p>` : ""}
     ${VAC_MODE ? "" : tonightScheduleHtml()}
     ${VAC_MODE ? "" : fcStripHtml(OUTLETS.map(o => o.code))}
@@ -5043,7 +5059,7 @@ function buildRound(){
       <button class="btn" id="pick-all" style="flex:1">Select all</button>
       <button class="btn" id="pick-none" style="flex:1">Clear</button>
     </div>
-    <button class="btn primary big" id="start" style="margin-top:10px" ${sel.length?"":"disabled"}>
+    <button class="btn primary big" id="start" style="margin-top:10px" ${sel.length && (!VAC_MODE || (state.vacWork || ["vac"]).length) ? "" : "disabled"}>
       Start round · ${sel.length} outlet${sel.length===1?"":"s"}</button>
     <p class="note" style="margin:12px 0 0">Each outlet comes with its job list. Nothing is timed until you claim a job.</p>
   </div>
@@ -6040,7 +6056,7 @@ function crewRow(r, isToday, opts){
   const locs = visited.length ? `<div class="crew-locs">${visited.map(s =>
       locHtml(s, "in", {prefix: stopLabel(s) + " · in " + clockOf(s.arriveAt)})).join("")}</div>` : "";
   return `<div class="crew-row"><div class="crew-top">
-      <span class="crew-name">${esc(r.person)}</span>${isVacRound(r) ? '<span class="tag cat">Friday Vacuum Round</span>' : ""}
+      <span class="crew-name">${esc(r.person)}</span>${isVacRound(r) ? '<span class="tag cat">Morning Round</span>' : ""}
       ${isTestRound(r) ? '<span class="tag req">TEST</span>' : ""}
       ${chip}
       <span class="crew-where mono">${t.tasksDone} jobs · ${dur(t.onSite)} on site · ${dur(t.travel)} travel</span>
@@ -6563,7 +6579,7 @@ function routeCard(r, proj, byCode){
     </div>` : "";
   return `<div class="card route-card">
     <div class="route-head">
-      <span class="crew-name">${esc(r.person)}</span>${isVacRound(r) ? '<span class="tag cat">Friday Vacuum Round</span>' : ""}
+      <span class="crew-name">${esc(r.person)}</span>${isVacRound(r) ? '<span class="tag cat">Morning Round</span>' : ""}
       ${isTestRound(r) ? '<span class="tag req">TEST</span>' : ""}
       <span class="chip ${cs.k}"><span class="dot"></span>${esc(cs.label)}</span>
     </div>
@@ -6659,7 +6675,7 @@ function teamView(){
 // Chun Kay asked (27 Sep) for a month calendar of who did the night dosing
 // each day. It fills itself in from the rounds: whoever started a night round
 // and checked in somewhere that night shows on that day -- nobody types a
-// roster. Friday Vacuum Rounds and test rounds are left out. A month is
+// roster. Test rounds are left out; Fik's Morning Round shows with a ☀. A month is
 // fetched once and cached (Refresh re-fetches); today's rounds come from the
 // live feed, so tonight fills in as it happens.
 state.monthCache = state.monthCache || {};
@@ -6773,7 +6789,8 @@ function calendarView(){
   });
   const byDay = {};
   Object.keys(grouped).forEach(d => {
-    byDay[d] = Object.values(grouped[d]).map(g => ({person:g.person, vac:g.vac, s:nightSummary(g.rounds, d)}))
+    byDay[d] = Object.values(grouped[d]).map(g => ({person:g.person, vac:g.vac, s:nightSummary(g.rounds, d),
+      works: g.vac ? [...new Set(g.rounds.flatMap(r => (r.stops || []).filter(everVisited).flatMap(s => (s.tasks || []).filter(t => t.startedAt || t.doneAt).map(t => t.name))))] : []}))
       .sort((a, b) => (a.s.start || "") < (b.s.start || "") ? -1 : 1);
   });
   const monthLeave = Object.values(state.leave || {}).filter(e => e && !e.removed && monthOf(e.date) === m);
@@ -6809,7 +6826,7 @@ function calendarView(){
   const loading = state.db && c && c.loading && !c.rounds.length;
   const grid = `<div class="card cal-card"><div class="cal-grid">${heads}${cells}</div>
     ${loading ? `<p class="note" style="margin:8px 0 0">Loading the month…</p>` : ""}
-    <p class="note" style="margin:8px 0 0">Tap a day to see where each person went, their hours and their jobs, or to add MC / leave / off. <span class="cal-warn">!</span> = a must-do job left open · <span class="cal-live">●</span> = on site now · <span class="cal-sun">☀</span> = morning vacuum round · <span class="cal-chip leave" style="display:inline-block">grey outline</span> = MC / leave / off.</p></div>`;
+    <p class="note" style="margin:8px 0 0">Tap a day to see where each person went, their hours and their jobs, or to add MC / leave / off. <span class="cal-warn">!</span> = a must-do job left open · <span class="cal-live">●</span> = on site now · <span class="cal-sun">☀</span> = Fik's Morning Round · <span class="cal-chip leave" style="display:inline-block">grey outline</span> = MC / leave / off.</p></div>`;
 
   // ---- the chosen day ----
   let dayBlock = "";
@@ -6825,7 +6842,7 @@ function calendarView(){
       const jobs = s.total ? `${s.done}/${s.total} jobs${!s.left.length ? " · all done" : ""}${s.mustLeft ? ` · <span class="dev">${s.mustLeft} must-do left open</span>` : ""}${other ? ` · <span class="muted">${other} other not done</span>` : ""}` : "no jobs";
       const leftList = s.left.length ? `<ul class="cal-left">${s.left.map(j => `<li class="${j.must ? "" : "opt"}">${esc(j.outlet)}${j.pool ? " " + esc(j.pool) : ""} — ${esc(j.name)}${j.must ? " (must do)" : ""}</li>`).join("")}</ul>` : "";
       return `<div class="cal-row">${chip(x.person)}<div class="cal-row-main">
-        ${x.vac ? '<div class="cal-kind">☀ Morning · Friday Vacuum Round</div>' : ""}
+        ${x.vac ? `<div class="cal-kind">☀ Morning Round${x.works && x.works.length ? " · " + esc(x.works.join(" + ")) : ""}</div>` : ""}
         <div class="mono cal-hrs">${hrs}</div><div class="cal-outs">${outl}</div><div class="mono cal-jobs">${jobs}</div>${leftList}</div></div>`;
     }).join("");
     dayBlock = `<div class="card stack cal-pane" style="gap:10px">
@@ -7264,6 +7281,8 @@ function wire(){
   });
   on("#pick-all",  () => { state.picking = OUTLETS.map(o=>o.code); render(); });
   on("#pick-none", () => { state.picking = []; render(); });
+  each("[data-mwork]", b => { const w = new Set(state.vacWork || ["vac"]); w.has(b.dataset.mwork) ? w.delete(b.dataset.mwork) : w.add(b.dataset.mwork);
+    state.vacWork = MORNING_WORK.map(x => x.id).filter(id => w.has(id)); try{ localStorage.setItem("drt.vacWork", JSON.stringify(state.vacWork)); }catch(e){} render(); });
   on("#start", () => {
     const sel = pickSel();
     const ordered = OUTLETS.map(o=>o.code).filter(c => sel.includes(c));
@@ -7666,6 +7685,7 @@ state.cfg.assigned = normalizeAssigned(state.cfg.assigned);
 state.rounds = normalizeRounds(local.read());
 state.issues = localIssues.read();
 state.leave = leaveLocal.read();
+try{ state.vacWork = JSON.parse(localStorage.getItem("drt.vacWork") || "null") || ["vac"]; }catch(e){ state.vacWork = ["vac"]; }
 state.team = teamLocal.read();
 state.teamPerson = null;
 try{ state.roster = JSON.parse(localStorage.getItem("drt.roster")||"[]"); }catch(e){}
