@@ -461,6 +461,14 @@ details.panel[open] summary::after{content:"▴"}
 .tog:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* nav badge -- small count shown on the Overview tab when issues need attention */
+#upd-bar{position:fixed;left:12px;right:12px;bottom:12px;z-index:60;display:flex;align-items:center;gap:10px;justify-content:space-between;
+  background:var(--surface);color:var(--ink);border:1px solid var(--accent);border-radius:var(--r);box-shadow:var(--shadow);padding:10px 12px;font-size:14px;max-width:640px;margin:0 auto}
+#upd-bar .btn{flex:none}
+.app-ver{margin:18px 0 70px;text-align:center;font-size:12px;color:var(--ink-3)}
+.ver-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:8px 0;border-top:1px solid var(--line-soft);font-size:14px}
+.ver-row b{min-width:72px}
+.ver-seen{flex-basis:100%;font-size:13px}
+.ver-warn{border-color:var(--warn);background:var(--warn-soft);color:var(--ink);margin-bottom:12px;padding:12px 14px}
 .nav-badge{display:inline-block;background:var(--urgent);color:#fff;border-radius:999px;
   font:700 11px/1.6 "IBM Plex Mono",monospace;padding:0 6px;margin-left:5px;vertical-align:middle}
 
@@ -1276,6 +1284,9 @@ function assignedFor(outlet, dayIdx){
 // saved alongside the night rounds so supervisors see it on Overview/Routes,
 // but kept apart from them: it never counts as a night visit, and jobs are not
 // mirrored between the two kinds of round.
+// Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
+// compare it with the copy on the site and reload themselves when theirs is older.
+const APP_BUILD = "2026-09-27.2";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -1587,6 +1598,10 @@ async function initDb(){
   db.doc("dosing_config/roster").onSnapshot(
     s => { if(state.pending["dosing_config/roster"]) return;
       const d = s.exists ? s.data() : null; state.roster = (d && Array.isArray(d.members)) ? clone(d.members) : []; externalUpdate(); }, ()=>{});
+  db.doc("dosing_config/versions").onSnapshot(
+    s => { const d = s.exists ? s.data() : null; state.versions = (d && d.people && typeof d.people === "object") ? clone(d.people) : {};
+      if(state.role === "team" || state.role === "overview") externalUpdate(); }, ()=>{});
+  setTimeout(recordVersion, 4000);
   db.doc("dosing_config/team").onSnapshot(
     s => { if(state.pending["dosing_config/team"]) return;
       state.team = s.exists ? clone(s.data()) : null; if(state.team) teamLocal.write(state.team); externalUpdate(); }, ()=>{});
@@ -3100,6 +3115,8 @@ function render(){
     : state.role==="calendar" ? calendarView()
     : state.role==="team" ? teamView()
     : state.role==="tasksetting" ? taskSettingView() : mgrView();
+  if(state.role === "overview") $("#view").insertAdjacentHTML("afterbegin", oldVersionWarning());
+  $("#view").insertAdjacentHTML("beforeend", `<p class="app-ver">Version ${esc(APP_BUILD)}${state.newBuild ? ` · <b>${esc(state.newBuild)} ready</b>` : ""}</p>`);
   wire();
 }
 
@@ -3125,6 +3142,146 @@ function externalUpdate(){
   const configuring = document.querySelector("details.panel[open]") || state.role === "tasksetting";
   if(typing || adding || configuring) return;
   render();
+}
+
+
+/* ---------- New version: phones update themselves, and we can see who's on what ----------
+ * Chun Kay, 27 Sep: after Islam's BK jobs were wiped by a phone still running
+ * the old page, he asked for the tracker to reload itself when there's a new
+ * version, and to see which version each person is on.
+ * - Every few minutes (and when the app comes back to the front) the page
+ *   fetches its own file from the site and reads APP_BUILD out of it. If the
+ *   site's is newer it reloads -- but only when that loses nothing: no unsent
+ *   saves, no photo uploading, no job of mine in progress, nothing typed, no
+ *   form open, and the screen untouched for 30 s (and in front for 30 s, so
+ *   coming back from the camera never triggers it). Otherwise a bar at the
+ *   bottom says an update is ready, with an "Update now" button.
+ * - Each phone writes {name, build, at, device} to dosing_config/versions
+ *   (at most every 30 min) so the Team tab can list who's on which version
+ *   and Overview can warn about anyone working today on an old one. Phones
+ *   from before this change never write, so they show as "old version".
+ */
+const cmpBuild = (a, b) => String(a || "").localeCompare(String(b || ""), undefined, {numeric:true});
+state.newBuild = null; state.versions = state.versions || {};
+let lastTouch = Date.now(), visibleSince = Date.now();
+["pointerdown", "keydown", "input", "change"].forEach(ev => document.addEventListener(ev, () => { lastTouch = Date.now(); }, true));
+document.addEventListener("visibilitychange", () => {
+  if(document.hidden) return;
+  visibleSince = Date.now();
+  if(Date.now() - (checkForUpdate.at || 0) > 60e3) checkForUpdate();
+});
+async function checkForUpdate(){
+  checkForUpdate.at = Date.now();
+  try{
+    const res = await fetch(location.origin + location.pathname + "?build-check=" + Date.now(), {cache:"no-store"});
+    if(!res.ok) return;
+    const m = (await res.text()).match(/const APP_BUILD = "([^"]+)"/);
+    if(!m || cmpBuild(m[1], APP_BUILD) <= 0) return;
+    const first = !state.newBuild; state.newBuild = m[1];
+    if(first) render();
+    showUpdateBar(); tryUpdate();
+  }catch(e){}
+}
+function updateBlocker(){
+  if(Object.keys(state.pending || {}).length) return "still saving";
+  if(relayBusy > 0) return "a photo is uploading";
+  if(Object.values(state.fp || {}).some(l => (l || []).some(ph => ph.status === "preparing" || ph.status === "uploading"))) return "a photo is uploading";
+  if([...document.querySelectorAll(".ph-status")].some(el => /preparing|uploading/.test(el.textContent))) return "a photo is uploading";
+  if(state.me && Object.values(state.rounds || {}).some(r => (r.stops || []).some(s => (s.tasks || []).some(t => t.startedAt && !t.doneAt && !t.cancelledAt && t.claimedBy === state.me)))) return "you have a job in progress";
+  const a = document.activeElement;
+  if(a && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) return "you're typing";
+  const typed = [...document.querySelectorAll("#view input, #view textarea, #view select")].some(el =>
+    el.type === "file" ? false
+    : (el.type === "checkbox" || el.type === "radio") ? el.checked !== el.defaultChecked
+    : el.tagName === "SELECT" ? el.selectedIndex !== Math.max(0, [...el.options].findIndex(o => o.defaultSelected))
+    : el.value !== el.defaultValue);
+  if(typed) return "a form has something typed in it";
+  if(state.adding !== null || state.quickForm || state.reportingIssue || state.addingIssue || state.picking || state.addingCustomStop || state.notingOutlet || state.confirmDepart || state.confirmReopen) return "a form is open";
+  if(document.querySelector("details.panel[open]")) return "a form is open";
+  if(document.hidden) return "the app is in the background";
+  if(Date.now() - visibleSince < 30e3 || Date.now() - lastTouch < 30e3) return "you're using it";
+  return "";
+}
+function reloadToNew(){
+  try{ sessionStorage.setItem("drt.reloadFor", JSON.stringify({build: state.newBuild, at: Date.now()})); }catch(e){}
+  const q = new URLSearchParams(location.search); q.set("v", state.newBuild);
+  location.replace(location.pathname + "?" + q.toString() + location.hash);
+}
+function tryUpdate(){
+  clearTimeout(tryUpdate.t);
+  if(!state.newBuild) return;
+  // Already reloaded for this build and the site still gave us the old page
+  // (a cache somewhere): don't loop -- leave it to the "Update now" button.
+  let tried = null; try{ tried = JSON.parse(sessionStorage.getItem("drt.reloadFor") || "null"); }catch(e){}
+  if(tried && tried.build === state.newBuild && Date.now() - tried.at < 10*60e3){ showUpdateBar(); return; }
+  const why = updateBlocker();
+  if(!why){ reloadToNew(); return; }
+  showUpdateBar(why);
+  tryUpdate.t = setTimeout(tryUpdate, 15e3);
+}
+function showUpdateBar(why){
+  let bar = document.getElementById("upd-bar");
+  if(!bar){
+    bar = document.createElement("div"); bar.id = "upd-bar"; bar.setAttribute("role", "status");
+    document.body.appendChild(bar);
+    bar.addEventListener("click", e => {
+      if(!e.target.closest("#upd-now")) return;
+      const b = updateBlocker();
+      if(/saving|uploading/.test(b)){ flash("Wait a moment — " + b + ". It will update by itself right after."); return; }
+      if(/job in progress|typed|form is open/.test(b) && !confirm("Update now? Anything not yet saved on this screen (" + b + ") will be lost.")) return;
+      reloadToNew();
+    });
+  }
+  bar.innerHTML = `<span><b>New version ready</b> (${esc(state.newBuild || "")})${why ? ` · updates by itself when ${esc(why.replace(/^you're /, "you stop ").replace(/^you have a job in progress$/, "this job is done").replace(/^a form (is open|has something typed in it)$/, "this form is closed").replace(/^(still saving|a photo is uploading)$/, "saving finishes").replace(/^the app is in the background$/, "you open it"))}` : " · updating…"}</span><button type="button" class="btn sm primary" id="upd-now">Update now</button>`;
+}
+function deviceKind(){
+  const u = navigator.userAgent || "";
+  return /iPhone|iPad|iPod/.test(u) ? "iPhone" : /Android/.test(u) ? "Android" : "Computer";
+}
+function recordVersion(force){
+  if(!state.db || !state.me || isTestMe()) return;
+  const key = slug(state.me), tag = key + "|" + APP_BUILD + "|" + (VAC_MODE ? "am" : "night");
+  let last = null; try{ last = JSON.parse(localStorage.getItem("drt.verSeen") || "null"); }catch(e){}
+  if(!force && last && last.tag === tag && Date.now() - last.at < 30*60e3) return;
+  const entry = {name: state.me, build: APP_BUILD, at: new Date().toISOString(), device: deviceKind(), page: VAC_MODE ? "Morning Round" : "Tracker"};
+  state.db.doc("dosing_config/versions").set({people: {[key]: entry}}, {merge:true})
+    .then(() => { try{ localStorage.setItem("drt.verSeen", JSON.stringify({tag, at: Date.now()})); }catch(e){} })
+    .catch(() => {});
+}
+setInterval(() => recordVersion(), 10*60e3);
+setTimeout(checkForUpdate, 20e3);
+setInterval(checkForUpdate, 5*60e3);
+function newestBuild(){
+  return [APP_BUILD, state.newBuild, ...Object.values(state.versions || {}).map(v => v && v.build)].filter(Boolean).sort(cmpBuild).pop();
+}
+function peopleForVersions(){
+  const names = new Map();
+  (state.roster || []).forEach(n => names.set(slug(n), n));
+  Object.entries(state.versions || {}).forEach(([k, v]) => { if(!names.has(k)) names.set(k, (v && v.name) || k); });
+  return [...names.entries()].filter(([k]) => k !== "test");
+}
+function versionsCard(){
+  const newest = newestBuild();
+  const rows = peopleForVersions().sort((a, b) => a[1].localeCompare(b[1])).map(([k, name]) => {
+    const v = (state.versions || {})[k];
+    const st = !v ? `<span class="tag st-prog">⚠ Old version</span>`
+      : cmpBuild(v.build, newest) < 0 ? `<span class="tag st-prog">⚠ Old (${esc(v.build)})</span>`
+      : `<span class="tag st-done">Latest</span>`;
+    const seen = v ? `${esc(fmtDate(dateKey(new Date(v.at))))} ${esc(new Date(v.at).toTimeString().slice(0, 5))} · ${esc(v.device || "")}${v.page === "Morning Round" ? " · Morning Round" : ""}` : "not seen on the new version yet";
+    return `<div class="ver-row"><b>${esc(name)}</b>${st}<span class="muted ver-seen">${seen}</span></div>`;
+  }).join("");
+  return `<div class="card cal-pane stack" style="gap:8px">
+    <h2 class="sec" style="margin:0">App version on each phone</h2>
+    <p class="note" style="margin:0">Newest: <b>${esc(newest)}</b>. Phones update themselves when they're idle. Anyone marked ⚠ is on an old page — ask them to close the tracker and open the link again.</p>
+    <div class="ver-list">${rows || `<p class="note" style="margin:0">Nobody seen yet.</p>`}</div>
+  </div>`;
+}
+function oldVersionWarning(){
+  const newest = newestBuild();
+  const working = new Set(Object.values(state.rounds || {}).filter(r => r.date === todayKey() && r.person && !/^test$/i.test(r.person)).map(r => r.person));
+  const old = [...working].filter(n => { const v = (state.versions || {})[slug(n)]; return !v || cmpBuild(v.build, newest) < 0; });
+  if(!old.length) return "";
+  return `<div class="card ver-warn"><b>⚠ ${esc(old.join(", "))} ${old.length > 1 ? "are" : "is"} on an old version of the tracker.</b> Old pages can undo other people's saved jobs — ask ${old.length > 1 ? "them" : "him"} to close the tracker and open the link again.</div>`;
 }
 
 /* ================= water test & dosing calculator (inside the tracker) =================
@@ -3988,7 +4145,9 @@ async function relayTry(payload){
   }
   throw last;
 }
-async function relayPost(payload){
+let relayBusy = 0;   // photo uploads on their way to the relay right now -- never reload mid-upload
+async function relayPost(payload){ relayBusy++; try{ return await relayPost0(payload); } finally { relayBusy--; } }
+async function relayPost0(payload){
   const rc = relayCfg(); if(!rc) throw new Error("no relay");
   // text/plain keeps the browser from sending a CORS preflight, which an
   // Apps Script web app can't answer; the script parses the JSON itself.
@@ -6733,7 +6892,7 @@ function teamView(){
       ${not.length ? `<div class="tm-grp"><b class="muted">Not yet (${not.length})</b><p class="note" style="margin:2px 0 0">${not.map(sk => esc(sk.name)).join(" · ")}</p></div>` : ""}
     </div>`;
   }
-  return table + person;
+  return table + person + versionsCard();
 }
 
 /* ---------- Calendar: who did the night dosing, month by month ---------- */
@@ -7247,7 +7406,7 @@ function wire(){
     d.addEventListener("toggle", () => { state.panelsOpen[d.dataset.panel] = d.open; }));
   const two = v => v.split("|");
 
-  on("#who-go", () => { const v=$("#who").value; if(!v) return; state.me=v; localStorage.setItem("drt.me",v); render(); });
+  on("#who-go", () => { const v=$("#who").value; if(!v) return; state.me=v; localStorage.setItem("drt.me",v); render(); recordVersion(true); });
   on("#switch-user", () => { state.me=""; localStorage.removeItem("drt.me"); render(); });
   on("#reset-round", async () => {
     const id = myId(); if(!id) return;
