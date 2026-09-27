@@ -57,10 +57,11 @@ body{margin:0;background:var(--ground);color:var(--ink);
   padding:8px 13px;border:0;border-radius:6px;background:transparent;color:var(--ink-2);cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
 .seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-/* On a phone the five view buttons share the width instead of pushing the page
+/* On a phone the seven view buttons sit in two rows of four (they used to
+   scroll sideways, which hid Technician off the left edge), sharing the width instead of pushing the page
    wider than the screen (which left an empty strip down the right side). */
 @media (max-width:640px){
-  .top .seg{width:100%;overflow-x:auto;scrollbar-width:none}
+  .top .seg{width:100%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
   .top .seg::-webkit-scrollbar{display:none}
   .top .seg button{flex:1 1 auto;padding:8px 3px;letter-spacing:.01em;font-size:12px;line-height:1.1;white-space:normal}
 }
@@ -587,6 +588,34 @@ details.panel[open] summary::after{content:"▴"}
 .wt-read{display:block;width:100%;font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.45;color:var(--ink-2);margin-top:1px}
 .wt-read b{color:var(--accent);font-weight:600}
 .job-row-read{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-2);margin-top:4px;line-height:1.45}
+/* Team tab */
+.tm-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--ink-2)}
+.tm-leg{display:inline-flex;align-items:center;gap:5px}
+.tm-tw{overflow-x:auto}
+.tm-t{width:100%;min-width:0;border-collapse:collapse;font-size:13px}
+.tm-t th,.tm-t td{padding:5px 3px;border-bottom:1px solid var(--line-soft,var(--line))}
+.tm-t tr:last-child th,.tm-t tr:last-child td{border-bottom:0}
+.tm-t thead th{font:600 11px/1.2 "Barlow Condensed",sans-serif;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);vertical-align:bottom}
+.tm-t .tm-sk{text-align:left;font:500 13px/1.3 system-ui,sans-serif;text-transform:none;letter-spacing:0;color:var(--ink);min-width:100px;white-space:normal}
+.tm-t thead .tm-sk{font:600 11px/1.2 "Barlow Condensed",sans-serif;text-transform:uppercase;color:var(--ink-3)}
+.tm-p{text-align:center;white-space:nowrap;padding-left:1px!important;padding-right:1px!important}
+@media (max-width:560px){ .tm-name{font-size:11px;padding:2px 1px} .tm-c{width:22px;height:22px;font-size:13px} .tm-t .tm-sk{min-width:84px;font-size:12.5px} .card.cal-pane{padding:12px} }
+.tm-name{font:700 12px/1.2 system-ui,sans-serif;text-transform:none;letter-spacing:0;color:var(--accent);background:none;border:0;padding:2px 3px;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.tm-name.on{background:var(--accent);color:#fff;border-radius:5px;text-decoration:none}
+.tm-x{font-size:11px;color:var(--ink-3);margin-left:2px}
+.tm-cell{text-align:center;width:1%}
+.tm-c{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:6px;font-size:14px;line-height:1;border:0;background:none;padding:0}
+button.tm-c{cursor:pointer;border:1px dashed var(--line)}
+.tm-c.lv-none{color:var(--ink-3)}
+.tm-c.lv-learning{background:#FDF1D8;color:#8A5A0B}
+.tm-c.lv-can{background:#DDEEE5;color:#1D5A3E}
+.tm-c.lv-train{background:#DCEEEE;color:#00474D}
+.tm-cov{display:block;font-size:11px;color:var(--ink-3);font-weight:400}
+.tm-cov.warn{color:var(--warn);font-weight:600}
+.tm-add{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:10px}
+.tm-add input,.tm-add select,#tm-note{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);min-width:0;flex:1}
+.tm-grp ul{margin:4px 0 0;padding-left:20px;font-size:14px}
+.tm-grp b{display:flex;align-items:center;gap:6px;font-size:14px}
 /* Calendar tab */
 .cal-card{padding:10px}
 .card.cal-pane{padding:14px 16px}
@@ -684,6 +713,7 @@ details.vac-fold>.job-row-read{padding:4px 10px 10px;margin:0}
       <button id="btn-mgr" aria-pressed="false">Supervisor</button>
       <button id="btn-routes" aria-pressed="false">Routes</button>
       <button id="btn-calendar" aria-pressed="false">Calendar</button>
+      <button id="btn-team" aria-pressed="false">Team</button>
       <button id="btn-tasksetting" aria-pressed="false">Task Setting</button>
     </div>
   </div>
@@ -1492,6 +1522,9 @@ async function initDb(){
   db.doc("dosing_config/roster").onSnapshot(
     s => { if(state.pending["dosing_config/roster"]) return;
       const d = s.exists ? s.data() : null; state.roster = (d && Array.isArray(d.members)) ? clone(d.members) : []; externalUpdate(); }, ()=>{});
+  db.doc("dosing_config/team").onSnapshot(
+    s => { if(state.pending["dosing_config/team"]) return;
+      state.team = s.exists ? clone(s.data()) : null; if(state.team) teamLocal.write(state.team); externalUpdate(); }, ()=>{});
   db.doc("dosing_config/leave").onSnapshot(
     s => { if(state.pending["dosing_config/leave"]) return;
       const d = s.exists ? s.data() : null; state.leave = (d && d.entries && typeof d.entries === "object") ? clone(d.entries) : {};
@@ -2975,6 +3008,7 @@ function render(){
   $("#btn-mgr").setAttribute("aria-pressed", state.role==="mgr");
   $("#btn-routes").setAttribute("aria-pressed", state.role==="routes");
   $("#btn-calendar").setAttribute("aria-pressed", state.role==="calendar");
+  $("#btn-team").setAttribute("aria-pressed", state.role==="team");
   $("#btn-tasksetting").setAttribute("aria-pressed", state.role==="tasksetting");
   // A small red count on the Overview tab itself -- so a supervisor glancing
   // at the nav bar (not even inside Overview yet) can tell something needs
@@ -2985,6 +3019,7 @@ function render(){
     : state.role==="overview" ? overviewView()
     : state.role==="routes" ? routesView()
     : state.role==="calendar" ? calendarView()
+    : state.role==="team" ? teamView()
     : state.role==="tasksetting" ? taskSettingView() : mgrView();
   wire();
 }
@@ -6538,6 +6573,89 @@ function routeCard(r, proj, byCode){
     <div class="route-foot">${mapsLink}</div>` : `<p class="note" style="padding:0 14px 14px">Not checked in anywhere yet tonight.</p>`}
   </div>`;
 }
+/* ---------- Team: who can do what ---------- */
+// Chun Kay, 27 Sep: a page listing what each staff member is able to do. One
+// shared doc (dosing_config/team). Until someone edits it, the page shows the
+// list he gave -- nothing is written until a change is made here.
+// Levels: Learning (a new staff member being trained), Can do, Can train
+// others. Each change carries when and by whom, so the page doubles as a
+// simple training record.
+const SKILL_LEVELS = [{id:"learning", label:"Learning", sym:"◐"}, {id:"can", label:"Can do", sym:"●"}, {id:"train", label:"Can train others", sym:"★"}];
+const SKILL_NEXT = {"":"learning", learning:"can", can:"train", train:""};
+const DEFAULT_SKILL_NAMES = ["Water test", "Manual dosing", "Manual vacuum", "Night dosing", "Pressure jet",
+  "Pool plumbing", "CCTV", "Wi-Fi", "Repairing", "Fibreglass", "Wallpaper", "Outdoor shades (JEOP1 & JEOP2)",
+  "Monthly request delivery", "Replacing lights", "Painting", "Installing pumps, heat pumps & salt chlorinators"];
+function defaultTeam(){
+  const skills = DEFAULT_SKILL_NAMES.map((name, i) => ({id:"s" + (i + 1), name}));
+  const lv = ids => { const o = {}; ids.forEach(id => o[id] = {level:"can"}); return o; };
+  const all = skills.map(x => x.id), five = ["s1","s2","s3","s4","s5"];
+  return {skills, staff:[
+    {name:"William", skills:lv(all)}, {name:"Islam", skills:lv(all)}, {name:"Sharul", skills:lv(five)},
+    {name:"Guru", note:"New staff", skills:lv(five)}, {name:"Fik", note:"Morning shift", skills:lv(["s3","s5"])}]};
+}
+const teamLocal = {
+  read(){ try{ return JSON.parse(localStorage.getItem("drt.team") || "null"); }catch(e){ return null; } },
+  write(t){ try{ localStorage.setItem("drt.team", JSON.stringify(t)); }catch(e){} }
+};
+const teamData = () => (state.team && Array.isArray(state.team.skills) && Array.isArray(state.team.staff)) ? state.team : defaultTeam();
+async function saveTeam(t){
+  state.team = t; render();
+  const c = clone(t);
+  await persist("dosing_config/team", c, () => teamLocal.write(c));
+}
+const canDo = lv => lv === "can" || lv === "train";
+function teamView(){
+  const t = teamData(), edit = !!state.teamEdit;
+  const sym = lv => { const L = SKILL_LEVELS.find(x => x.id === lv); return L ? L.sym : ""; };
+  const head = t.staff.map((p, i) => `<th class="tm-p"><button type="button" class="tm-name${state.teamPerson === i ? " on" : ""}" data-tmperson="${i}">${esc(p.name)}</button>${edit ? `<button type="button" class="link tm-x" data-tmrmperson="${i}" aria-label="Remove ${esc(p.name)}">✕</button>` : ""}</th>`).join("");
+  const rows = t.skills.map(sk => {
+    const n = t.staff.filter(p => canDo(((p.skills || {})[sk.id] || {}).level)).length;
+    const learning = t.staff.filter(p => ((p.skills || {})[sk.id] || {}).level === "learning").length;
+    const cov = n <= 1 ? `<span class="tm-cov warn">⚠ ${n === 0 ? "nobody" : "only 1"}</span>` : `<span class="tm-cov">${n} can${learning ? ` · ${learning} learning` : ""}</span>`;
+    const cells = t.staff.map((p, i) => {
+      const lv = ((p.skills || {})[sk.id] || {}).level || "";
+      const lab = (SKILL_LEVELS.find(x => x.id === lv) || {label:"Not yet"}).label;
+      return `<td class="tm-cell">${edit
+        ? `<button type="button" class="tm-c lv-${lv || "none"}" data-tmcell="${esc(sk.id)}|${i}" aria-label="${esc(p.name)} · ${esc(sk.name)}: ${lab}. Tap to change.">${sym(lv) || "·"}</button>`
+        : `<span class="tm-c lv-${lv || "none"}" title="${esc(p.name)} · ${esc(lab)}">${sym(lv)}</span>`}</td>`;
+    }).join("");
+    return `<tr><th class="tm-sk" scope="row">${edit ? `<button type="button" class="link tm-rn" data-tmrename="${esc(sk.id)}">${esc(sk.name)}</button> <button type="button" class="link tm-x" data-tmrmskill="${esc(sk.id)}" aria-label="Remove ${esc(sk.name)}">✕</button>` : esc(sk.name)}${cov}</th>${cells}</tr>`;
+  }).join("");
+  const legend = SKILL_LEVELS.map(L => `<span class="tm-leg"><span class="tm-c lv-${L.id}">${L.sym}</span> ${esc(L.label)}</span>`).join("");
+  const table = `<div class="card cal-pane stack" style="gap:10px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h2 class="sec" style="margin:0">Team skills</h2>
+      <button type="button" class="btn sm${edit ? " primary" : ""}" id="tm-edit" style="margin-left:auto">${edit ? "Done editing" : "Edit"}</button></div>
+    <div class="tm-legend">${legend}</div>
+    ${edit ? `<p class="note" style="margin:0">Tap a box to change it: blank → ◐ Learning → ● Can do → ★ Can train → blank. Tap a skill's name to rename it.</p>` : `<p class="note" style="margin:0">Tap a name to see that person's skills. ⚠ = one person or nobody can do it — a gap if they're off.</p>`}
+    <div class="tm-tw"><table class="tm-t"><thead><tr><th class="tm-sk">Skill</th>${head}</tr></thead><tbody>${rows}</tbody></table></div>
+    ${edit ? `<div class="tm-add">
+      <div class="row-2"><input id="tm-newskill" placeholder="New skill, e.g. Tiling" maxlength="60" value="${esc(state.tmNewSkill || "")}"><button type="button" class="btn sm" id="tm-addskill">Add skill</button></div>
+      <div class="row-2"><select id="tm-newperson"><option value="">Add a person…</option>${(state.roster || []).filter(n => !t.staff.some(p => slug(p.name) === slug(n))).map(n => `<option>${esc(n)}</option>`).join("")}<option value="__other">Someone else…</option></select>
+        ${state.tmOther ? `<input id="tm-othername" placeholder="Name" maxlength="40">` : ""}<button type="button" class="btn sm" id="tm-addperson">Add</button></div>
+    </div>` : ""}
+  </div>`;
+  let person = "";
+  const pi = state.teamPerson;
+  if(pi !== null && pi !== undefined && t.staff[pi]){
+    const p = t.staff[pi];
+    const groups = SKILL_LEVELS.slice().reverse().map(L => {
+      const list = t.skills.filter(sk => ((p.skills || {})[sk.id] || {}).level === L.id);
+      if(!list.length) return "";
+      return `<div class="tm-grp"><b><span class="tm-c lv-${L.id}">${L.sym}</span> ${esc(L.label)} (${list.length})</b><ul>${list.map(sk => { const e = p.skills[sk.id];
+        return `<li>${esc(sk.name)}${e.at ? ` <span class="muted">· since ${esc(fmtDate(dateKey(new Date(e.at))))}${e.by ? " (" + esc(e.by) + ")" : ""}</span>` : ""}</li>`; }).join("")}</ul></div>`;
+    }).join("");
+    const not = t.skills.filter(sk => !((p.skills || {})[sk.id] || {}).level);
+    person = `<div class="card cal-pane stack" style="gap:8px">
+      <div style="display:flex;align-items:center;gap:8px"><h2 class="sec" style="margin:0">${esc(p.name)}</h2>${p.note ? `<span class="tag">${esc(p.note)}</span>` : ""}
+        <button type="button" class="link" id="tm-closeperson" style="margin-left:auto">Close</button></div>
+      ${edit ? `<input id="tm-note" maxlength="40" placeholder="Note, e.g. New staff" value="${esc(p.note || "")}">` : ""}
+      ${groups || '<p class="note" style="margin:0">No skills ticked yet.</p>'}
+      ${not.length ? `<div class="tm-grp"><b class="muted">Not yet (${not.length})</b><p class="note" style="margin:2px 0 0">${not.map(sk => esc(sk.name)).join(" · ")}</p></div>` : ""}
+    </div>`;
+  }
+  return table + person;
+}
+
 /* ---------- Calendar: who did the night dosing, month by month ---------- */
 // Chun Kay asked (27 Sep) for a month calendar of who did the night dosing
 // each day. It fills itself in from the rounds: whoever started a night round
@@ -7073,6 +7191,36 @@ function wire(){
   });
   each("[data-delround]", b => deleteRoundById(b.dataset.delround));
 
+  // Team tab
+  on("#tm-edit", () => { state.teamEdit = !state.teamEdit; render(); });
+  each("[data-tmperson]", b => { const i = +b.dataset.tmperson; state.teamPerson = state.teamPerson === i ? null : i; render(); });
+  on("#tm-closeperson", () => { state.teamPerson = null; render(); });
+  each("[data-tmcell]", b => {
+    const [sid, i] = b.dataset.tmcell.split("|"); const t = clone(teamData()); const p = t.staff[+i]; if(!p) return;
+    p.skills = p.skills || {}; const cur = (p.skills[sid] || {}).level || "", nx = SKILL_NEXT[cur];
+    if(nx) p.skills[sid] = {level:nx, at:new Date().toISOString(), by:state.me || "?"}; else delete p.skills[sid];
+    saveTeam(t);
+  });
+  each("[data-tmrename]", b => { const t = clone(teamData()); const sk = t.skills.find(x => x.id === b.dataset.tmrename); if(!sk) return;
+    const nm = prompt("Rename skill", sk.name); if(nm === null || !nm.trim()) return; sk.name = nm.trim().slice(0, 60); saveTeam(t); });
+  each("[data-tmrmskill]", b => { const t = clone(teamData()); const sk = t.skills.find(x => x.id === b.dataset.tmrmskill); if(!sk) return;
+    if(!confirm(`Remove "${sk.name}" for everyone?`)) return;
+    t.skills = t.skills.filter(x => x.id !== sk.id); t.staff.forEach(p => { if(p.skills) delete p.skills[sk.id]; }); saveTeam(t); });
+  each("[data-tmrmperson]", b => { const t = clone(teamData()); const p = t.staff[+b.dataset.tmrmperson]; if(!p) return;
+    if(!confirm(`Remove ${p.name} from the team list?`)) return;
+    t.staff.splice(+b.dataset.tmrmperson, 1); state.teamPerson = null; saveTeam(t); });
+  on("#tm-newskill", e => { state.tmNewSkill = e.target.value; }, "input");
+  on("#tm-addskill", () => { const nm = (state.tmNewSkill || "").trim(); if(!nm){ flash("Type the skill first."); return; }
+    const t = clone(teamData()); if(t.skills.some(x => x.name.toLowerCase() === nm.toLowerCase())){ flash("That skill is already on the list."); return; }
+    let n = t.skills.length + 1; while(t.skills.some(x => x.id === "s" + n)) n++;
+    t.skills.push({id:"s" + n, name:nm.slice(0, 60)}); state.tmNewSkill = ""; saveTeam(t); });
+  on("#tm-newperson", e => { state.tmOther = e.target.value === "__other"; state.tmPick = e.target.value; render(); const o = $("#tm-othername"); if(o) o.focus(); }, "change");
+  on("#tm-addperson", () => { const nm = (state.tmPick === "__other" ? ((($("#tm-othername") || {}).value) || "") : (state.tmPick || "")).trim();
+    if(!nm){ flash("Pick who first."); return; }
+    const t = clone(teamData()); if(t.staff.some(p => slug(p.name) === slug(nm))){ flash(nm + " is already on the list."); return; }
+    t.staff.push({name:nm.slice(0, 40), skills:{}}); state.tmPick = ""; state.tmOther = false; state.teamPerson = t.staff.length - 1; saveTeam(t); });
+  on("#tm-note", e => { const t = clone(teamData()); const p = t.staff[state.teamPerson]; if(!p) return; p.note = e.target.value.trim().slice(0, 40); saveTeam(t); }, "change");
+
   // Calendar tab
   const calTo = m => { state.calMonth = m; state.calDay = m === monthOf(todayKey()) ? todayKey() : null; render(); };
   on("#cal-prev", () => calTo(shiftMonth(state.calMonth, -1)));
@@ -7507,6 +7655,7 @@ $("#btn-overview").addEventListener("click", (e) => {
 $("#btn-mgr").addEventListener("click",  () => { state.role="mgr";  render(); });
 $("#btn-routes").addEventListener("click", () => { state.role="routes"; render(); });
 $("#btn-calendar").addEventListener("click", () => { state.role="calendar"; render(); });
+$("#btn-team").addEventListener("click", () => { state.role="team"; render(); });
 $("#btn-tasksetting").addEventListener("click", () => { state.role="tasksetting"; render(); });
 
 /* ================= boot ================= */
@@ -7518,6 +7667,8 @@ state.cfg.assigned = normalizeAssigned(state.cfg.assigned);
 state.rounds = normalizeRounds(local.read());
 state.issues = localIssues.read();
 state.leave = leaveLocal.read();
+state.team = teamLocal.read();
+state.teamPerson = null;
 try{ state.roster = JSON.parse(localStorage.getItem("drt.roster")||"[]"); }catch(e){}
 render();
 initDb();
