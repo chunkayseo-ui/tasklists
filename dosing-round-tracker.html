@@ -1461,6 +1461,64 @@ const localIssues = {
  * through, so a flaky connection heals itself instead of needing the person
  * to notice and redo the change.
  */
+// 27 Sep 2026: Islam's BK water test, pump-panel and dosing jobs were claimed
+// and photographed, yet the shared round came back with all three Open. A
+// round was saved by overwriting the whole document, and unsent changes lived
+// only in memory -- so a page reload on a weak signal dropped them, and the
+// next save (Leave BK) wrote the older copy over the top. Two guards now:
+//  * the pending queue is kept in localStorage, so a reload keeps retrying it;
+//  * a round is saved through a transaction that reads the shared copy first
+//    and keeps, job by job, whichever copy is further along -- an older copy
+//    can no longer undo a claimed or finished job. A deliberate undo (cancel a
+//    claim, reopen a finished job, can't finish) stamps resetAt so it still
+//    wins over the progress it is undoing.
+const taskRank = t => t.doneAt ? 2 : t.startedAt ? 1 : 0;
+const taskEvidence = t => (t.panelPhotos||[]).length + (t.donePhotos||[]).length + Object.keys((t.vac && t.vac.photos) || {}).length
+  + ((t.dosed && t.dosed.photos) || []).length + (t.reading ? 1 : 0) + (t.dosed ? 1 : 0) + (t.cantHistory || []).length + (t.photos || []).length;
+const progressAt = t => [t.startedAt, t.doneAt, t.reading && t.reading.takenAt, t.dosed && t.dosed.at].filter(Boolean).sort().pop() || "";
+function pickTask(mine, theirs){
+  const rm = taskRank(mine), rt = taskRank(theirs);
+  const undoneOnPurpose = mine.resetAt && mine.resetAt > progressAt(theirs);
+  if(rt > rm && !undoneOnPurpose) return theirs;
+  if(rt === rm && taskEvidence(theirs) > taskEvidence(mine)) return theirs;
+  return mine;
+}
+function mergeRound(mine, theirs){
+  if(!theirs || !Array.isArray(theirs.stops)) return {data:mine, changed:false};
+  const out = clone(mine); let changed = false;
+  theirs.stops.forEach(ts => {
+    const ms = out.stops.find(x => x.outlet === ts.outlet);
+    if(!ms){ // a stop the other copy has actually been to
+      if(ts.arriveAt || (ts.visits && ts.visits.length)){ out.stops.push(clone(ts)); changed = true; }
+      return;
+    }
+    (ts.tasks || []).forEach(tt => {
+      const i = ms.tasks.findIndex(x => x.id === tt.id);
+      if(i < 0){ if(tt.startedAt || tt.doneAt){ ms.tasks.push(clone(tt)); changed = true; } return; }
+      const pick = pickTask(ms.tasks[i], tt);
+      if(pick !== ms.tasks[i]){ ms.tasks[i] = clone(pick); changed = true; }
+    });
+  });
+  return {data:out, changed};
+}
+const PENDING_KEY = "drt.pending";
+function savePendingLocal(){ try{ localStorage.setItem(PENDING_KEY, JSON.stringify(state.pending)); }catch(e){} }
+async function writeDoc(docPath, item){
+  const ref = state.db.doc(docPath);
+  if(!item.mergeRound) return ref.set(item.data, item.merge ? {merge:true} : {});
+  let result = null;
+  await state.db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    result = snap.exists ? mergeRound(item.data, snap.data()) : {data:item.data, changed:false};
+    tx.set(ref, result.data);
+  });
+  if(result && result.changed){   // the shared copy had newer work -- show it here too
+    const id = docPath.slice("dosing_rounds/".length);
+    state.rounds[id] = normalizeRound(clone(Object.assign({id}, result.data)));
+    try{ const all = local.read(); all[id] = state.rounds[id]; local.write(all); }catch(e){}
+    externalUpdate();
+  }
+}
 async function persist(docPath, data, cacheFn, opts){
   cacheFn();
   if(!state.db) return;
@@ -1474,13 +1532,16 @@ async function persist(docPath, data, cacheFn, opts){
   // snapshot to overwrite a just-added task before this write's own result
   // came back.
   const prior = state.pending[docPath];
-  state.pending[docPath] = {data, tries: prior ? prior.tries : 0, merge: !!(opts && opts.merge)};
+  const item = state.pending[docPath] = {data, tries: prior ? prior.tries : 0, merge: !!(opts && opts.merge), mergeRound: !!(opts && opts.mergeRound)};
+  savePendingLocal();
   try{
-    await state.db.doc(docPath).set(data, state.pending[docPath].merge ? {merge:true} : {});
-    delete state.pending[docPath];
+    await writeDoc(docPath, item);
+    if(state.pending[docPath] === item) delete state.pending[docPath];   // a newer save may have queued meanwhile
+    savePendingLocal();
     renderConn();
   } catch(e){
-    state.pending[docPath].tries++;
+    if(state.pending[docPath]) state.pending[docPath].tries++;
+    savePendingLocal();
     renderConn();
     setTimeout(flushPending, 2500);
   }
@@ -1490,9 +1551,10 @@ async function flushPending(){
   const paths = Object.keys(state.pending);
   for(const p of paths){
     const item = state.pending[p]; if(!item) continue;
-    try{ await state.db.doc(p).set(item.data, item.merge ? {merge:true} : {}); delete state.pending[p]; }
+    try{ await writeDoc(p, item); if(state.pending[p] === item) delete state.pending[p]; }
     catch(e){ item.tries++; }
   }
+  savePendingLocal();
   renderConn();
   if(Object.keys(state.pending).length) setTimeout(flushPending, 5000);
 }
@@ -1506,6 +1568,7 @@ async function initDb(){
     }
   } catch(e){ db = null; }
   state.db = db; state.dbTried = true;
+  if(db && Object.keys(state.pending).length) setTimeout(flushPending, 1500);
 
   if(!db){
     try{ state.roster = JSON.parse(localStorage.getItem("drt.roster")||"[]"); }catch(e){ state.roster=[]; }
@@ -1592,7 +1655,7 @@ async function saveRound(round){
   state.rounds[round.id] = round; render();
   try{ retireDoneExtras(round); }catch(e){}
   await persist("dosing_rounds/"+round.id, (()=>{ const c=clone(round); delete c.id; return c; })(),
-    () => { const all = local.read(); all[round.id] = round; local.write(all); });
+    () => { const all = local.read(); all[round.id] = round; local.write(all); }, {mergeRound:true});
 }
 async function saveRoster(members){
   state.roster = members; render();
@@ -2230,12 +2293,12 @@ function cantFinishTask(code, tid, reason, note, photos){
     rec = {reason, note:(note || "").trim().slice(0, 300), photos:(photos || []).filter(x => x && x.fileId), by:state.me, at:new Date().toISOString(), date:todayKey(), startedAt:t.startedAt || null};
     if(t.startedAt && vacSpec(code, t)){ const vq = vacLeftUnfinished(code, t, r.id); if(vq){ t.vac = vq.vac; vac = vq.vac; vacQ = vq.queued; } }
     t.cantHistory = (t.cantHistory || []).concat([rec]);
-    t.cantFinish = rec; t.startedAt = null; t.claimedBy = null; hist = t.cantHistory;
+    t.cantFinish = rec; t.startedAt = null; t.claimedBy = null; t.resetAt = rec.at; hist = t.cantHistory;
     key = {name:t.name, kind:t.kind, pool:t.pool || null};
     extra = t.extraId ? {outlet:s.outlet, id:t.extraId} : null;
   }, "Couldn't save that. Try again.").then(() => {
     if(!rec) return;
-    syncTaskToOtherRounds(code, key, Object.assign({cantFinish:rec, cantHistory:hist, startedAt:null, claimedBy:null}, vac ? {vac} : {}));
+    syncTaskToOtherRounds(code, key, Object.assign({cantFinish:rec, cantHistory:hist, startedAt:null, claimedBy:null, resetAt:rec.at}, vac ? {vac} : {}));
     vacQ.forEach(q => { photoQ.add(q.item); delete state.vac[q.key]; });
     if(extra && !isTestMe()) markExtraStuck(extra.outlet, extra.id, rec);
     state.cant = null; delete state.fp["cant|" + code]; delete state.fp[dScope]; delete state.doneNote[dKey];
@@ -2707,11 +2770,11 @@ function cancelClaim(code, tid){
     const s = r.stops.find(x=>x.outlet===code); if(!s || s.departAt) return false;
     const t = s.tasks.find(x=>x.id===tid); if(!t || !t.startedAt || t.doneAt) return false;
     if(t.claimedBy !== state.me) return false;
-    t.startedAt = null; t.claimedBy = null;
-    reset = {name:t.name, kind:t.kind, pool:t.pool||null};
+    t.startedAt = null; t.claimedBy = null; t.resetAt = new Date().toISOString();
+    reset = {name:t.name, kind:t.kind, pool:t.pool||null, at:t.resetAt};
     stopOutlet = s.outlet;
   }, "Couldn't undo that. Try again.").then(() => {
-    if(reset) syncTaskToOtherRounds(stopOutlet, reset, {startedAt:null, claimedBy:null});
+    if(reset) syncTaskToOtherRounds(stopOutlet, reset, {startedAt:null, claimedBy:null, resetAt:reset.at});
   });
 }
 // Tapping the technician's own name (shown on a running job) marks it done.
@@ -2787,11 +2850,12 @@ function undoTask(code, tid){
     t.startedAt = null;
     t.doneAt = null;
     t.claimedBy = null;
-    reset = {name:t.name, kind:t.kind, pool:t.pool||null};
+    t.resetAt = new Date().toISOString();
+    reset = {name:t.name, kind:t.kind, pool:t.pool||null, at:t.resetAt};
     stopOutlet = s.outlet;
     issueId = t.issueId || null;
   }, "Couldn't undo that. Try again.").then(() => {
-    if(reset) syncTaskToOtherRounds(stopOutlet, reset, {startedAt:null, doneAt:null, claimedBy:null});
+    if(reset) syncTaskToOtherRounds(stopOutlet, reset, {startedAt:null, doneAt:null, claimedBy:null, resetAt:reset.at});
     // Mirror finishTask's auto-resolve: reopening a job that was actually a
     // converted issue puts the issue back on the board too, so the two never
     // fall out of sync (a "Resolved" issue whose job is Open again would be
@@ -7685,6 +7749,7 @@ state.cfg.assigned = normalizeAssigned(state.cfg.assigned);
 state.rounds = normalizeRounds(local.read());
 state.issues = localIssues.read();
 state.leave = leaveLocal.read();
+try{ const p = JSON.parse(localStorage.getItem(PENDING_KEY) || "{}"); if(p && typeof p === "object") state.pending = p; }catch(e){}
 try{ state.vacWork = JSON.parse(localStorage.getItem("drt.vacWork") || "null") || ["vac"]; }catch(e){ state.vacWork = ["vac"]; }
 state.team = teamLocal.read();
 state.teamPerson = null;
