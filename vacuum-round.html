@@ -622,6 +622,10 @@ details.panel[open] summary::after{content:"▴"}
 .cal-t .cal-chip{display:inline-block;font-size:12.5px;padding:2px 7px}
 .cal-top{font-size:11.5px;color:var(--ink-3);margin-top:3px}
 .cal-lv{font-size:12px;color:var(--ink-2);white-space:nowrap}
+.cal-sun{color:#B7791F;margin-right:1px}
+.cal-chip.am{box-shadow:inset 0 0 0 1px #E0B45C}
+.cal-kind{font-size:12px;font-weight:600;color:#8A5A0B}
+.cal-am{font-size:10.5px;color:#8A5A0B;font-weight:600}
 .cal-t td .dev{font-size:11px;white-space:normal;display:block;line-height:1.25}
 .cal-t .num{padding-left:4px;padding-right:4px}
 .cn-short{display:none}
@@ -6567,7 +6571,10 @@ function monthRounds(m){
     list = ((c && c.rounds) || []).filter(r => r.date !== today);
     if(monthOf(today) === m) list = list.concat(Object.values(state.rounds).filter(r => r.date === today));
   }
-  return list.filter(r => r && r.date && monthOf(r.date) === m && !isTestRound(r) && !isVacRound(r) && (r.stops || []).some(everVisited));
+  // Fik's morning vacuum round (the Friday Vacuum Round page) is on the
+  // calendar too -- he's the only morning shift (Chun Kay, 27 Sep). It stays
+  // a separate entry from anyone's night round the same day, marked ☀.
+  return list.filter(r => r && r.date && monthOf(r.date) === m && !isTestRound(r) && (r.stops || []).some(everVisited));
 }
 // One person's night, from however many rounds they had that day (a "Reset
 // today's round" leaves the earlier one behind): where they went in the order
@@ -6643,13 +6650,13 @@ function calendarView(){
   // byDay[date] = [{person, s: nightSummary}]
   const grouped = {};
   monthRounds(m).forEach(r => {
-    const k = r.date, p = slug(r.person || "?");
+    const k = r.date, vac = isVacRound(r), p = slug(r.person || "?") + (vac ? "__vac" : "");
     grouped[k] = grouped[k] || {};
-    (grouped[k][p] = grouped[k][p] || {person:r.person || "?", rounds:[]}).rounds.push(r);
+    (grouped[k][p] = grouped[k][p] || {person:r.person || "?", vac, rounds:[]}).rounds.push(r);
   });
   const byDay = {};
   Object.keys(grouped).forEach(d => {
-    byDay[d] = Object.values(grouped[d]).map(g => ({person:g.person, s:nightSummary(g.rounds, d)}))
+    byDay[d] = Object.values(grouped[d]).map(g => ({person:g.person, vac:g.vac, s:nightSummary(g.rounds, d)}))
       .sort((a, b) => (a.s.start || "") < (b.s.start || "") ? -1 : 1);
   });
   const monthLeave = Object.values(state.leave || {}).filter(e => e && !e.removed && monthOf(e.date) === m);
@@ -6676,7 +6683,7 @@ function calendarView(){
     const key = m + "-" + pad(d), list = byDay[key] || [], future = key > today;
     const open = list.some(x => x.s.mustLeft && !x.s.live);
     const nm = n => `<span class="cn-full">${esc(n)}</span><span class="cn-short">${esc(String(n).slice(0, 4))}</span>`;
-    const chips = list.map(x => { const [bg, fg] = col(x.person); return `<span class="cal-chip" style="background:${bg};color:${fg}">${nm(x.person)}${x.s.live ? '<span class="cal-live" title="On site now">●</span>' : ""}</span>`; }).join("")
+    const chips = list.map(x => { const [bg, fg] = col(x.person); return `<span class="cal-chip${x.vac ? " am" : ""}" style="background:${bg};color:${fg}"${x.vac ? ' title="Morning vacuum round"' : ""}>${x.vac ? '<span class="cal-sun">☀</span>' : ""}${nm(x.person)}${x.s.live ? '<span class="cal-live" title="On site now">●</span>' : ""}</span>`; }).join("")
       + leaveOn(key).map(e => `<span class="cal-chip leave lv-${esc(e.type)}">${nm(e.person)} ${esc(e.type === "al" ? "AL" : e.type === "other" ? "…" : leaveLabel(e.type))}</span>`).join("");
     cells += `<button type="button" class="cal-d${future ? " future" : ""}${key === today ? " today" : ""}${key === sel ? " sel" : ""}" data-calday="${key}"
       aria-label="${esc(fmtDate(key))}: ${list.length ? esc(list.map(x => x.person).join(", ")) : "nobody"}">
@@ -6685,7 +6692,7 @@ function calendarView(){
   const loading = state.db && c && c.loading && !c.rounds.length;
   const grid = `<div class="card cal-card"><div class="cal-grid">${heads}${cells}</div>
     ${loading ? `<p class="note" style="margin:8px 0 0">Loading the month…</p>` : ""}
-    <p class="note" style="margin:8px 0 0">Tap a day to see where each person went, their hours and their jobs, or to add MC / leave / off. <span class="cal-warn">!</span> = a must-do job left open · <span class="cal-live">●</span> = on site now · <span class="cal-chip leave" style="display:inline-block">grey outline</span> = MC / leave / off.</p></div>`;
+    <p class="note" style="margin:8px 0 0">Tap a day to see where each person went, their hours and their jobs, or to add MC / leave / off. <span class="cal-warn">!</span> = a must-do job left open · <span class="cal-live">●</span> = on site now · <span class="cal-sun">☀</span> = morning vacuum round · <span class="cal-chip leave" style="display:inline-block">grey outline</span> = MC / leave / off.</p></div>`;
 
   // ---- the chosen day ----
   let dayBlock = "";
@@ -6701,6 +6708,7 @@ function calendarView(){
       const jobs = s.total ? `${s.done}/${s.total} jobs${!s.left.length ? " · all done" : ""}${s.mustLeft ? ` · <span class="dev">${s.mustLeft} must-do left open</span>` : ""}${other ? ` · <span class="muted">${other} other not done</span>` : ""}` : "no jobs";
       const leftList = s.left.length ? `<ul class="cal-left">${s.left.map(j => `<li class="${j.must ? "" : "opt"}">${esc(j.outlet)}${j.pool ? " " + esc(j.pool) : ""} — ${esc(j.name)}${j.must ? " (must do)" : ""}</li>`).join("")}</ul>` : "";
       return `<div class="cal-row">${chip(x.person)}<div class="cal-row-main">
+        ${x.vac ? '<div class="cal-kind">☀ Morning · Friday Vacuum Round</div>' : ""}
         <div class="mono cal-hrs">${hrs}</div><div class="cal-outs">${outl}</div><div class="mono cal-jobs">${jobs}</div>${leftList}</div></div>`;
     }).join("");
     dayBlock = `<div class="card stack cal-pane" style="gap:10px">
@@ -6716,19 +6724,19 @@ function calendarView(){
   const totFor = n => tot[slug(n)] = tot[slug(n)] || {person:n, nights:0, minutes:0, done:0, total:0, left:0, outlets:{}, leave:{}};
   Object.values(byDay).flat().forEach(x => {
     const t = totFor(x.person);
-    t.nights++; t.minutes += x.s.minutes || 0; t.done += x.s.done; t.total += x.s.total; t.left += x.s.mustLeft;
+    if(x.vac) t.mornings = (t.mornings || 0) + 1; else t.nights++; t.minutes += x.s.minutes || 0; t.done += x.s.done; t.total += x.s.total; t.left += x.s.mustLeft;
     x.s.outlets.filter(o => !o.quick).forEach(o => t.outlets[o.name] = (t.outlets[o.name] || 0) + 1);
   });
   monthLeave.forEach(e => { const t = totFor(e.person); t.leave[e.type] = (t.leave[e.type] || 0) + 1; });
-  const trows = Object.values(tot).sort((a, b) => b.nights - a.nights || a.person.localeCompare(b.person)).map(t => {
+  const trows = Object.values(tot).sort((a, b) => (b.nights + (b.mornings || 0)) - (a.nights + (a.mornings || 0)) || a.person.localeCompare(b.person)).map(t => {
     const top = Object.entries(t.outlets).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([o, n]) => `${esc(o)}×${n}`).join(" ");
     const lv = LEAVE_TYPES.filter(x => t.leave[x.id]).map(x => `${x.id === "al" ? "AL" : x.label} ${t.leave[x.id]}`).join(" · ");
-    return `<tr><td>${chip(t.person)}${top ? `<div class="cal-top">${top}</div>` : ""}</td><td class="num">${t.nights}</td><td class="num">${t.minutes ? dur(t.minutes) : "–"}</td>
+    return `<tr><td>${chip(t.person)}${top ? `<div class="cal-top">${top}</div>` : ""}</td><td class="num">${t.nights}${t.mornings ? `<div class="cal-am">+☀${t.mornings}</div>` : ""}</td><td class="num">${t.minutes ? dur(t.minutes) : "–"}</td>
       <td class="num">${t.total ? `${t.done}/${t.total}${t.left ? `<div class="dev">${t.left} must-do open</div>` : ""}` : "–"}</td><td class="cal-lv">${lv || "–"}</td></tr>`;
   }).join("");
-  const totals = `<div class="card stack cal-pane" style="gap:8px"><h2 class="sec" style="margin:0">${esc(monthName(m))} — nights per person</h2>
-    ${trows ? `<div class="cal-tw"><table class="cal-t"><thead><tr><th>Person · outlets</th><th class="num">Nights</th><th class="num">Hours</th><th class="num">Jobs</th><th>Leave</th></tr></thead><tbody>${trows}</tbody></table></div>
-    <p class="note" style="margin:0">Hours = first arrival to last Leave each night, travel included. A night where Leave wasn't tapped at the last stop isn't counted in the hours.</p>`
+  const totals = `<div class="card stack cal-pane" style="gap:8px"><h2 class="sec" style="margin:0">${esc(monthName(m))} — days per person</h2>
+    ${trows ? `<div class="cal-tw"><table class="cal-t"><thead><tr><th>Person · outlets</th><th class="num">Nights<div class="cal-am">+☀ AM</div></th><th class="num">Hours</th><th class="num">Jobs</th><th>Leave</th></tr></thead><tbody>${trows}</tbody></table></div>
+    <p class="note" style="margin:0">Hours = first arrival to last Leave each night (and each ☀ morning vacuum round), travel included. A night where Leave wasn't tapped at the last stop isn't counted in the hours.</p>`
     : `<p class="note" style="margin:0">No night rounds recorded this month yet.</p>`}</div>`;
 
   return `${nav}${grid}${dayBlock}${totals}`;
