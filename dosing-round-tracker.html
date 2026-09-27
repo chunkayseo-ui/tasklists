@@ -588,6 +588,7 @@ details.panel[open] summary::after{content:"▴"}
 .job-row-read{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-2);margin-top:4px;line-height:1.45}
 /* Calendar tab */
 .cal-card{padding:10px}
+.card.cal-pane{padding:14px 16px}
 .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
 .cal-h{font:600 11px/1 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);text-align:center;padding:4px 0}
 .cal-d{min-height:64px;border:1px solid var(--line);border-radius:7px;background:var(--surface);padding:3px;display:flex;flex-direction:column;gap:2px;align-items:stretch;text-align:left;font:inherit;cursor:pointer;min-width:0}
@@ -620,7 +621,8 @@ details.panel[open] summary::after{content:"▴"}
 .cal-t .cal-chip{display:inline-block;font-size:12.5px;padding:2px 7px}
 .cal-top{font-size:11.5px;color:var(--ink-3);margin-top:3px}
 .cal-lv{font-size:12px;color:var(--ink-2);white-space:nowrap}
-.cal-t td .dev{font-size:11px}
+.cal-t td .dev{font-size:11px;white-space:normal;display:block;line-height:1.25}
+.cal-t .num{padding-left:4px;padding-right:4px}
 .cn-short{display:none}
 @media (max-width:560px){ .cal-grid .cn-full{display:none} .cal-grid .cn-short{display:inline} .cal-grid .cal-chip{text-overflow:clip;padding:1px 2px;font-size:10.5px} .cal-grid .cal-live{margin-left:1px} }
 .lv-box{border-top:1px solid var(--line);padding-top:10px}
@@ -6696,7 +6698,7 @@ function calendarView(){
       return `<div class="cal-row">${chip(x.person)}<div class="cal-row-main">
         <div class="mono cal-hrs">${hrs}</div><div class="cal-outs">${outl}</div><div class="mono cal-jobs">${jobs}</div>${leftList}</div></div>`;
     }).join("");
-    dayBlock = `<div class="card stack" style="gap:10px">
+    dayBlock = `<div class="card stack cal-pane" style="gap:10px">
       <div class="sec-head" style="display:flex;align-items:center;gap:8px"><h2 class="sec" style="margin:0">${esc(fmtDate(sel))}</h2>
         ${list.length ? `<button class="link" data-calroutes="${sel}" style="margin-left:auto">Open in Routes →</button>` : ""}</div>
       ${rows || (sel > today ? "" : `<p class="note" style="margin:0">${sel === today ? "Nobody has started a night round yet tonight." : "No night round recorded on this day."}</p>`)}
@@ -6719,7 +6721,7 @@ function calendarView(){
     return `<tr><td>${chip(t.person)}${top ? `<div class="cal-top">${top}</div>` : ""}</td><td class="num">${t.nights}</td><td class="num">${t.minutes ? dur(t.minutes) : "–"}</td>
       <td class="num">${t.total ? `${t.done}/${t.total}${t.left ? `<div class="dev">${t.left} must-do open</div>` : ""}` : "–"}</td><td class="cal-lv">${lv || "–"}</td></tr>`;
   }).join("");
-  const totals = `<div class="card stack" style="gap:8px"><h2 class="sec" style="margin:0">${esc(monthName(m))} — nights per person</h2>
+  const totals = `<div class="card stack cal-pane" style="gap:8px"><h2 class="sec" style="margin:0">${esc(monthName(m))} — nights per person</h2>
     ${trows ? `<div class="cal-tw"><table class="cal-t"><thead><tr><th>Person · outlets</th><th class="num">Nights</th><th class="num">Hours</th><th class="num">Jobs</th><th>Leave</th></tr></thead><tbody>${trows}</tbody></table></div>
     <p class="note" style="margin:0">Hours = first arrival to last Leave each night, travel included. A night where Leave wasn't tapped at the last stop isn't counted in the hours.</p>`
     : `<p class="note" style="margin:0">No night rounds recorded this month yet.</p>`}</div>`;
