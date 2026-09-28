@@ -1286,7 +1286,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-09-28.2";
+const APP_BUILD = "2026-09-28.3";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -5133,7 +5133,7 @@ function vacuumPanel(s, t){
       status = `<span class="ph-status ok">${pb}${esc(p.label)} · ${clockOf(at)}${saved && saved.retakenAt ? ` · <span class="muted">retaken ${clockOf(saved.retakenAt)}</span>` : ""}</span>`;
       // Wrong photo (e.g. the port before it was capped)? Retake it while the
       // job is still open. The first photo is kept underneath for the record.
-      if(!t.doneAt && !t.paused) actions = `<button class="link" type="button" data-vacretake="${key}|${p.id}">📷 Retake</button><input type="file" accept="image/*" capture="environment" hidden data-vacin="${key}|${p.id}">`;
+      if(!t.doneAt && !t.paused) actions = `<button class="btn sm" type="button" data-vacretake="${key}|${p.id}">📷 Retake</button><input type="file" accept="image/*" capture="environment" hidden data-vacin="${key}|${p.id}">`;
     }
     else if(st === "queued") status = `<span class="ph-status ok">${pb}taken ${clockOf(at)}, uploads later</span>`;
     else if(st === "preparing" || st === "uploading") status = `<span class="ph-status">${pb}${st}…</span>`;
