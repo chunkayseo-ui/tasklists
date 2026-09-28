@@ -417,7 +417,7 @@ details.panel[open] summary::after{content:"▴"}
 .pill-key .k-onsite{border-color:var(--warn);background:var(--warn-soft)}
 .pill-key .k-taken{border-color:var(--travel);background:var(--travel-soft)}
 .pill-who{display:block;font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;text-transform:none;
-  letter-spacing:0;margin-top:3px;color:var(--travel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  letter-spacing:0;margin-top:3px;color:var(--travel);white-space:normal;overflow-wrap:anywhere;line-height:1.25}
 .pill[aria-pressed="true"] .pill-who{color:#fff;opacity:.9}
 
 .assign-block{padding:10px 0;border-bottom:1px solid var(--line-soft)}
@@ -1285,7 +1285,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-09-27.6";
+const APP_BUILD = "2026-09-28.1";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -5336,7 +5336,7 @@ function buildRound(){
     // back to whoever merely has it in their round.
     const names = night.names.length ? night.names : others;
     const forWho = assignedTonight(o.code).filter(n => !names.includes(n));
-    const who = (names.length || forWho.length) ? `<span class="pill-who">${esc(names.concat(forWho.map(n => "for " + n)).join(", "))}</span>` : "";
+    const who = (names.length || forWho.length) ? `<span class="pill-who">${esc(names.concat(forWho.length ? ["for " + forWho.join(", ")] : []).join(", "))}</span>` : "";
     const state2 = night.k === "done"    ? `<span class="pill-state">✓ done</span>`
                  : night.k === "partial" ? `<span class="pill-state">${night.left} left</span>`
                  : night.k === "onsite"  ? `<span class="pill-state">on site</span>`
