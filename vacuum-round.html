@@ -1286,7 +1286,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-09-28.1";
+const APP_BUILD = "2026-09-28.2";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -5046,11 +5046,17 @@ async function onVacPhotoPicked(key, id, file){
   const spec = vacSpec(code, t); if(!spec) return;
   const slot = spec.list.find(p => p.id === id); if(!slot) return;
   const next = vacNext(key, t, spec);
-  if(!next || next.id !== id){ flash("Take the photos in order."); return; }
+  const prev = vacSaved(t)[id];
+  const retake = !!(prev && prev.fileId && !t.doneAt);
+  if(!retake && (!next || next.id !== id)){ flash("Take the photos in order."); return; }
   // Camera-only is enforced by the input; this is the belt to that brace.
   if(file.lastModified && Date.now() - file.lastModified > PHOTO_MAX_AGE_MS){ flash("That photo isn't from just now — take a fresh one."); return; }
   const loc = vacLocal(key);
-  const ph = loc[id] = {status:"preparing", takenAt:new Date().toISOString()};
+  // A retake keeps the original time (that's when the section was really
+  // finished -- the timing stays honest) and remembers the photo it replaces.
+  const ph = loc[id] = retake
+    ? {status:"preparing", takenAt: prev.takenAt || new Date().toISOString(), retakenAt: new Date().toISOString(), replaces: prev}
+    : {status:"preparing", takenAt:new Date().toISOString()};
   render();
   let prepared;
   try{ prepared = await preparePhoto(file, photoStampLines(code, dosingKeyFor(code, t.pool), t.name).concat([`${slot.id} · ${slot.label}`])); }
@@ -5065,7 +5071,13 @@ async function uploadVacPhoto(key, id){
   try{
     const j = await relayUpload(vacPayload(code, dosingKeyFor(code, t.pool), t, slot, ph, i+1));
     ph.status = "done";
-    await attachVacPhoto(code, tid, id, {fileId:j.fileId, url:j.url, thumb:j.thumb || null, takenAt:ph.takenAt});
+    const rec = {fileId:j.fileId, url:j.url, thumb:j.thumb || null, takenAt:ph.takenAt};
+    if(ph.replaces){
+      rec.retakenAt = ph.retakenAt;
+      const old = ph.replaces;
+      rec.replaced = (old.replaced || []).concat([{fileId:old.fileId, url:old.url, thumb:old.thumb || null, takenAt:old.takenAt, retakenAt:old.retakenAt || null}]);
+    }
+    await attachVacPhoto(code, tid, id, rec);
     delete ph.base64;
   }catch(e){
     ph.status = "failed";
@@ -5117,7 +5129,12 @@ function vacuumPanel(s, t){
     let status, actions = "";
     const pb = vacBadge(spec.card, p.id);
     if(st === "skipped"){ const k = vacSkipped(t)[p.id]; status = `<span class="ph-status" style="color:#B42318">${pb}${esc(p.label)} · <b>skipped</b> — ${esc(k.reason)}</span>`; actions = `<button class="link" type="button" data-vacunskip="${key}|${p.id}">undo skip</button>`; }
-    else if(st === "done") status = `<span class="ph-status ok">${pb}${esc(p.label)} · ${clockOf(at)}</span>`;
+    else if(st === "done"){
+      status = `<span class="ph-status ok">${pb}${esc(p.label)} · ${clockOf(at)}${saved && saved.retakenAt ? ` · <span class="muted">retaken ${clockOf(saved.retakenAt)}</span>` : ""}</span>`;
+      // Wrong photo (e.g. the port before it was capped)? Retake it while the
+      // job is still open. The first photo is kept underneath for the record.
+      if(!t.doneAt && !t.paused) actions = `<button class="link" type="button" data-vacretake="${key}|${p.id}">📷 Retake</button><input type="file" accept="image/*" capture="environment" hidden data-vacin="${key}|${p.id}">`;
+    }
     else if(st === "queued") status = `<span class="ph-status ok">${pb}taken ${clockOf(at)}, uploads later</span>`;
     else if(st === "preparing" || st === "uploading") status = `<span class="ph-status">${pb}${st}…</span>`;
     else if(st === "failed"){
@@ -7748,6 +7765,7 @@ function wire(){
   each("[data-vacphotostoggle]", () => vacPhotosToggle());
   each("[data-vacplay]", b => { const sv = vacMapSvg(b.dataset.vacplay); if(sv && window.VacPlay) VacPlay.open(sv, b.dataset.vacplay + " · vacuum steps"); });
   each("[data-vacbtn]", b => { const i = document.querySelector(`[data-vacin="${b.dataset.vacbtn}"]`); if(i){ i.value = ""; i.click(); } });
+  each("[data-vacretake]", b => { const i = document.querySelector(`[data-vacin="${b.dataset.vacretake}"]`); if(i){ i.value = ""; i.click(); } });
   document.querySelectorAll("[data-vacin]").forEach(i => i.addEventListener("change", () => { const f = i.files && i.files[0]; const [key, id] = splitLast(i.dataset.vacin); if(f) onVacPhotoPicked(key, id, f); }));
   each("[data-vacretry]", b => { const [key, id] = splitLast(b.dataset.vacretry); const ph = vacLocal(key)[id]; if(!ph || !ph.base64) return; ph.status = "uploading"; render(); uploadVacPhoto(key, id); });
   each("[data-vacsave]", b => { const [o,t] = two(b.dataset.vacsave); finishVacuum(o,t); });
