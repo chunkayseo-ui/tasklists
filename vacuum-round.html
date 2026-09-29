@@ -263,7 +263,12 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 .rep-gate{flex-basis:100%;margin:2px 0 4px;padding:10px 12px;border-radius:8px;background:var(--warn-soft,#F6EAD4);color:#5a3a06;font-size:14px;line-height:1.4}
 .rep-gate.bad{background:#F8DEDA;color:#7a1f16}
 .rep-gate.over{background:#F6F9F9;color:#5B7378;border:1px dashed #C7D6D6}
-.rep-gate .rep-acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.rep-gate .rep-acts,.tu .rep-acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.tu{padding:10px 12px;border-radius:8px;font-size:14px;line-height:1.4;background:#F6F9F9;border:1px solid #DCE6E6}
+.tu.ok{background:#DDEEE5;border-color:transparent;color:#1d5a3f}
+.tu.wait{background:#F6EAD4;border-color:transparent;color:#5a3a06}
+.tu.no{background:#F8DEDA;border-color:transparent;color:#7a1f16}
+.tu .tu-note{width:100%;margin-top:8px;padding:9px 10px;border:1px solid #C7D6D6;border-radius:8px;font:inherit}
 /* The X (cancel claim) + claimer's-name (finish) button pair shown on a job
    the current technician has running. */
 .act-group{display:flex;gap:6px;flex:none}
@@ -1290,7 +1295,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-09-30.1";
+const APP_BUILD = "2026-09-30.2";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -1657,6 +1662,14 @@ async function initDb(){
       s.docs.forEach(d => { const p="dosing_issues/"+d.id; if(!state.pending[p]) next[d.id] = clone(Object.assign({id:d.id}, d.data())); });
       Object.keys(state.pending).forEach(p => { if(p.startsWith("dosing_issues/")){ const id=p.slice(14); if(state.issues[id]) next[id]=state.issues[id]; } });
       state.issues = next; externalUpdate();
+    }, ()=>{});
+  // Weekend-dose requests on weekdays (30 Sep 2026): today's only.
+  db.collection("dosing_topups").where("date","==",todayKey()).onSnapshot(
+    s => {
+      const next = {};
+      s.docs.forEach(d => { const p = "dosing_topups/"+d.id; if(!state.pending[p]) next[d.id] = Object.assign({id:d.id}, d.data()); });
+      Object.keys(state.pending).forEach(p => { if(p.startsWith("dosing_topups/")){ const id = p.slice(14); if(state.topups[id]) next[id] = state.topups[id]; } });
+      state.topups = next; externalUpdate();
     }, ()=>{});
   render();
 }
@@ -3834,6 +3847,73 @@ function panelTaskBlock(s, t){
   </div>`;
 }
 
+/* ---- Weekend dose on a weekday (30 Sep 2026) ----
+ * William's idea, Chun Kay's rule: weekends never need it (the weekend table
+ * already allows for heavy use), but on a weekday a pool that has gone cloudy
+ * because FC ran low needs more than the weekday dose. Then the technician asks
+ * for the WEEKEND dose, with a reason, and Kay or William must OK it first --
+ * in the tracker (Overview) or from the helper bot on Telegram. The request
+ * lives in dosing_topups/<date>__<pool>. An approver asking approves it himself. */
+const TOPUP_APPROVERS = ["kay", "chun kay", "william"];
+const isApprover = n => TOPUP_APPROVERS.includes(String(n || "").trim().toLowerCase());
+const TOPUP_REASONS = ["Water cloudy", "Water green / algae", "Other"];
+state.topups = state.topups || {};
+state.tuForm = state.tuForm || {};
+const topupId = poolKey => todayKey() + "__" + poolKey;
+const topupFor = poolKey => state.topups[topupId(poolKey)] || null;
+function requestTopup(code, tid, poolKey){
+  const f = state.tuForm[code + "|" + tid] || {}, w = wtState(code + "|" + tid);
+  if(!f.reason){ flash("Pick why the pool needs the weekend dose."); return; }
+  if(f.reason === "Other" && !(f.note || "").trim()){ flash("Write a short note for Other."); return; }
+  const now = new Date().toISOString(), self = isApprover(state.me);
+  const doc = {date:todayKey(), pool:poolKey, outlet:code, person:state.me, reason:f.reason, note:(f.note || "").trim().slice(0, 200),
+    fc:w.fc, ph:w.ph, requestedAt:now, status: self ? "approved" : "pending", decidedBy: self ? state.me : null, decidedAt: self ? now : null, via: self ? "self" : null};
+  state.topups[topupId(poolKey)] = Object.assign({id:topupId(poolKey)}, doc);
+  delete state.tuForm[code + "|" + tid];
+  if(self) w.schedule = "weekend";
+  persist("dosing_topups/" + topupId(poolKey), doc, () => {});
+  render();
+  flash(self ? "Weekend dose on — approved by you." : "Asked Kay and William for the weekend dose.");
+}
+function cancelTopup(poolKey){
+  const cur = topupFor(poolKey); if(!cur || cur.status !== "pending") return;
+  const doc = Object.assign({}, cur, {status:"cancelled", decidedBy:state.me, decidedAt:new Date().toISOString()}); delete doc.id;
+  state.topups[topupId(poolKey)] = Object.assign({id:topupId(poolKey)}, doc);
+  persist("dosing_topups/" + topupId(poolKey), doc, () => {});
+  render();
+}
+function decideTopup(id, ok){
+  if(!isApprover(state.me)) return;
+  const cur = state.topups[id]; if(!cur || cur.status !== "pending") return;
+  const doc = Object.assign({}, cur, {status: ok ? "approved" : "declined", decidedBy:state.me, decidedAt:new Date().toISOString(), via:"tracker"}); delete doc.id;
+  state.topups[id] = Object.assign({id}, doc);
+  persist("dosing_topups/" + id, doc, () => {});
+  render();
+  flash(ok ? "Approved — they can use the weekend dose." : "Declined — they'll use the weekday dose.");
+}
+// The block inside the water test panel on a weekday.
+function topupBlockHtml(key, poolKey, o, w){
+  if(autoSchedule() !== "weekday" || !o.weekend) return "";
+  const tu = topupFor(poolKey), f = state.tuForm[key];
+  if(tu && tu.status === "approved") return `<div class="tu ok">✓ Weekend dose approved by ${esc(tu.decidedBy)}${tu.decidedAt ? " " + clockOf(tu.decidedAt) : ""} · ${esc(tu.reason)}${tu.note ? " — " + esc(tu.note) : ""}${w && w.schedule !== "weekend" ? ` <button class="btn sm primary" data-wtsched="${key}|weekend">Switch to the weekend dose</button>` : ""}</div>`;
+  if(tu && tu.status === "pending") return `<div class="tu wait">⏳ Weekend dose asked (${esc(tu.reason)}) — waiting for Kay or William. Keep the weekday dose, or wait for the OK. <button class="link" data-tucancel="${esc(poolKey)}">Cancel request</button></div>`;
+  const declined = tu && tu.status === "declined" ? `<div class="tu no">✗ ${esc(tu.decidedBy)} said no to the weekend dose — use the weekday dose.</div>` : "";
+  if(!f) return declined + `<button class="link" data-tuopen="${key}">Pool cloudy? Ask for the weekend dose</button>`;
+  return declined + `<div class="tu form"><div class="wt-lbl">Why does ${esc(poolKey)} need the weekend dose tonight?</div>
+    <div class="wt-chips">${TOPUP_REASONS.map(r => `<button class="tog" aria-pressed="${f.reason === r}" data-tureason="${key}|${esc(r)}">${esc(r)}</button>`).join("")}</div>
+    <input type="text" class="tu-note" data-tunote="${key}" value="${esc(f.note || "")}" placeholder="${f.reason === "Other" ? "What's wrong? (required)" : "Note (optional)"}" maxlength="200">
+    <div class="rep-acts"><button class="btn sm primary" data-tusend="${key}|${esc(poolKey)}">${isApprover(state.me) ? "Use the weekend dose" : "Ask Kay / William"}</button><button class="link" data-tuclose="${key}">Cancel</button></div></div>`;
+}
+function topupRequestsHtml(){
+  const list = Object.values(state.topups).filter(x => x.status !== "cancelled").sort((a, b) => String(b.requestedAt).localeCompare(String(a.requestedAt)));
+  if(!list.length) return "";
+  const me = isApprover(state.me);
+  return `<div class="stack" style="gap:9px"><h2 class="sec">Weekend dose requests</h2>${list.map(x => `<div class="tu ${x.status === "approved" ? "ok" : x.status === "declined" ? "no" : "wait"}">
+      <b>${esc(x.pool)}</b> · ${esc(x.person)} · ${esc(x.reason)}${x.note ? " — " + esc(x.note) : ""}${x.fc !== null && x.fc !== undefined ? ` · FC ${esc(x.fc)}` : ""} · asked ${clockOf(x.requestedAt)}
+      ${x.status === "pending" ? (me ? `<div class="rep-acts"><button class="btn sm primary" data-tuok="${esc(x.id)}">Approve weekend dose</button><button class="btn sm" data-tuno="${esc(x.id)}">Decline</button></div>` : `<div class="muted" style="font-size:13px">Waiting for Kay or William.</div>`)
+        : `<div style="font-size:13px">${x.status === "approved" ? "✓ Approved" : "✗ Declined"} by ${esc(x.decidedBy || "")}${x.decidedAt ? " " + clockOf(x.decidedAt) : ""}${x.via === "telegram" ? " on Telegram" : ""}</div>`}</div>`).join("")}</div>`;
+}
+
 function waterTestPanel(s, t){
   const key = s.outlet+"|"+t.id, w = wtState(key), poolKey = dosingKeyFor(s.outlet, t.pool);
   const routeCode = (t.pool || s.outlet).toUpperCase();
@@ -3873,7 +3953,7 @@ function waterTestPanel(s, t){
       <span class="wt-title">Water test · ${esc(poolKey)}</span>
       <div class="seg" role="group" aria-label="Dosing schedule">
         ${o.weekday ? `<button aria-pressed="${w.schedule==="weekday"}" data-wtsched="${key}|weekday">Weekday</button>` : ""}
-        ${o.weekend ? `<button aria-pressed="${w.schedule==="weekend"}" data-wtsched="${key}|weekend">Weekend</button>` : ""}
+        ${o.weekend && (autoSchedule() === "weekend" || (topupFor(poolKey) || {}).status === "approved") ? `<button aria-pressed="${w.schedule==="weekend"}" data-wtsched="${key}|weekend">Weekend</button>` : ""}
       </div>
     </div>
     <div>
@@ -3885,6 +3965,7 @@ function waterTestPanel(s, t){
       <div class="wt-chips">${phChips}</div>
     </div>
     ${doseHtml}
+    ${topupBlockHtml(key, poolKey, o, w)}
     <div class="wt-grid">
       <div class="wt-field"><span class="wt-lbl">Salt chlorinator</span>${onoff("chlorinator", w.chlorinator)}</div>
     </div>
@@ -3905,12 +3986,15 @@ function finishWaterTest(code, tid){
   const key = code+"|"+tid, w = wtState(key), poolKey = dosingKeyFor(code, t0.pool);
   const dose = doseFor(poolKey, w.schedule, w.fc, w.ph);
   if(!dose){ flash("Tap the FC and pH readings first."); return; }
+  const tu = topupFor(poolKey);
+  if(autoSchedule() === "weekday" && w.schedule === "weekend" && !(tu && tu.status === "approved")){ flash("The weekend dose on a weekday needs Kay or William's OK first."); return; }
   // Just what confirms the dose: the reading, the chlorinator state, the
   // looked-up amounts. (Temperature, clarity, pump and attendance were here
   // at first; Chun Kay dropped them -- not needed to confirm the result.)
   const reading = {pool:poolKey, schedule:w.schedule, fc:w.fc, ph:w.ph, chlorinator:w.chlorinator,
     chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit,
     takenAt:new Date().toISOString(), takenBy:state.me};
+  if(autoSchedule() === "weekday" && w.schedule === "weekend" && tu) reading.topUp = {id:tu.id || topupId(poolKey), reason:tu.reason, note:tu.note || "", approvedBy:tu.decidedBy, approvedAt:tu.decidedAt};
   let finished = null, dosingSync = null;
   withRound(r => {
     const s = r.stops.find(x => x.outlet === code); if(!s) return false;
@@ -6439,6 +6523,7 @@ function overviewView(){
     <button type="button" class="kpi" id="kpi-open-issues" aria-label="Jump to the issues list below" style="cursor:pointer;text-align:left;border:1px solid var(--line);background:var(--surface);font:inherit;width:100%;margin:0"><div class="v" style="color:${urgentN?"var(--urgent)":"var(--ink)"}">${openN}</div><div class="k eyebrow">Open issues${urgentN?" · "+urgentN+" urgent":""}</div></button>
   </div>
 
+  ${topupRequestsHtml()}
   <div class="stack" style="gap:9px">
     <h2 class="sec">Outlets tonight</h2>
     ${outletStatusGrid(rounds)}
@@ -7789,6 +7874,14 @@ function wire(){
   each("[data-repcheck]", b => { const [o,t] = two(b.dataset.repcheck); const r0 = myRound(), s0 = r0 && r0.stops.find(x => x.outlet === o), t0 = s0 && s0.tasks.find(x => x.id === t); if(t0){ checkReport(s0, t0, true); render(); } });
   each("[data-repoverride]", b => { const [o,t] = two(b.dataset.repoverride); reportOverride(o,t); });
   each("[data-repuse]", b => { const [o,t] = two(b.dataset.repuse); reportUseSheet(o,t); });
+  each("[data-tuopen]", b => { state.tuForm[b.dataset.tuopen] = {reason:null, note:""}; render(); });
+  each("[data-tuclose]", b => { delete state.tuForm[b.dataset.tuclose]; render(); });
+  each("[data-tureason]", b => { const i = b.dataset.tureason.lastIndexOf("|"); const k = b.dataset.tureason.slice(0, i); (state.tuForm[k] = state.tuForm[k] || {}).reason = b.dataset.tureason.slice(i + 1); render(); });
+  document.querySelectorAll("[data-tunote]").forEach(inp => inp.addEventListener("input", () => { (state.tuForm[inp.dataset.tunote] = state.tuForm[inp.dataset.tunote] || {}).note = inp.value; }));
+  each("[data-tusend]", b => { const [o,t,pk] = b.dataset.tusend.split("|"); requestTopup(o, t, pk); });
+  each("[data-tucancel]", b => cancelTopup(b.dataset.tucancel));
+  each("[data-tuok]", b => decideTopup(b.dataset.tuok, true));
+  each("[data-tuno]", b => decideTopup(b.dataset.tuno, false));
   each("[data-cantopen]", b => { state.cant = {key:b.dataset.cantopen, reason:""}; render(); const n = $("#cant-note"); if(n) n.scrollIntoView({block:"center"}); });
   each("[data-cantreason]", b => { if(state.cant){ state.cant.reason = b.dataset.cantreason; renderKeepingForm(); } });
   each("[data-cantcancel]", () => { if(state.cant) delete state.fp["cant|" + state.cant.key.split("|")[0]]; state.cant = null; render(); });
