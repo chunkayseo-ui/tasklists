@@ -1286,7 +1286,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-09-28.4";
+const APP_BUILD = "2026-09-29.1";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -3369,7 +3369,7 @@ function restoreDraft(){
 }
 
 /* ================= water test & dosing calculator (inside the tracker) =================
- * The dosing calculator (chunkayseo-ui.github.io/dosing-app) is a lookup table:
+ * The dosing calculator (hfpools.com/dosing-app) is a lookup table:
  * outlet x weekday/weekend x FC x pH -> chlorine + acid. The technician used to
  * open it as a separate app, read the dose off it, screenshot it, and post that
  * to Telegram. This brings the same lookup -- and the same reference panels
@@ -3378,7 +3378,7 @@ function restoreDraft(){
  * the job's Done all happen on one screen. The amounts still come from the
  * calculator's own data.csv, so Chun Kay keeps editing dosing in one place.
  */
-const DOSING_APP_BASE = "https://chunkayseo-ui.github.io/dosing-app/";
+const DOSING_APP_BASE = "https://hfpools.com/dosing-app/";
 const DOSING_HISTORY_API = "https://script.google.com/macros/s/AKfycbwYJLfkw5lwKnjwqmEtuRiREzbahnf2l63YhmX_7jMR9uqM9MpeqoxeVTTVw5rc76eZ6g/exec";
 // The tracker's outlet codes are uppercase; the calculator's data.csv and the
 // water-test sheet spell two of them in title case. JE has no table of its own
@@ -3397,7 +3397,7 @@ function dosingKeyFor(outletCode, pool){ return pool || DOSING_KEY_MAP[outletCod
 // technician stands in front of the plant-room door. The check-timer page
 // already draws that door and works out what should be running, so the job
 // borrows it rather than keeping a second copy of every pool's settings.
-const PANEL_URL = "https://chunkayseo-ui.github.io/fm/check-timer.html";
+const PANEL_URL = "https://hfpools.com/fm/check-timer.html";
 // Outlets whose panels have been set up over there. Add a code here once its
 // panel exists on the check-timer page.
 const PANEL_OUTLETS = ["JE", "LENTOR", "TENGAH", "HS", "BK", "CC", "DR"];
@@ -4517,7 +4517,7 @@ function dosingPhotoHtml(key, d){
  * photo to the last is how long the vacuum really took.
  * Pools not listed here, or no photo relay set up: the job works as before.
  */
-const VAC_ROUTE_URL = "https://chunkayseo-ui.github.io/dosing-app/vacuum-route-maps.html";
+const VAC_ROUTE_URL = "https://hfpools.com/dosing-app/vacuum-route-maps.html";
 /* The route card's own drawing, shown right inside the photo panel with the
  * photo points switched on and the NEXT photo picked out -- so the technician
  * sees where to stand and which way to point without leaving the page. The
@@ -7294,7 +7294,7 @@ function assigneeOf(s, t){
   if(t.extraId && s && s.outlet){ const e = (state.cfg.extra[s.outlet] || []).find(x => x.id === t.extraId); if(e && e.assignee) return e.assignee; }
   return null;
 }
-const TRACKER_URL = "https://chunkayseo-ui.github.io/tasklists/dosing-round-tracker.html";
+const TRACKER_URL = "https://hfpools.com/tracker";
 // Tell the FM Telegram group about a job assigned to someone (via the photo
 // relay -- the bot token lives in the relay script, never on this page).
 // items: [{outlet, entry}] -- the same job added at one or more branches.
