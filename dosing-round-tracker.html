@@ -1285,7 +1285,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-09-29.1";
+const APP_BUILD = "2026-09-29.2";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -8003,6 +8003,11 @@ $("#btn-tasksetting").addEventListener("click", () => { state.role="tasksetting"
 
 /* ================= boot ================= */
 state.viewDate = todayKey();
+// A link can open a tab directly (the dashboard uses these):
+// #overview #supervisor #routes #calendar #team #tasks
+{ const TAB_FROM_HASH = {overview:"overview", supervisor:"mgr", routes:"routes", calendar:"calendar", team:"team", tasks:"tasksetting"};
+  const h = (location.hash || "").slice(1).toLowerCase();
+  if(TAB_FROM_HASH[h]) state.role = TAB_FROM_HASH[h]; }
 try{ const c = localStorage.getItem("drt.cfg"); if(c) state.cfg = JSON.parse(c); }catch(e){}
 state.cfg.assigned = normalizeAssigned(state.cfg.assigned);
 { const pruned = pruneExpiredExtras(state.cfg.extra); state.cfg.extra = pruned.extra;
