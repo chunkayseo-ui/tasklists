@@ -259,6 +259,10 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 .task .act{flex:none}
 .task-time-in .task-time{white-space:normal;font-size:13px}
 .task-detail{flex-basis:100%;display:flex;flex-direction:column;gap:3px;min-width:0;margin-top:-4px}
+.rep-gate{flex-basis:100%;margin:2px 0 4px;padding:10px 12px;border-radius:8px;background:var(--warn-soft,#F6EAD4);color:#5a3a06;font-size:14px;line-height:1.4}
+.rep-gate.bad{background:#F8DEDA;color:#7a1f16}
+.rep-gate.over{background:#F6F9F9;color:#5B7378;border:1px dashed #C7D6D6}
+.rep-gate .rep-acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
 /* The X (cancel claim) + claimer's-name (finish) button pair shown on a job
    the current technician has running. */
 .act-group{display:flex;gap:6px;flex:none}
@@ -1285,7 +1289,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-09-29.2";
+const APP_BUILD = "2026-09-30.1";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -2758,6 +2762,11 @@ function reopenStop(code){
 // outlet today, so a coworker sees "Claimed by Kay" instead of a plain Open
 // job they could also claim.
 function claimTask(code, tid){
+  { const r0 = myRound(), s0 = r0 && r0.stops.find(x => x.outlet === code), t0 = s0 && s0.tasks.find(x => x.id === tid);
+    if(s0 && t0){ const g = reportGate(s0, t0);
+      if(g.locked){ if(g.why !== "wt") checkReport(s0, t0, true);
+        flash(g.why === "wt" ? "Do the Water Test and Night Report first." : g.why === "mismatch" ? "Your night report doesn't match the water test — fix it first (see the job)." : "Send the night report in the group first — dosing opens once it's in the sheet.");
+        render(); return; } } }
   const rt = runningTask(myRound());
   if(rt && rt.task.id !== tid){ flash("Finish “"+rt.task.name+"” first — one job at a time keeps the timings honest."); return; }
   let claimed = null, stopOutlet = null, autoArrived = false;
@@ -3512,6 +3521,105 @@ function readingSummary(rd){
 }
 function plannedDoseSummary(pd){
   return `Dose tonight: <b>${fmtAmt(pd.chlorine, pd.chlorineUnit)} chlorine · ${fmtAmt(pd.acid, pd.acidUnit)} acid</b> (from FC ${pd.fc} · pH ${Number(pd.ph).toFixed(1)})`;
+}
+
+/* ---- Night report gate (30 Sep 2026) ----
+ * Chun Kay's rule: the night report goes to the group BEFORE night dosing.
+ * Manual Dosing stays locked until that pool's night report has reached the
+ * Pool Water Test Records sheet (read through the pool-history web app) AND its
+ * FC / pH match the water test entered here. The card says exactly what is
+ * missing or wrong. "Report won't go through" lets them carry on (Telegram
+ * down, no signal) -- it's recorded on the dosing job and flagged to Kay. */
+const REPORT_RECHECK_MS = 40000;
+state.report = state.report || {};
+const nextDayKey = k => { const [y, m, d] = k.split("-").map(Number); const t = new Date(y, m - 1, d + 1); return dateKey(t); };
+function waterTestFor(s, t){
+  return (s.tasks || []).find(x => isWaterTestTask(x) && (x.pool || null) === (t.pool || null)) || null;
+}
+function reportGate(s, t){
+  if(isTestMe() || !isDosingTask(t) || t.startedAt || t.doneAt || s.departAt || isQuick(s)) return {locked:false};
+  if(t.reportOverride) return {locked:false, override:true};
+  const wt = waterTestFor(s, t);
+  if(wt && !wt.doneAt) return {locked:true, why:"wt"};
+  const poolKey = dosingKeyFor(s.outlet, t.pool), k = todayKey() + "|" + poolKey;
+  const st = state.report[k];
+  const mine = wt && wt.reading ? {fc:wt.reading.fc, ph:wt.reading.ph} : null;
+  if(!st || st.checking && !st.sheet) return {locked:true, why:"checking", poolKey, mine};
+  if(st.err && !st.sheet) return {locked:true, why:"error", poolKey, mine, st};
+  if(!st.sheet) return {locked:true, why:"missing", poolKey, mine, st};
+  if(mine && (Number(st.sheet.fc) !== Number(mine.fc) || (st.sheet.ph !== null && mine.ph !== null && mine.ph !== undefined && Number(st.sheet.ph) !== Number(mine.ph))))
+    return {locked:true, why:"mismatch", poolKey, mine, st};
+  return {locked:false, ok:true, poolKey, st};
+}
+function checkReport(s, t, force){
+  const poolKey = dosingKeyFor(s.outlet, t.pool), day = todayKey(), k = day + "|" + poolKey;
+  const cur = state.report[k];
+  if(cur && cur.checking) return;
+  if(!force && cur && (Date.now() - cur.at) < REPORT_RECHECK_MS) return;
+  state.report[k] = Object.assign({}, cur || {}, {checking:true, at:Date.now()});
+  fetch(DOSING_HISTORY_API + "?pool=" + encodeURIComponent(poolKey) + "&_=" + Date.now()).then(r => { if(!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(j => {
+      const rows = (j[poolKey] || []);
+      // After midnight the report can land on the next calendar day's row.
+      const pick = [day, nextDayKey(day)].map(d => rows.find(x => x.date === d)).find(x => x && x.fc && x.fc.night !== null && x.fc.night !== undefined && x.fc.night !== "");
+      const num = v => (v === null || v === undefined || v === "" || isNaN(Number(v))) ? null : Number(v);
+      state.report[k] = {at:Date.now(), sheet: pick ? {fc:num(pick.fc.night), ph:pick.ph ? num(pick.ph.night) : null, date:pick.date} : null};
+    })
+    .catch(e => { state.report[k] = Object.assign({}, state.report[k] || {}, {checking:false, err:String(e.message || e), at:Date.now()}); })
+    .finally(() => { if(state.report[k]) state.report[k].checking = false; render(); });
+}
+// Called while rendering: keeps checking every ~40 s while a dosing job is locked.
+function ensureReportChecks(s, t){
+  const g = reportGate(s, t);
+  if(!g.locked || g.why === "wt") return;
+  checkReport(s, t, false);
+  if(!ensureReportChecks.timer) ensureReportChecks.timer = setTimeout(() => { ensureReportChecks.timer = null; render(); }, REPORT_RECHECK_MS + 500);
+}
+function reportGateHtml(s, t){
+  const g = reportGate(s, t); if(!g.locked && !g.override) return "";
+  const key = s.outlet + "|" + t.id, pool = esc(g.poolKey || dosingKeyFor(s.outlet, t.pool));
+  const mine = g.mine ? `FC ${g.mine.fc} · pH ${Number(g.mine.ph).toFixed(1)}` : "";
+  if(g.override) return `<div class="rep-gate over">⚠ Dosing without the night report in the sheet — ${esc(t.reportOverride.reason || "")} (${esc(t.reportOverride.by || "")} ${clockOf(t.reportOverride.at)}). Kay has been told.</div>`;
+  const over = `<button class="link" data-repoverride="${key}">Report won't go through?</button>`;
+  const again = `<button class="btn sm" data-repcheck="${key}">Check again</button>`;
+  if(g.why === "wt") return `<div class="rep-gate">🔒 Do the Water Test and Night Report first — dosing opens after it.</div>`;
+  if(g.why === "checking") return `<div class="rep-gate">🔒 Checking that your ${pool} night report is in the sheet…</div>`;
+  if(g.why === "error") return `<div class="rep-gate">🔒 Couldn't reach the sheet to check your ${pool} night report — check your signal. <div class="rep-acts">${again}${over}</div></div>`;
+  if(g.why === "missing") return `<div class="rep-gate">🔒 <b>Send the ${pool} night report in the group first.</b> Dosing opens once it's in the sheet${mine ? " with " + mine : ""}. Checking again every minute.<div class="rep-acts">${again}${over}</div></div>`;
+  const sh = g.st.sheet;
+  return `<div class="rep-gate bad">🔒 <b>Your ${pool} night report doesn't match.</b> Report: FC ${sh.fc}${sh.ph !== null ? " · pH " + Number(sh.ph).toFixed(1) : ""}. Water test here: ${mine}. Retest if unsure, then fix the one that's wrong.
+    <div class="rep-acts"><button class="btn sm" data-repuse="${key}">Report is right — use FC ${sh.fc}${sh.ph !== null ? " · pH " + Number(sh.ph).toFixed(1) : ""}</button><button class="btn sm" data-repcheck="${key}">I've resent the report — check again</button>${over}</div></div>`;
+}
+function reportOverride(code, tid){
+  const reason = (prompt("Why can't the night report go through? (e.g. no signal, Telegram down)\nKay will be told.") || "").trim();
+  if(!reason){ flash("Give a reason so Kay knows why."); return; }
+  const at = new Date().toISOString();
+  withRound(r => {
+    const s = r.stops.find(x => x.outlet === code); const t = s && s.tasks.find(x => x.id === tid); if(!t) return false;
+    t.reportOverride = {reason:reason.slice(0, 200), at, by:state.me};
+  }, "Couldn't save that. Try again.");
+}
+// "Report is right": the water test here takes the report's FC/pH, and the dose is worked out again.
+function reportUseSheet(code, tid){
+  const r0 = myRound(), s0 = r0 && r0.stops.find(x => x.outlet === code), t0 = s0 && s0.tasks.find(x => x.id === tid); if(!t0) return;
+  const g = reportGate(s0, t0); if(g.why !== "mismatch") return;
+  const sh = g.st.sheet, wt0 = waterTestFor(s0, t0); if(!wt0 || !wt0.reading) return;
+  const rd = wt0.reading, ph = sh.ph !== null ? sh.ph : rd.ph;
+  const dose = doseFor(g.poolKey, rd.schedule || autoSchedule(), sh.fc, ph);
+  if(!dose){ flash("Couldn't work out the dose for FC " + sh.fc + " · pH " + ph + " — check the dosing table loaded."); return; }
+  let reading = null;
+  withRound(r => {
+    const s = r.stops.find(x => x.outlet === code); if(!s) return false;
+    const wt = waterTestFor(s, t0); const d = s.tasks.find(x => x.id === tid); if(!wt || !wt.reading || !d) return false;
+    wt.reading = Object.assign({}, wt.reading, {fc:sh.fc, ph, chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit,
+      correctedFrom:{fc:rd.fc, ph:rd.ph, at:new Date().toISOString(), by:state.me, why:"matched to night report"}});
+    d.plannedDose = {chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit, fc:sh.fc, ph};
+    reading = wt.reading;
+  }, "Couldn't save that. Try again.").then(() => {
+    if(!reading) return;
+    persist("water_tests/" + todayKey() + "__" + g.poolKey + "__night", {fc:reading.fc, ph:reading.ph, chlorine:reading.chlorine, chlorineUnit:reading.chlorineUnit, acid:reading.acid, acidUnit:reading.acidUnit, correctedFrom:reading.correctedFrom}, () => {}, {merge:true});
+    flash("Water test updated to match the report — dose worked out again.");
+  });
 }
 
 // --- the reference panels, same content the calculator shows under its readout ---
@@ -5658,6 +5766,7 @@ function taskRow(s, t){
               : (running && mine) ? jobDonePanel(s, t)
               : "";
 
+  const gateHtml = (state.role !== "tech") ? "" : (!finished && !running && isDosingTask(t)) ? (ensureReportChecks(s, t), reportGateHtml(s, t)) : (running && t.reportOverride && isDosingTask(t)) ? reportGateHtml(s, t) : "";
   return `<div class="task ${running?"running":""} ${finished?"finished":""}">
     <span class="task-main">
       <span class="task-name">${esc(t.name)}</span>
@@ -5666,6 +5775,7 @@ function taskRow(s, t){
     </span>
     ${finished ? "" : time}${act}
     ${(detail || conflictNote) ? `<div class="task-detail">${detail}${conflictNote}</div>` : ""}
+    ${gateHtml}
   </div>${cantForm}${panel}`;
 }
 
@@ -7675,6 +7785,9 @@ function wire(){
   each("[data-cancelreopen]", b => { state.confirmReopen = null; render(); });
   each("[data-reopen]", b => { state.confirmReopen = null; reopenStop(b.dataset.reopen); });
   each("[data-claim]",  b => { const [o,t] = two(b.dataset.claim); claimTask(o,t); });
+  each("[data-repcheck]", b => { const [o,t] = two(b.dataset.repcheck); const r0 = myRound(), s0 = r0 && r0.stops.find(x => x.outlet === o), t0 = s0 && s0.tasks.find(x => x.id === t); if(t0){ checkReport(s0, t0, true); render(); } });
+  each("[data-repoverride]", b => { const [o,t] = two(b.dataset.repoverride); reportOverride(o,t); });
+  each("[data-repuse]", b => { const [o,t] = two(b.dataset.repuse); reportUseSheet(o,t); });
   each("[data-cantopen]", b => { state.cant = {key:b.dataset.cantopen, reason:""}; render(); const n = $("#cant-note"); if(n) n.scrollIntoView({block:"center"}); });
   each("[data-cantreason]", b => { if(state.cant){ state.cant.reason = b.dataset.cantreason; renderKeepingForm(); } });
   each("[data-cantcancel]", () => { if(state.cant) delete state.fp["cant|" + state.cant.key.split("|")[0]]; state.cant = null; render(); });
