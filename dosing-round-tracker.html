@@ -679,6 +679,7 @@ button.tm-c{cursor:pointer;border:1px dashed var(--line)}
 .cal-mw{margin-right:1px}
 .cal-mwc{font-size:10.5px;color:var(--ink-2);font-weight:600}
 .cal-chip.leave.lv-work{border-style:solid}
+.cal-views{margin:0 0 10px;flex-wrap:wrap}
 .cal-t td .dev{font-size:11px;white-space:normal;display:block;line-height:1.25}
 .cal-t .num{padding-left:4px;padding-right:4px}
 .cn-short{display:none}
@@ -1301,7 +1302,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-09-30.6";
+const APP_BUILD = "2026-09-30.7";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -7362,6 +7363,29 @@ function leaveBlock(date){
       <button class="btn sm primary" data-lvadd="${date}" ${fpBusy("lv|" + date) ? "disabled" : ""}>${fpBusy("lv|" + date) ? "Wait for the photo…" : `Add — ${esc(fmtDate(date))}${range ? " to " + esc(fmtDate(f.to)) : ""}`}</button>
     </div></div>`;
 }
+// Chun Kay (30 Sep): the calendar shows one chip per round, so a day can list the same
+// person twice (◆ Tasklists in the afternoon + night round). "On duty" shows each person
+// once -- who worked that day; the other views show one kind of work only.
+const CAL_VIEWS = [{id:"duty", label:"On duty"}, {id:"night", label:"Night dosing"}, {id:"board", label:"◆ Tasklists"}, {id:"am", label:"☀ Morning"}, {id:"all", label:"Everything"}];
+function calView(){
+  if(!state.calView){ try{ state.calView = localStorage.getItem("drt.calView") || "duty"; }catch(e){ state.calView = "duty"; } }
+  return CAL_VIEWS.some(v => v.id === state.calView) ? state.calView : "duty";
+}
+const calKind = x => x.manual ? "✎ worked (added by hand)" : x.board ? "◆ Tasklists" : x.vac ? "☀ Morning Round" : "Night round";
+function calViewList(list){
+  const v = calView();
+  if(v === "night") return list.filter(x => !x.vac && !x.board && !x.manual);
+  if(v === "board") return list.filter(x => x.board);
+  if(v === "am") return list.filter(x => x.vac);
+  if(v === "all") return list;
+  const by = {};
+  list.forEach(x => {
+    const k = slug(x.person || "?");
+    const g = by[k] = by[k] || {person:x.person, duty:true, kinds:[], s:{live:false, mustLeft:0}};
+    g.kinds.push(calKind(x)); if(x.s.live) g.s.live = true; if(!x.board && !x.vac && !x.manual) g.s.mustLeft += x.s.mustLeft || 0;
+  });
+  return Object.values(by).map(g => Object.assign(g, {what: g.person + ": " + [...new Set(g.kinds)].join(" + ")}));
+}
 function calendarView(){
   const today = todayKey(), cur = monthOf(today);
   const m = state.calMonth || (state.calMonth = cur);
@@ -7411,17 +7435,19 @@ function calendarView(){
   for(let i = 0; i < lead; i++) cells += `<div class="cal-d blank"></div>`;
   const sel = state.calDay && monthOf(state.calDay) === m ? state.calDay : (m === cur ? today : null);
   for(let d = 1; d <= nDays; d++){
-    const key = m + "-" + pad(d), list = byDay[key] || [], future = key > today;
+    const key = m + "-" + pad(d), all = byDay[key] || [], future = key > today, list = calViewList(all);
     const open = list.some(x => x.s.mustLeft && !x.s.live);
     const nm = n => `<span class="cn-full">${esc(n)}</span><span class="cn-short">${esc(String(n).slice(0, 4))}</span>`;
-    const chips = list.map(x => { const [bg, fg] = col(x.person); return `<span class="cal-chip${x.vac ? " am" : ""}${x.board ? " tl" : ""}" style="background:${bg};color:${fg}"${x.vac ? ' title="Morning vacuum round"' : x.board ? ' title="Tasklists jobs"' : ""}>${x.vac ? '<span class="cal-sun">☀</span>' : ""}${x.board ? '<span class="cal-tl">◆</span>' : ""}${x.manual ? '<span class="cal-mw">✎</span>' : ""}${nm(x.person)}${x.s.live ? '<span class="cal-live" title="On site now">●</span>' : ""}</span>`; }).join("")
+    const chips = list.map(x => { const [bg, fg] = col(x.person);
+      if(x.duty) return `<span class="cal-chip" style="background:${bg};color:${fg}" title="${esc(x.what)}">${nm(x.person)}${x.s.live ? '<span class="cal-live" title="On site now">●</span>' : ""}</span>`; return `<span class="cal-chip${x.vac ? " am" : ""}${x.board ? " tl" : ""}" style="background:${bg};color:${fg}"${x.vac ? ' title="Morning vacuum round"' : x.board ? ' title="Tasklists jobs"' : ""}>${x.vac ? '<span class="cal-sun">☀</span>' : ""}${x.board ? '<span class="cal-tl">◆</span>' : ""}${x.manual ? '<span class="cal-mw">✎</span>' : ""}${nm(x.person)}${x.s.live ? '<span class="cal-live" title="On site now">●</span>' : ""}</span>`; }).join("")
       + leaveOn(key).filter(e => e.type !== "work").map(e => `<span class="cal-chip leave lv-${esc(e.type)}">${nm(e.person)} ${esc(e.type === "al" ? "AL" : e.type === "ul" ? "UL" : e.type === "other" ? "…" : leaveLabel(e.type))}</span>`).join("");
     cells += `<button type="button" class="cal-d${future ? " future" : ""}${key === today ? " today" : ""}${key === sel ? " sel" : ""}" data-calday="${key}"
       aria-label="${esc(fmtDate(key))}: ${list.length ? esc(list.map(x => x.person).join(", ")) : "nobody"}">
       <span class="cal-n">${d}${open ? ' <span class="cal-warn" title="Jobs left open">!</span>' : ""}</span>${chips}</button>`;
   }
   const loading = state.db && c && c.loading && !c.rounds.length;
-  const grid = `<div class="card cal-card"><div class="cal-grid">${heads}${cells}</div>
+  const views = CAL_VIEWS.map(v => `<button type="button" class="tog" data-calview="${v.id}" aria-pressed="${calView() === v.id}">${esc(v.label)}</button>`).join("");
+  const grid = `<div class="card cal-card"><div class="cal-views aj-chips" role="group" aria-label="Show">${views}</div><div class="cal-grid">${heads}${cells}</div>
     ${loading ? `<p class="note" style="margin:8px 0 0">Loading the month…</p>` : ""}
     <p class="note" style="margin:8px 0 0">Tap a day to see where each person went, their hours and their jobs, or to add MC / leave / off. <span class="cal-warn">!</span> = a must-do job left open · <span class="cal-live">●</span> = on site now · <span class="cal-sun">☀</span> = Fik's Morning Round · <span class="cal-tl">◆</span> = Tasklists jobs (Maintenance Board) · ✎ = worked, added by hand · <span class="cal-chip leave" style="display:inline-block">grey outline</span> = MC / leave / off.</p></div>`;
 
@@ -7849,6 +7875,7 @@ function wire(){
   on("#lv-to", e => { lvf().to = e.target.value; render(); }, "change");
   on("#lv-note", e => { lvf().note = e.target.value; }, "input");
   each("[data-lvtype]", b => { lvf().type = b.dataset.lvtype; render(); });
+  each("[data-calview]", b => { state.calView = b.dataset.calview; try{ localStorage.setItem("drt.calView", state.calView); }catch(e){} render(); });
   each("[data-lvadd]", b => {
     const f = lvf(), from = b.dataset.lvadd;
     const person = (f.person === "__other" ? (f.other || "") : f.person).trim();
