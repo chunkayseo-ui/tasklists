@@ -1303,7 +1303,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-09-30.8";
+const APP_BUILD = "2026-09-30.9";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -3552,7 +3552,7 @@ function plannedDoseSummary(pd){
  * FC / pH match the water test entered here. The card says exactly what is
  * missing or wrong. "Report won't go through" lets them carry on (Telegram
  * down, no signal) -- it's recorded on the dosing job and flagged to Kay. */
-const REPORT_RECHECK_MS = 40000;
+const REPORT_RECHECK_MS = 40000, REPORT_TIMEOUT_MS = 25000;
 state.report = state.report || {};
 const nextDayKey = k => { const [y, m, d] = k.split("-").map(Number); const t = new Date(y, m - 1, d + 1); return dateKey(t); };
 function waterTestFor(s, t){
@@ -3576,10 +3576,15 @@ function reportGate(s, t){
 function checkReport(s, t, force){
   const poolKey = dosingKeyFor(s.outlet, t.pool), day = todayKey(), k = day + "|" + poolKey;
   const cur = state.report[k];
-  if(cur && cur.checking) return;
-  if(!force && cur && (Date.now() - cur.at) < REPORT_RECHECK_MS) return;
+  // A check that never answered (30 Sep 2026: Islam stuck on "Checking…" at JE) must not block
+  // the next one: after 25 s it's abandoned and a fresh check starts.
+  if(cur && cur.checking && (Date.now() - cur.at) < REPORT_TIMEOUT_MS) return;
+  if(!force && cur && !cur.checking && (Date.now() - cur.at) < REPORT_RECHECK_MS) return;
   state.report[k] = Object.assign({}, cur || {}, {checking:true, at:Date.now()});
-  fetch(DOSING_HISTORY_API + "?pool=" + encodeURIComponent(poolKey) + "&_=" + Date.now()).then(r => { if(!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+  const ac = (typeof AbortController === "function") ? new AbortController() : null;
+  const timer = ac ? setTimeout(() => ac.abort(), REPORT_TIMEOUT_MS) : null;
+  fetch(DOSING_HISTORY_API + "?pool=" + encodeURIComponent(poolKey) + "&_=" + Date.now(), ac ? {signal:ac.signal} : undefined)
+    .then(r => { if(timer) clearTimeout(timer); if(!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
     .then(j => {
       const rows = (j[poolKey] || []);
       // After midnight the report can land on the next calendar day's row.
@@ -3587,7 +3592,7 @@ function checkReport(s, t, force){
       const num = v => (v === null || v === undefined || v === "" || isNaN(Number(v))) ? null : Number(v);
       state.report[k] = {at:Date.now(), sheet: pick ? {fc:num(pick.fc.night), ph:pick.ph ? num(pick.ph.night) : null, date:pick.date} : null};
     })
-    .catch(e => { state.report[k] = Object.assign({}, state.report[k] || {}, {checking:false, err:String(e.message || e), at:Date.now()}); })
+    .catch(e => { state.report[k] = Object.assign({}, state.report[k] || {}, {checking:false, err:(e && e.name === "AbortError") ? "no answer" : String(e.message || e), at:Date.now()}); })
     .finally(() => { if(state.report[k]) state.report[k].checking = false; render(); });
 }
 // Called while rendering: keeps checking every ~40 s while a dosing job is locked.
@@ -3605,7 +3610,7 @@ function reportGateHtml(s, t){
   const over = `<button class="link" data-repoverride="${key}">Report won't go through?</button>`;
   const again = `<button class="btn sm" data-repcheck="${key}">Check again</button>`;
   if(g.why === "wt") return `<div class="rep-gate">🔒 Do the Water Test and Night Report first — dosing opens after it.</div>`;
-  if(g.why === "checking") return `<div class="rep-gate">🔒 Checking that your ${pool} night report is in the sheet…</div>`;
+  if(g.why === "checking") return `<div class="rep-gate">🔒 Checking that your ${pool} night report is in the sheet…<div class="rep-acts">${again}${over}</div></div>`;
   if(g.why === "error") return `<div class="rep-gate">🔒 Couldn't reach the sheet to check your ${pool} night report — check your signal. <div class="rep-acts">${again}${over}</div></div>`;
   if(g.why === "missing") return `<div class="rep-gate">🔒 <b>Send the ${pool} night report in the group first.</b> Dosing opens once it's in the sheet${mine ? " with " + mine : ""}. Checking again every minute.<div class="rep-acts">${again}${over}</div></div>`;
   const sh = g.st.sheet;
