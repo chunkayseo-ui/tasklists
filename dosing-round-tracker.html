@@ -1298,7 +1298,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-09-30.4";
+const APP_BUILD = "2026-09-30.5";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -7241,12 +7241,30 @@ function rosterName(n){
   if(NAME_ALIASES[low]) return NAME_ALIASES[low];
   return (state.roster || []).find(r => String(r).toLowerCase() === low) || t;
 }
+// Claims and Dones, each given the work day it belongs to. A Done belongs to the
+// day its job was claimed: when someone forgets to close a job and taps Done the
+// next day (Sharul, 2 -> 3 Sep, he was on MC on the 3rd), that next day isn't a
+// work day. A Done more than 4 hours after its claim doesn't stretch the hours.
+function boardWorkEvents(events){
+  const dayOf = ts => { const d = new Date(ts); if(d.getHours() < 4) d.setDate(d.getDate() - 1); return dateKey(d); };
+  const claims = {}, out = [];
+  events.slice().sort((a, b) => a.ts - b.ts).forEach(e => {
+    const k = String(e.who).toLowerCase() + "|" + e.outlet + "|" + (e.text || "");
+    if(e.action === "claimed"){ claims[k] = e.ts; out.push(Object.assign({}, e, {day:dayOf(e.ts)})); }
+    else if(e.action === "done"){
+      const c = claims[k];
+      if(c && e.ts - c > 4 * 36e5) out.push(Object.assign({}, e, {day:dayOf(c), ts:c, late:true}));
+      else out.push(Object.assign({}, e, {day:dayOf(c || e.ts)}));
+      delete claims[k];
+    }
+  });
+  return out;
+}
 // byDay entries for board work: one per person per day, first claim to last done.
 function boardDays(m){
   const c = state.monthCache[m], out = {};
-  ((c && c.board) || []).filter(e => e.action === "claimed" || e.action === "done").forEach(e => {
-    const d = new Date(e.ts); if(d.getHours() < 4) d.setDate(d.getDate() - 1);   // after midnight = the night before
-    const day = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  boardWorkEvents((c && c.board) || []).forEach(e => {
+    const day = e.day;
     if(monthOf(day) !== m) return;
     const person = rosterName(e.who); if(/^test/i.test(person)) return;
     const g = (out[day] = out[day] || {})[person] = (out[day] || {})[person] || {person, first:e.ts, last:e.ts, outlets:[], done:[], visits:{}};
