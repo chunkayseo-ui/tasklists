@@ -648,6 +648,7 @@ button.tm-c{cursor:pointer;border:1px dashed var(--line)}
 .cal-chip.leave{background:transparent;color:var(--ink-2);border:1px dashed var(--ink-3);font-weight:500}
 .cal-chip.leave.lv-mc{border-color:#B4452F;color:#8C2F1C}
 .cal-chip.leave.lv-al{border-color:#1F5FA8;color:#1F4E86}
+.cal-chip.leave.lv-ul{border-color:#7A4E00;color:#6B3F00}
 .cal-warn{display:inline-block;background:var(--warn);color:#fff;border-radius:50%;width:14px;height:14px;line-height:14px;text-align:center;font:700 10px/14px system-ui,sans-serif}
 .cal-live{color:#16A34A;font-size:10px}
 .cal-row{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line)}
@@ -1298,7 +1299,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-09-30.3";
+const APP_BUILD = "2026-09-30.4";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -1711,8 +1712,8 @@ async function saveRoster(members){
 // Removing an entry marks it removed rather than deleting the field, so a
 // merge from a phone that hasn't seen the removal yet can't bring it back
 // half-way. No medical details: the note is for "back on Mon" and the like.
-const LEAVE_TYPES = [{id:"mc", label:"MC"}, {id:"al", label:"Annual leave"}, {id:"off", label:"Off"}, {id:"other", label:"Other"}];
-const leaveLabel = id => (LEAVE_TYPES.find(x => x.id === id) || LEAVE_TYPES[3]).label;
+const LEAVE_TYPES = [{id:"mc", label:"MC"}, {id:"al", label:"Annual leave"}, {id:"ul", label:"Unpaid leave"}, {id:"off", label:"Off"}, {id:"other", label:"Other"}];
+const leaveLabel = id => (LEAVE_TYPES.find(x => x.id === id) || LEAVE_TYPES.find(x => x.id === "other")).label;
 const leaveLocal = {
   read(){ try{ return JSON.parse(localStorage.getItem("drt.leave") || "{}"); }catch(e){ return {}; } },
   write(all){ try{ localStorage.setItem("drt.leave", JSON.stringify(all)); }catch(e){} }
@@ -7388,7 +7389,7 @@ function calendarView(){
     const open = list.some(x => x.s.mustLeft && !x.s.live);
     const nm = n => `<span class="cn-full">${esc(n)}</span><span class="cn-short">${esc(String(n).slice(0, 4))}</span>`;
     const chips = list.map(x => { const [bg, fg] = col(x.person); return `<span class="cal-chip${x.vac ? " am" : ""}${x.board ? " tl" : ""}" style="background:${bg};color:${fg}"${x.vac ? ' title="Morning vacuum round"' : x.board ? ' title="Tasklists jobs"' : ""}>${x.vac ? '<span class="cal-sun">☀</span>' : ""}${x.board ? '<span class="cal-tl">◆</span>' : ""}${nm(x.person)}${x.s.live ? '<span class="cal-live" title="On site now">●</span>' : ""}</span>`; }).join("")
-      + leaveOn(key).map(e => `<span class="cal-chip leave lv-${esc(e.type)}">${nm(e.person)} ${esc(e.type === "al" ? "AL" : e.type === "other" ? "…" : leaveLabel(e.type))}</span>`).join("");
+      + leaveOn(key).map(e => `<span class="cal-chip leave lv-${esc(e.type)}">${nm(e.person)} ${esc(e.type === "al" ? "AL" : e.type === "ul" ? "UL" : e.type === "other" ? "…" : leaveLabel(e.type))}</span>`).join("");
     cells += `<button type="button" class="cal-d${future ? " future" : ""}${key === today ? " today" : ""}${key === sel ? " sel" : ""}" data-calday="${key}"
       aria-label="${esc(fmtDate(key))}: ${list.length ? esc(list.map(x => x.person).join(", ")) : "nobody"}">
       <span class="cal-n">${d}${open ? ' <span class="cal-warn" title="Jobs left open">!</span>' : ""}</span>${chips}</button>`;
@@ -7435,7 +7436,7 @@ function calendarView(){
   monthLeave.forEach(e => { const t = totFor(e.person); t.leave[e.type] = (t.leave[e.type] || 0) + 1; });
   const trows = Object.values(tot).sort((a, b) => (b.nights + (b.mornings || 0) + (b.boards || 0)) - (a.nights + (a.mornings || 0) + (a.boards || 0)) || a.person.localeCompare(b.person)).map(t => {
     const top = Object.entries(t.outlets).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([o, n]) => `${esc(o)}×${n}`).join(" ");
-    const lv = LEAVE_TYPES.filter(x => t.leave[x.id]).map(x => `${x.id === "al" ? "AL" : x.label} ${t.leave[x.id]}`).join(" · ");
+    const lv = LEAVE_TYPES.filter(x => t.leave[x.id]).map(x => `${x.id === "al" ? "AL" : x.id === "ul" ? "UL" : x.label} ${t.leave[x.id]}`).join(" · ");
     return `<tr><td>${chip(t.person)}${top ? `<div class="cal-top">${top}</div>` : ""}</td><td class="num">${t.nights}${t.mornings ? `<div class="cal-am">+☀${t.mornings}</div>` : ""}${t.boards ? `<div class="cal-tlc">+◆${t.boards}</div>` : ""}</td><td class="num">${t.minutes ? dur(t.minutes) : "–"}</td>
       <td class="num">${t.total ? `${t.done}/${t.total}${t.left ? `<div class="dev">${t.left} must-do open</div>` : ""}` : "–"}</td><td class="cal-lv">${lv || "–"}</td></tr>`;
   }).join("");
