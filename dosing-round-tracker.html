@@ -1302,7 +1302,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-09-30.7";
+const APP_BUILD = "2026-09-30.8";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -4153,6 +4153,7 @@ function dosedSummary(d){
   const pending = photos.filter(x => x.pending).length;
   const photo = (links.length ? " · " + links.join(" ") : "") + (pending ? ` · <span class="muted">📷 ${pending} upload${pending>1?"s":""} pending</span>` : "");
   const strip = photoStripHtml(withFile, x => photoName(photos.indexOf(x) + 1) + (x.takenAt ? " · " + clockOf(x.takenAt) : "") + (x.readG !== null && x.readG !== undefined ? " · read " + fmtG(x.readG) : ""));
+  if(d.noChlorine || (d.chlorineG === 0 && !photos.length)) return `<b>No chlorine needed</b>${d.acidMl ? ` · <b>${fmtMl(d.acidMl)} acid</b>` : " · no acid"}${plan}`;
   return `Dosed <b>${fmtG(d.chlorineG)} chlorine · ${fmtMl(d.acidMl)} acid</b> (${d.tool === "jug" ? "jug" : "scale"})${plan}${src}${photo}${flag ? ' <span class="dev">⚠ off plan</span>' : ""}${mis !== null ? ` <span class="dev">⚠ photo shows ${fmtG(mis)}</span>` : ""}${strip}`;
 }
 function dosingPanel(s, t){
@@ -4175,7 +4176,9 @@ function dosingPanel(s, t){
         <button class="tog" aria-pressed="${d.tool==="scale"}" data-dmset="${key}|tool|scale">Digital scale</button>
         <button class="tog" aria-pressed="${d.tool==="jug"}" data-dmset="${key}|tool|jug">Measuring jug</button></div></div>
     </div>
-    ${dosingPhotoHtml(key, d)}
+    ${d.tool !== "jug" && Number(d.chlorine) === 0 && d.chlorine !== "" ? `<p class="note" style="margin:0">No chlorine tonight — no photo needed. Enter the acid if you added any.</p>` : `${pd && toGrams(pd.chlorine, pd.chlorineUnit) === 0 ? `<p class="note" style="margin:0"><b>Tonight's chlorine dose is 0 g</b> — FC is already OK.</p>` : ""}
+    <button class="btn sm" data-dmnone="${key}" style="align-self:flex-start">No chlorine needed tonight</button>
+    ${dosingPhotoHtml(key, d)}`}
     <button class="btn primary big" data-dmsave="${key}" ${dmSaveState(d).ok ? "" : "disabled"}>${dmSaveState(d).label}</button>
   </div>`;
 }
@@ -4208,6 +4211,9 @@ function dmSaveState(d){
     ? jugTotal(d) > 0 && acidOk
     : (d.chlorine !== "" && !isNaN(Number(d.chlorine)) && Number(d.chlorine) >= 0 && acidOk);
   if(!amountOk) return {ok:false, label: d.tool === "jug" ? "Count the jars first" : "Enter the chlorine measured first"};
+  // Nothing on the scale = nothing to photograph (Sharul, Lentor 29 Sep: FC was already 2.5,
+  // the app wanted a photo, so he photographed something random and typed 1 g).
+  if(d.tool !== "jug" && Number(d.chlorine) === 0) return {ok:true, label: Number(d.acid || 0) > 0 ? "Save · no chlorine, acid only" : "Save · no dosing needed", none:true};
   if(!relayCfg()) return {ok:true, label:"Save amounts · job done"};
   const photos = d.photos || [];
   if(photos.some(ph => ph.status === "preparing" || ph.status === "uploading")) return {ok:false, label:"Wait for the photo…"};
@@ -4239,7 +4245,7 @@ function finishDosing(code, tid){
   const sst = dmSaveState(d);
   if(!sst.ok){ flash(sst.label === "Take the photo first" ? "Take the photo of the scale first." : sst.label); return; }
   const photos = d.photos || [];
-  const dosed = {chlorineG:cl, acidMl:acid, tool:d.tool,
+  const dosed = {chlorineG:cl, acidMl:acid, tool:d.tool, noChlorine: cl === 0 || undefined,
     plannedChlorineG: pd ? toGrams(pd.chlorine, pd.chlorineUnit) : null, plannedAcidMl: pd ? toMl(pd.acid, pd.acidUnit) : null,
     chlorineSource: d.tool === "jug" ? "jug-fills"
       : (d.chlorineSource === "photo" && !d.touched && String(d.readG) === String(cl)) ? "photo" : "typed",
@@ -4249,7 +4255,8 @@ function finishDosing(code, tid){
     at:new Date().toISOString(), by:state.me};
   rememberTool(code, d.tool);
   const queued = [];
-  if(relayCfg()){
+  if(dosed.noChlorine === undefined) delete dosed.noChlorine;
+  if(relayCfg() && !(sst.none && !photos.length)){
     dosed.photos = photos.map(ph => {
       if(ph.status === "done") return {fileId:ph.fileId, url:ph.url, thumb:ph.thumb || null, takenAt:ph.takenAt || null, readG: (ph.reading && ph.reading.status === "ok") ? Math.round(ph.reading.grams) : null};
       const qid = uid(); queued.push({qid, ph}); return {pending:true, queueId:qid, takenAt:ph.takenAt || null};
@@ -8071,6 +8078,8 @@ function wire(){
     d.jugFills = Math.max(0, (Number(d.jugFills) || 0) + Number(delta)); render();
   });
   each("[data-dmsave]", b => { const [o,t] = two(b.dataset.dmsave); finishDosing(o,t); });
+  each("[data-dmnone]", b => { const [o,t] = two(b.dataset.dmnone); const r0 = myRound(), s0 = r0 && r0.stops.find(x => x.outlet === o), t0 = s0 && s0.tasks.find(x => x.id === t); if(!t0) return;
+    const d = dmState(o+"|"+t, t0); d.tool = "scale"; d.chlorine = "0"; d.touched = true; render(); });
   // Manual vacuum photo proof: one camera input per slot, only the next slot live.
   const splitLast = v => { const k = v.lastIndexOf("|"); return [v.slice(0, k), v.slice(k+1)]; };
   each("[data-vacmaptoggle]", () => vacMapToggle());
