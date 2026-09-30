@@ -1303,7 +1303,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-09-30.9";
+const APP_BUILD = "2026-09-30.10";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -3552,7 +3552,7 @@ function plannedDoseSummary(pd){
  * FC / pH match the water test entered here. The card says exactly what is
  * missing or wrong. "Report won't go through" lets them carry on (Telegram
  * down, no signal) -- it's recorded on the dosing job and flagged to Kay. */
-const REPORT_RECHECK_MS = 40000, REPORT_TIMEOUT_MS = 25000;
+const REPORT_RECHECK_MS = 40000, REPORT_TIMEOUT_MS = 25000, REPORT_SHEET_CHECK = false;
 state.report = state.report || {};
 const nextDayKey = k => { const [y, m, d] = k.split("-").map(Number); const t = new Date(y, m - 1, d + 1); return dateKey(t); };
 function waterTestFor(s, t){
@@ -3563,6 +3563,10 @@ function reportGate(s, t){
   if(t.reportOverride) return {locked:false, override:true};
   const wt = waterTestFor(s, t);
   if(wt && !wt.doneAt) return {locked:true, why:"wt"};
+  // Sheet check switched OFF (Kay, 30 Sep 2026 night): it held staff up when the sheet was slow and
+  // they phoned him. Only "water test first" stays; missing/mismatched reports are still flagged
+  // afterwards by the helper bot and the dashboard. Set REPORT_SHEET_CHECK = true to bring it back.
+  if(!REPORT_SHEET_CHECK) return {locked:false};
   const poolKey = dosingKeyFor(s.outlet, t.pool), k = todayKey() + "|" + poolKey;
   const st = state.report[k];
   const mine = wt && wt.reading ? {fc:wt.reading.fc, ph:wt.reading.ph} : null;
