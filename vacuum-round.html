@@ -5054,6 +5054,18 @@ const VAC_PHOTOS = {
     {id:"E2", when:"end", label:"Vacuum port closed", hint:"Close-up of the port with the cover on."},
     {id:"E3", when:"end", label:"Vacuum valve closed", hint:"Close-up of the valve handle in the closed position."}
   ]},
+  // Lentor -- two routes because the pole can't reach the far wall:
+  // route 1 the inner half from the inner deck, route 2 the outer half
+  // from the right and bottom decks. One photo at the end of each route.
+  Lentor: {card:"LENTOR", normalMin:null, list:[
+    {id:"S1", when:"prep", label:"Vacuum port opened", hint:"Close-up of the vacuum port open, before connecting the hose."},
+    {id:"S2", when:"prep", label:"Vacuum valve opened", hint:"Close-up of the vacuum valve handle in the open position."},
+    {id:"P1", when:"start", label:"Route 1 – end of the inner part", hint:"After route 1. Stand at the left end of the inner deck. Look back along the inner part of the pool."},
+    {id:"P2", when:"start", label:"Route 2 – end of the outer part", hint:"After route 2. Stand at the bottom-left corner by Stairs Out. Look along the outer part of the pool."},
+    {id:"E1", when:"end", label:"Vacuum head, pipe and telescopic pole kept", hint:"Vacuum head, pipe and telescopic pole put back in storage."},
+    {id:"E2", when:"end", label:"Vacuum port closed", hint:"Close-up of the port with the cover on."},
+    {id:"E3", when:"end", label:"Vacuum valve closed", hint:"Close-up of the valve handle in the closed position."}
+  ]},
   // Same order as the photo badges on the route card (vacuum-route-maps.html#WWW).
   WWW: {card:"WWW", normalMin:null, list:[
     {id:"S1", when:"prep", label:"Vacuum port opened", hint:"Close-up of the vacuum port open, before connecting the hose."},
