@@ -1303,7 +1303,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-09-30.10";
+const APP_BUILD = "2026-10-04.2";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -8379,5 +8379,6 @@ setInterval(() => {
   if(running) externalUpdate();
 }, 15000);
 </script>
+<script src="https://hfpools.com/nav.js" defer></script>
 </body>
 </html>
