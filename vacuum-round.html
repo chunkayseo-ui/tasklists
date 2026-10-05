@@ -247,6 +247,11 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 .pool-head.pool-c2{background:var(--pool-2-soft);color:var(--pool-2)}
 .pool-head.pool-c3{background:var(--pool-3-soft);color:var(--pool-3)}
 .pool-head.pool-c4{background:var(--pool-4-soft);color:var(--pool-4)}
+.pool-chip{display:inline-block;padding:1px 7px;border-radius:6px;font-family:"Barlow Condensed",sans-serif;font-weight:600;font-size:13px;letter-spacing:.06em;vertical-align:1px}
+.pool-chip.pool-c1{background:var(--pool-1-soft);color:var(--pool-1)}
+.pool-chip.pool-c2{background:var(--pool-2-soft);color:var(--pool-2)}
+.pool-chip.pool-c3{background:var(--pool-3-soft);color:var(--pool-3)}
+.pool-chip.pool-c4{background:var(--pool-4-soft);color:var(--pool-4)}
 .task{background:var(--surface);padding:11px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .task.running{background:var(--warn-soft)}
 .task.finished{background:var(--surface-2)}
@@ -1307,7 +1312,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-05.16";
+const APP_BUILD = "2026-10-05.17";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -2796,10 +2801,10 @@ function reopenStop(code){
 // job they could also claim.
 function claimTask(code, tid){
   { const r0 = myRound(), s0 = r0 && r0.stops.find(x => x.outlet === code), t0 = s0 && s0.tasks.find(x => x.id === tid);
-    if(s0 && t0 && panelFirstGate(s0, t0).locked){ flash("Do “" + panelFor(s0, t0).name + "” first."); render(); return; }
+    if(s0 && t0 && panelFirstGate(s0, t0).locked){ flash(panelFirstGate(s0, t0).msg); render(); return; }
     if(s0 && t0){ const g = reportGate(s0, t0);
       if(g.locked){ if(g.why !== "wt") checkReport(s0, t0, true);
-        flash(g.why === "wt" ? "Do the Water Test and Night Report first." : g.why === "mismatch" ? "Your night report doesn't match the water test — fix it first (see the job)." : "Send the night report in the group first — dosing opens once it's in the sheet.");
+        flash(g.why === "wt" ? (g.msg || "Do the Water Test and Night Report first.") : g.why === "mismatch" ? "Your night report doesn't match the water test — fix it first (see the job)." : "Send the night report in the group first — dosing opens once it's in the sheet.");
         render(); return; } } }
   const rt = runningTask(myRound());
   if(rt && rt.task.id !== tid){ flash("Finish “"+rt.task.name+"” first — one job at a time keeps the timings honest."); return; }
@@ -3587,6 +3592,31 @@ const NR_TEMPS2 = {HB:[["tempL", "Left water temp", "Left Water Temp"], ["tempR"
 // Outlets whose report has no Salt Chlorinator line (Kay's Lentor template, 5 Oct 2026). The Pump panel
 // job still asks it there (Lentor has a salt chlorinator); it just isn't written in the report.
 const NR_NO_CHL_LINE = ["Lentor"];
+/* JE (Kay, 5 Oct 2026): 4 pools and ONE combined night report. Dosing needs PPE, so the round goes stage
+ * by stage instead of pool by pool: all 4 Pump panel jobs, then all 4 water tests (saving the last one sends
+ * the one JE report), then the 4 dosing jobs. Each stage stays locked until the stage before is done for
+ * every pool. The report puts a blank line after "Night Report JE" -- without it the logger's parser drops
+ * the first pool (checked against Kay's sample). */
+const NR_GROUP = {JE:{title:"JE", pools:["JEIP1", "JEIP2", "JEOP1", "JEOP2"]}};
+const nrGroupOf = poolKey => { for(const g in NR_GROUP) if(NR_GROUP[g].pools.includes(poolKey)) return g; return null; };
+const stageGroup = s => { const c = String((s && s.outlet) || "").toUpperCase(); return NR_GROUP[c] ? c : null; };
+const groupWaterTests = (s, g) => (s.tasks || []).filter(x => isWaterTestTask(x) && NR_GROUP[g].pools.includes(x.pool));
+function nrGroupText(g, rds){
+  const onoff = v => String(v || "").toLowerCase() === "off" ? "OFF" : "ON";
+  const blocks = rds.map(rd => [rd.pool,
+    "Water Clarity: " + rd.clarity,
+    "Free Chlorine: " + rd.fc,
+    "pH: " + Number(rd.ph).toFixed(1),
+    "Circulation pump: " + (rd.pump ? onoff(rd.pump) : "-"),
+    "Salt Chlorinator: " + onoff(rd.chlorinator),
+    "Pool Temperature: " + Number(rd.temp).toFixed(1),
+    "",
+    "Dosing Amounts",
+    "Chlorine: " + nrAmt(rd.chlorine, rd.chlorineUnit),
+    "Acid: " + nrAmt(rd.acid, rd.acidUnit)].join("\n"));
+  const testers = [...new Set(rds.map(rd => rd.takenBy).filter(Boolean))].join(" & ");
+  return ["Night Report " + NR_GROUP[g].title, ""].concat(blocks.join("\n\n"), "", "Tester: " + testers).join("\n");
+}
 const nrTempsOk = (poolKey, w) => NR_TEMPS2[poolKey] ? NR_TEMPS2[poolKey].every(x => nrTempOk(w[x[0]])) : nrTempOk(w.temp);
 // Outlets whose night report is per pump room (Kay, 5 Oct 2026: Tengah). Asked in the Pump panel job,
 // one block per room, in this order; the report lists them the same way.
@@ -3597,7 +3627,7 @@ const NR_ROOMS = {
   ]
 };
 const CLARITY_OPTIONS = ["Crystal Clear", "Clear", "Cloudy"];
-const nrOn = poolKey => APP_NIGHT_REPORT.includes(poolKey);
+const nrOn = poolKey => APP_NIGHT_REPORT.includes(poolKey) || !!nrGroupOf(poolKey);
 function nrAmt(v, unit){
   const u = String(unit || "").toLowerCase(), n = Number(v);
   if(!n) return "0";                  // "Acid: 0" (Kay's TPY template)
@@ -3656,7 +3686,18 @@ function nrFieldsHtml(key, w, poolKey){
   return `<label class="wt-field"><span class="wt-lbl">Pool temperature</span>
         <span class="num"><input type="number" inputmode="decimal" min="20" max="40" step="0.1" data-wtin="${key}|temp" value="${esc(w.temp)}" placeholder="e.g. 31.5"><span>°C</span></span></label>`;
 }
-function nrPreviewHtml(poolKey, w, dose, pt){
+function nrPreviewHtml(poolKey, w, dose, pt, s){
+  const g = nrGroupOf(poolKey);
+  if(g && s){
+    const wts = groupWaterTests(s, g), done = wts.filter(x => x.doneAt).length, title = NR_GROUP[g].title;
+    if(done < wts.length - 1) return `<div class="wt-src" style="margin-top:6px">📨 ${esc(poolKey)} goes into the one ${esc(title)} night report. It's sent when the last pool's water test is saved (${done} of ${wts.length} done).</div>`;
+    if(!dose || !w.clarity || !nrTempsOk(poolKey, w)) return `<div class="wt-src" style="margin-top:6px">📨 This is the last pool: saving sends the ${esc(title)} night report for all ${wts.length} pools — fill in clarity and temperature first.</div>`;
+    const cur = {pool:poolKey, clarity:w.clarity, fc:w.fc, ph:w.ph, chlorinator:(pt && pt.chlorinator) || w.chlorinator, pump:(pt && pt.pump) || "", temp:w.temp,
+      chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit, takenBy:state.me};
+    const rds = NR_GROUP[g].pools.map(p => { const x = wts.find(y => y.pool === p); return !x ? null : (x.doneAt ? x.reading : p === poolKey ? cur : null); }).filter(Boolean);
+    return `<details class="panel" open><summary>📨 ${esc(title)} night report that will be sent (all ${wts.length} pools)</summary><pre style="white-space:pre-wrap;margin:6px 0 0;font-size:13px;line-height:1.4">${esc(nrGroupText(g, rds))}</pre>
+    <div class="wt-src">Saving sends it to the ${esc(title)} Telegram topic within a minute. Then the dosing jobs open.</div></details>`;
+  }
   if(!dose || !w.clarity || !nrTempsOk(poolKey, w)) return `<div class="wt-src" style="margin-top:6px">📨 Saving sends the night report to the ${esc(NR_TITLE[poolKey] || poolKey)} Telegram group — fill in clarity and temperature first.</div>`;
   const txt = nightReportText({pool:poolKey, clarity:w.clarity, fc:w.fc, ph:w.ph, chlorinator:(pt && pt.chlorinator) || w.chlorinator, pump:(pt && pt.pump) || "", temp:w.temp, tempL:w.tempL, tempR:w.tempR,
     chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit, takenBy:state.me}, pt);
@@ -3666,7 +3707,12 @@ function nrPreviewHtml(poolKey, w, dose, pt){
 // The receipt the logger leaves once the report is in the group.
 function nrStatusHtml(rd){
   if(!rd || !rd.report) return "";
-  let r = (state.nightReports || {})[rd.date + "__" + rd.pool];
+  const rp = rd.reportPool || rd.pool;
+  let r = (state.nightReports || {})[rd.date + "__" + rp];
+  if(rd.reportPool && !rd.reportText){   // a JE pool saved before the last one: its report goes out with the last pool's
+    if(r && r.sentAt && (!rd.takenAt || r.sentAt >= rd.takenAt)) return ` <span class="wt-src">· 📨 in the ${esc(rp)} night report, sent ${esc(fmtClock(r.sentAt))}</span>`;
+    return ` <span class="wt-src">· 📨 goes in the ${esc(rp)} night report with the last pool</span>`;
+  }
   if(r && r.takenAt !== undefined && rd.takenAt && r.takenAt !== rd.takenAt) r = null;   // a receipt for an earlier (test) reading
   if(r && r.sentAt) return ` <span class="wt-src">· 📨 night report sent ${esc(fmtClock(r.sentAt))}</span>`;
   if(r && r.error) return ` <span class="wt-src" style="color:#b42318">· ⚠ night report not sent (${esc(r.error)}) — tell Kay</span>`;
@@ -3701,6 +3747,11 @@ function waterTestFor(s, t){
 function reportGate(s, t){
   if(isTestMe() || !isDosingTask(t) || t.startedAt || t.doneAt || s.departAt || isQuick(s)) return {locked:false};
   if(t.reportOverride) return {locked:false, override:true};
+  { const g = stageGroup(s);
+    if(g && NR_GROUP[g].pools.includes(t.pool)){
+      const wts = groupWaterTests(s, g), left = wts.filter(x => !x.doneAt).length;
+      if(left) return {locked:true, why:"wt", msg:`Do all ${wts.length} water tests first (${left} left) — the ${NR_GROUP[g].title} night report goes out with the last one, then dosing opens.`};
+    } }
   const wt = waterTestFor(s, t);
   if(wt && !wt.doneAt) return {locked:true, why:"wt"};
   // Sheet check switched OFF (Kay, 30 Sep 2026 night): it held staff up when the sheet was slow and
@@ -3724,11 +3775,16 @@ function panelFor(s, t){
   const ps = (s.tasks || []).filter(x => x !== t && isPanelTask(x) && !isWaterTestTask(x));
   return ps.find(x => (x.pool || null) === (t.pool || null)) || ps.find(x => !x.pool) || null;
 }
-const chlInPanel = s => SALT_CHLORINATOR.includes(String(s.outlet || "").toUpperCase()) || nrOn(dosingKeyFor(s.outlet, null));
+const chlInPanel = s => SALT_CHLORINATOR.includes(String(s.outlet || "").toUpperCase()) || nrOn(dosingKeyFor(s.outlet, null)) || !!stageGroup(s);
 function panelFirstGate(s, t){
   if(isTestMe() || !isWaterTestTask(t) || t.startedAt || t.doneAt || s.departAt || isQuick(s)) return {locked:false};
+  const g = stageGroup(s);
+  if(g && NR_GROUP[g].pools.includes(t.pool)){
+    const ps = (s.tasks || []).filter(x => isPanelTask(x) && !isWaterTestTask(x) && x.kind === "required" && NR_GROUP[g].pools.includes(x.pool)), left = ps.filter(x => !x.doneAt).length;
+    return left ? {locked:true, why:"panel", msg:`Finish all ${ps.length} pump panel checks first (${left} left) — the water tests open after them.`} : {locked:false};
+  }
   const p = panelFor(s, t);
-  return p && !p.doneAt && p.kind === "required" ? {locked:true, why:"panel"} : {locked:false};
+  return p && !p.doneAt && p.kind === "required" ? {locked:true, why:"panel", msg:`Do “${p.name}” first — the water test opens after it.`} : {locked:false};
 }
 // Shows each pool's panel job just above its water test (display order only).
 function panelFirstOrder(list){
@@ -3776,7 +3832,7 @@ function reportGateHtml(s, t){
   if(g.override) return `<div class="rep-gate over">⚠ Dosing without the night report in the sheet — ${esc(t.reportOverride.reason || "")} (${esc(t.reportOverride.by || "")} ${clockOf(t.reportOverride.at)}). Kay has been told.</div>`;
   const over = `<button class="link" data-repoverride="${key}">Report won't go through?</button>`;
   const again = `<button class="btn sm" data-repcheck="${key}">Check again</button>`;
-  if(g.why === "wt") return `<div class="rep-gate">🔒 Do the Water Test and Night Report first — dosing opens after it.</div>`;
+  if(g.why === "wt") return `<div class="rep-gate">🔒 ${g.msg ? esc(g.msg) : "Do the Water Test and Night Report first — dosing opens after it."}</div>`;
   if(g.why === "checking") return `<div class="rep-gate">🔒 Checking that your ${pool} night report is in the sheet…<div class="rep-acts">${again}${over}</div></div>`;
   if(g.why === "error") return `<div class="rep-gate">🔒 Couldn't reach the sheet to check your ${pool} night report — check your signal. <div class="rep-acts">${again}${over}</div></div>`;
   if(g.why === "missing") return `<div class="rep-gate">🔒 <b>Send the ${pool} night report in the group first.</b> Dosing opens once it's in the sheet${mine ? " with " + mine : ""}. Checking again every minute.<div class="rep-acts">${again}${over}</div></div>`;
@@ -4240,13 +4296,13 @@ function waterTestPanel(s, t){
       ${chlInPanel(s) && panelFor(s, t) ? "" : `<div class="wt-field"><span class="wt-lbl">Salt chlorinator</span>${onoff("chlorinator", w.chlorinator)}</div>`}
       ${nrOn(poolKey) ? nrFieldsHtml(key, w, poolKey) : ""}
     </div>
-    ${nrOn(poolKey) ? nrPreviewHtml(poolKey, w, dose, panelFor(s, t)) : ""}
+    ${nrOn(poolKey) ? nrPreviewHtml(poolKey, w, dose, panelFor(s, t), s) : ""}
     <details class="panel" data-panel="${kToday}" ${pOpen(kToday)}><summary>Today's earlier readings</summary><div class="wt-ref-body">${state.panelsOpen[kToday] ? wtTodayHtml(poolKey) : ""}</div></details>
     <details class="panel" data-panel="${kHist}" ${pOpen(kHist)}><summary>Past ${DAYNAME_FULL[operationalNow().getDay()]}s</summary><div class="wt-ref-body">${state.panelsOpen[kHist] ? wtHistoryHtml(poolKey) : ""}</div></details>
     <details class="panel" data-panel="${kRoute}" ${pOpen(kRoute)}><summary>Dosing route</summary><div class="wt-ref-body">${state.panelsOpen[kRoute] ? wtRouteHtml(routeCode) : ""}</div></details>
     ${(() => { const nrNeed = nrOn(poolKey) && dose && (!w.clarity || !nrTempsOk(poolKey, w));
       const ok = dose && !nrNeed;
-      const label = !dose ? "Tap FC and pH first" : nrNeed ? (!w.clarity ? "Tap the water clarity" : (NR_TEMPS2[poolKey] ? "Enter both pool temperatures (20–40 °C)" : "Enter the pool temperature (20–40 °C)")) : nrOn(poolKey) ? "Save reading · send night report" : "Save reading · job done";
+      const label = !dose ? "Tap FC and pH first" : nrNeed ? (!w.clarity ? "Tap the water clarity" : (NR_TEMPS2[poolKey] ? "Enter both pool temperatures (20–40 °C)" : "Enter the pool temperature (20–40 °C)")) : nrOn(poolKey) ? (nrGroupOf(poolKey) ? (groupWaterTests(s, nrGroupOf(poolKey)).filter(x => !x.doneAt).length > 1 ? "Save reading · next pool" : "Save reading · send " + NR_GROUP[nrGroupOf(poolKey)].title + " night report") : "Save reading · send night report") : "Save reading · job done";
       return `<button class="btn primary big" data-wtsave="${key}" ${ok ? "" : "disabled"}>${label}</button>`; })()}
   </div>`;
 }
@@ -4276,7 +4332,8 @@ function finishWaterTest(code, tid){
       reading.temp = Math.round((reading.tempL + reading.tempR) * 5) / 10; }   // average, for anything that reads one temperature
     else reading.temp = Math.round(Number(w.temp) * 10) / 10;
     const pt = panelFor(s0, t0);
-    reading.reportText = nightReportText(Object.assign({}, reading, {pump: pt && pt.pump}), pt); }
+    if(nrGroupOf(poolKey)){ reading.pump = (pt && pt.pump) || ""; reading.reportPool = nrGroupOf(poolKey); }   // the combined text is made below, once all the pools are in
+    else reading.reportText = nightReportText(Object.assign({}, reading, {pump: pt && pt.pump}), pt); }
   if(autoSchedule() === "weekday" && w.schedule === "weekend" && tu) reading.topUp = {id:tu.id || topupId(poolKey), reason:tu.reason, note:tu.note || "", approvedBy:tu.decidedBy, approvedAt:tu.decidedAt};
   let finished = null, dosingSync = null;
   withRound(r => {
@@ -4284,6 +4341,13 @@ function finishWaterTest(code, tid){
     const t = s.tasks.find(x => x.id === tid); if(!t || !t.startedAt || t.doneAt) return false;
     if(t.claimedBy !== state.me) return false;
     t.doneAt = new Date().toISOString(); t.reading = reading;
+    if(reading.reportPool){
+      const g = reading.reportPool, wts = groupWaterTests(s, g);
+      if(wts.every(x => x === t || (x.doneAt && x.reading))){
+        const rds = NR_GROUP[g].pools.map(p => { const x = wts.find(y => y.pool === p); return x ? (x === t ? reading : x.reading) : null; }).filter(Boolean);
+        reading.reportText = nrGroupText(g, rds);
+      } else delete reading.reportText;
+    }
     finished = {name:t.name, kind:t.kind, pool:t.pool||null, doneAt:t.doneAt};
     const d = s.tasks.find(x => isDosingTask(x) && (x.pool||null) === (t.pool||null));
     if(d){
@@ -6035,6 +6099,7 @@ function runRound(r){
 // than re-reading "JEIP1 — " on every single line in a list of 12.
 function taskListHtml(s){
   if(!s.tasks.some(t => t.pool)) return orderedTasks(s).map(t => taskRow(s,t)).join("");
+  if(stageGroup(s)) return stagedTaskListHtml(s);
   // Group strictly by pool rather than by adjacency in the array. A job added
   // mid-round -- a shared job toggled on, or an ad-hoc job for one pool -- is
   // pushed onto the END of an already-open round's task list (see
@@ -6058,6 +6123,23 @@ function taskListHtml(s){
   return out;
 }
 
+// JE (Kay, 5 Oct 2026): listed by stage, not by pool -- 1 all Pump panel jobs, 2 all water tests (one JE
+// night report), 3 all dosing jobs, then anything else. Each row carries its pool's colour chip.
+function stagedTaskListHtml(s){
+  const g = stageGroup(s), pools = NR_GROUP[g].pools;
+  const stage = t => !t.pool ? 9 : isPanelTask(t) && !isWaterTestTask(t) ? 0 : isWaterTestTask(t) ? 1 : isDosingTask(t) ? 2 : 3;
+  const heads = ["1 · Pump panels & salt chlorinators — all pools", "2 · Water tests — one " + NR_GROUP[g].title + " night report", "3 · Manual dosing — all pools", "Other jobs"];
+  const pi = t => { const i = pools.indexOf(t.pool); return i < 0 ? 99 : i; };
+  const list = s.tasks.map((t, i) => ({t, i})).sort((a, b) => stage(a.t) - stage(b.t) || pi(a.t) - pi(b.t) || a.i - b.i);
+  let out = "", cur = null;
+  list.forEach(({t}) => {
+    const st = stage(t);
+    if(st !== cur){ cur = st; if(st !== 9) out += `<div class="pool-head">${esc(heads[Math.min(st, 3)])}</div>`; }
+    out += taskRow(s, t);
+  });
+  return out;
+}
+const poolChip = (s, t) => (stageGroup(s) && t.pool) ? `<span class="pool-chip pool-c${(NR_GROUP[stageGroup(s)].pools.indexOf(t.pool) % 4 + 4) % 4 + 1}">${esc(t.pool)}</span> ` : "";
 function taskRow(s, t){
   const running = t.startedAt && !t.doneAt, finished = !!t.doneAt;
   // A finished job whose claim is contradicted by another round's copy of
@@ -6160,10 +6242,10 @@ function taskRow(s, t){
               : (running && mine) ? jobDonePanel(s, t)
               : "";
 
-  const gateHtml = (state.role !== "tech") ? "" : (!finished && !running && panelFirstGate(s, t).locked) ? `<div class="rep-gate">🔒 Do “${esc(panelFor(s, t).name)}” first — the water test opens after it.</div>` : (!finished && !running && isDosingTask(t)) ? (ensureReportChecks(s, t), reportGateHtml(s, t)) : (running && t.reportOverride && isDosingTask(t)) ? reportGateHtml(s, t) : "";
+  const gateHtml = (state.role !== "tech") ? "" : (!finished && !running && panelFirstGate(s, t).locked) ? `<div class="rep-gate">🔒 ${esc(panelFirstGate(s, t).msg)}</div>` : (!finished && !running && isDosingTask(t)) ? (ensureReportChecks(s, t), reportGateHtml(s, t)) : (running && t.reportOverride && isDosingTask(t)) ? reportGateHtml(s, t) : "";
   return `<div class="task ${running?"running":""} ${finished?"finished":""}">
     <span class="task-main">
-      <span class="task-name">${esc(t.name)}</span>
+      <span class="task-name">${poolChip(s, t)}${esc(t.name)}</span>
       <span class="task-meta">${status}${tag}${catTag(t.category || catOf(s, t))}${assigneeOf(s, t) ? `<span class="tag for${assigneeOf(s, t) === state.me ? " me" : ""}">For ${esc(assigneeOf(s, t))}</span>` : ""}${addedByOf(t) ? `<span class="task-by">Added by ${esc(addedByOf(t))}</span>` : ""}${del}${cantBtn}</span>
       ${finished && time ? `<span class="task-time-in">${time}</span>` : ""}
     </span>
