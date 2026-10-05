@@ -1307,7 +1307,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-05.15";
+const APP_BUILD = "2026-10-05.16";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -3577,13 +3577,16 @@ function wtState(key){
  * format (so the sheet still fills the same way) and leaves a receipt in
  * night_reports/{date}__{pool}. BK first; add more outlets as they're ready.
  * Keep nightReportText() the same as nightReportText_() in the logger script. */
-const APP_NIGHT_REPORT = ["BK", "Tengah", "CC", "DR", "TPY", "WWW", "HB", "HS"];   // CC, DR, TPY, WWW, HB, HS added 5 Oct (Kay)
+const APP_NIGHT_REPORT = ["BK", "Tengah", "CC", "DR", "TPY", "WWW", "HB", "HS", "Lentor"];   // CC, DR, TPY, WWW, HB, HS, Lentor added 5 Oct (Kay)
 // The name on the report's first line, where the team calls the outlet something else (Kay, 5 Oct 2026:
 // WWW's report is "Night Report DTE" -- Downtown East). The logger files it by the WWW topic.
 const NR_TITLE = {WWW:"DTE", HB:"Home@Bedok", HS:"Home@Steven"};
 // Outlets that take two pool temperatures instead of one (Kay, 5 Oct 2026: HB, left and right end -- the
 // sheet's HB tab has a left and a right temperature column). [field, label on the card, line in the report]
 const NR_TEMPS2 = {HB:[["tempL", "Left water temp", "Left Water Temp"], ["tempR", "Right water temp", "Right Water Temp"]]};
+// Outlets whose report has no Salt Chlorinator line (Kay's Lentor template, 5 Oct 2026). The Pump panel
+// job still asks it there (Lentor has a salt chlorinator); it just isn't written in the report.
+const NR_NO_CHL_LINE = ["Lentor"];
 const nrTempsOk = (poolKey, w) => NR_TEMPS2[poolKey] ? NR_TEMPS2[poolKey].every(x => nrTempOk(w[x[0]])) : nrTempOk(w.temp);
 // Outlets whose night report is per pump room (Kay, 5 Oct 2026: Tengah). Asked in the Pump panel job,
 // one block per room, in this order; the report lists them the same way.
@@ -3631,7 +3634,7 @@ function nightReportText(rd, pt){
     "Water Clarity: " + rd.clarity,
     "Free Chlorine: " + rd.fc,
     "pH: " + Number(rd.ph).toFixed(1)]
-    .concat(rd.pool === "BK" ? [chlLine, pumpLine] : [pumpLine, chlLine])
+    .concat(NR_NO_CHL_LINE.includes(rd.pool) ? [pumpLine] : rd.pool === "BK" ? [chlLine, pumpLine] : [pumpLine, chlLine])
     .concat(NR_TEMPS2[rd.pool] ? NR_TEMPS2[rd.pool].map(x => x[2] + ": " + Number(rd[x[0]]).toFixed(1)) : ["Pool Temperature: " + Number(rd.temp).toFixed(1)])
     .concat([
     "",
