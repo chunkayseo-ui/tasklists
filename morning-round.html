@@ -128,6 +128,9 @@ input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline
 #lightbox .lb-body{flex:1;display:flex;align-items:center;justify-content:center;overflow:auto}
 #lightbox img{max-width:100%;max-height:100%;border-radius:10px;background:#fff}
 #lightbox .lb-msg{color:#e7eef0;font-size:15px;line-height:1.5;text-align:center;padding:20px;max-width:340px}
+#panelinline{position:absolute;z-index:10;display:none;overflow:hidden;border-radius:10px;border:1px solid var(--line);background:#f2f3f4}
+#panelinline iframe{border:0;display:block;transform-origin:0 0;background:#f2f3f4}
+.panel-slot{height:360px;border-radius:10px;background:#eef1f3;margin-bottom:6px}
 #panelbox{position:fixed;inset:0;z-index:1200;display:none;flex-direction:column;background:rgba(12,18,20,.94);
   padding:calc(10px + env(safe-area-inset-top,0px)) 10px calc(10px + env(safe-area-inset-bottom,0px))}
 #panelbox.open{display:flex}
@@ -753,6 +756,7 @@ details.vac-fold>.job-row-read{padding:4px 10px 10px;margin:0}
 <!-- The pump panel, borrowed from the check-timer page. It lives outside the
      part of the page that redraws every few seconds, so opening it does not
      reload each time a round ticks. -->
+<div id="panelinline" aria-label="Pump panel"></div>
 <div id="panelbox" role="dialog" aria-modal="true" aria-label="Pump panel">
   <div class="lb-bar"><span class="lb-cap"></span>
     <a class="pb-full" href="#" target="_blank" rel="noopener">Full page</a>
@@ -1303,7 +1307,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-05.5";
+const APP_BUILD = "2026-10-05.6";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -3170,6 +3174,7 @@ function render(){
   scheduleDraftSave();
   $("#view").insertAdjacentHTML("beforeend", `<p class="app-ver">Version ${esc(APP_BUILD)}${state.newBuild ? ` · <b>${esc(state.newBuild)} ready</b>` : ""}</p>`);
   wire();
+  try{ syncInlinePanel(); }catch(e){}
 }
 
 // Real-time updates arrive constantly while the app is open -- another
@@ -3882,7 +3887,8 @@ function pumpPanelBlock(s, t){
     <div class="wt-head"><span class="wt-title">Pump panel · ${esc(pool || code)}</span></div>
     <p class="note" style="margin:0 0 10px">See what the door and the timers should show right now,
       then compare with the real panel.</p>
-    <button class="panel-open" data-openpanel="${esc(code)}" data-openpool="${esc(pool)}">🔌 Show the pump panel</button>
+    <div class="panel-slot" data-panelslot="${esc(code)}|${esc(pool)}"></div>
+    <button class="link" data-openpanel="${esc(code)}" data-openpool="${esc(pool)}">⤢ Open the pump panel full screen</button>
   </div>`;
 }
 function openPumpPanel(code, pool){
@@ -3897,6 +3903,24 @@ function openPumpPanel(code, pool){
   box.querySelector(".pb-full").href = PANEL_URL + "?" + q;
   box.classList.add("open");
 }
+// Kay, 5 Oct 2026: show the panel right in the job, smaller, so the technician can compare it with the real
+// one without opening anything. The job list is redrawn every few seconds, which would reload an iframe
+// inside it -- so one iframe lives outside the redraw (#panelinline) and is laid over the job's empty slot.
+const PANEL_INLINE_SCALE = 0.62;
+function syncInlinePanel(){
+  const box = document.getElementById("panelinline"); if(!box) return;
+  const slot = document.querySelector("#view [data-panelslot]"), big = document.getElementById("panelbox");
+  const r = slot && slot.getBoundingClientRect();
+  if(!slot || !r.width || (big && big.classList.contains("open"))){ box.style.display = "none"; return; }
+  const [code, pool] = slot.dataset.panelslot.split("|");
+  const url = PANEL_URL + "?embed=1&" + (pool ? "site=" + encodeURIComponent(pool) : "outlet=" + encodeURIComponent(code));
+  Object.assign(box.style, {display:"block", top:(r.top + window.scrollY) + "px", left:(r.left + window.scrollX) + "px", width:r.width + "px", height:r.height + "px"});
+  let fr = box.querySelector("iframe");
+  if(!fr || fr.dataset.url !== url){ box.innerHTML = `<iframe title="Pump panel"></iframe>`; fr = box.querySelector("iframe"); fr.dataset.url = url; fr.src = url; }
+  fr.style.width = (r.width / PANEL_INLINE_SCALE) + "px"; fr.style.height = (r.height / PANEL_INLINE_SCALE) + "px"; fr.style.transform = "scale(" + PANEL_INLINE_SCALE + ")";
+}
+setInterval(syncInlinePanel, 600);
+window.addEventListener("resize", syncInlinePanel);
 function closePumpPanel(){
   const box = document.getElementById("panelbox");
   if(!box) return;
@@ -3975,7 +3999,8 @@ function panelTaskBlockInner(s, t){
   return `<div class="wt">
     <div class="wt-head"><span class="wt-title">Pump panel${panelPhotoSlots(s.outlet, t).some(x => /^salt/.test(x.id)) ? " & salt chlorinator" : ""} · ${esc(pool || code)}</span></div>
     ${hasPanel(s.outlet) ? `<p class="note" style="margin:0 0 10px">See what the door and the timers should show right now, then compare with the real panel.</p>
-    <button class="panel-open" data-openpanel="${esc(code)}" data-openpool="${esc(pool)}">🔌 Show the pump panel</button>` : ""}
+    <div class="panel-slot" data-panelslot="${esc(code)}|${esc(pool)}"></div>
+    <button class="link" data-openpanel="${esc(code)}" data-openpool="${esc(pool)}">⤢ Open the pump panel full screen</button>` : ""}
     ${photos}
     <textarea rows="2" maxlength="500" data-donenote="${key}" placeholder="Note (optional) — e.g. a fault light, a timer that was wrong" style="margin-top:10px;width:100%">${esc(state.doneNote[key] || "")}</textarea>
   </div>`;
