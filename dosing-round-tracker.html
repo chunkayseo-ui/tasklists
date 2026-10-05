@@ -1306,7 +1306,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-05.13";
+const APP_BUILD = "2026-10-05.14";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -3576,7 +3576,10 @@ function wtState(key){
  * format (so the sheet still fills the same way) and leaves a receipt in
  * night_reports/{date}__{pool}. BK first; add more outlets as they're ready.
  * Keep nightReportText() the same as nightReportText_() in the logger script. */
-const APP_NIGHT_REPORT = ["BK", "Tengah"];
+const APP_NIGHT_REPORT = ["BK", "Tengah", "CC", "DR", "TPY", "WWW"];   // CC, DR, TPY, WWW added 5 Oct (Kay)
+// The name on the report's first line, where the team calls the outlet something else (Kay, 5 Oct 2026:
+// WWW's report is "Night Report DTE" -- Downtown East). The logger files it by the WWW topic.
+const NR_TITLE = {WWW:"DTE"};
 // Outlets whose night report is per pump room (Kay, 5 Oct 2026: Tengah). Asked in the Pump panel job,
 // one block per room, in this order; the report lists them the same way.
 const NR_ROOMS = {
@@ -3589,6 +3592,7 @@ const CLARITY_OPTIONS = ["Crystal Clear", "Clear", "Cloudy"];
 const nrOn = poolKey => APP_NIGHT_REPORT.includes(poolKey);
 function nrAmt(v, unit){
   const u = String(unit || "").toLowerCase(), n = Number(v);
+  if(!n) return "0";                  // "Acid: 0" (Kay's TPY template)
   if(u === "kg") return n + "kg";     // chlorine in g / kg, acid in mL / L (Kay, 5 Oct 2026)
   if(u === "g") return n + "g";
   if(u === "l") return n + "L";
@@ -3596,9 +3600,10 @@ function nrAmt(v, unit){
 }
 function nightReportText(rd, pt){
   const onoff = v => String(v || "").toLowerCase() === "off" ? "OFF" : "ON";
+  const title = "Night Report " + (NR_TITLE[rd.pool] || rd.pool);
   if(NR_ROOMS[rd.pool]){
     // Tengah's template (Kay, 5 Oct 2026)
-    const rooms = (pt && pt.rooms) || [], lines = ["Night Report " + rd.pool,
+    const rooms = (pt && pt.rooms) || [], lines = [title,
       "Water Clarity: " + rd.clarity,
       "Free Chlorine: " + rd.fc + "ppm",
       "pH Level: " + Number(rd.ph).toFixed(1),
@@ -3615,19 +3620,20 @@ function nightReportText(rd, pt){
     lines.push("", "Dosing Amounts", "Chlorine: " + nrAmt(rd.chlorine, rd.chlorineUnit), "Acid: " + nrAmt(rd.acid, rd.acidUnit), "", "Tester: " + rd.takenBy);
     return lines.join("\n");
   }
-  return ["Night Report " + rd.pool,
+  // BK's template has the salt chlorinator first; CC, DR, TPY and DTE (Kay, 5 Oct 2026) the pump first.
+  const pumpLine = "Circulation pump: " + (rd.pump ? onoff(rd.pump) : "-"), chlLine = "Salt Chlorinator: " + onoff(rd.chlorinator);
+  return [title,
     "Water Clarity: " + rd.clarity,
     "Free Chlorine: " + rd.fc,
-    "pH: " + Number(rd.ph).toFixed(1),
-    "Salt Chlorinator: " + onoff(rd.chlorinator),
-    "Circulation pump: " + (rd.pump ? onoff(rd.pump) : "-"),
-    "Pool Temperature: " + Number(rd.temp).toFixed(1),
+    "pH: " + Number(rd.ph).toFixed(1)]
+    .concat(rd.pool === "BK" ? [chlLine, pumpLine] : [pumpLine, chlLine])
+    .concat(["Pool Temperature: " + Number(rd.temp).toFixed(1),
     "",
     "Dosing Amounts",
     "Chlorine: " + nrAmt(rd.chlorine, rd.chlorineUnit),
     "Acid: " + nrAmt(rd.acid, rd.acidUnit),
     "",
-    "Tester: " + rd.takenBy].join("\n");
+    "Tester: " + rd.takenBy]).join("\n");
 }
 const nrTempOk = v => v !== "" && v !== null && v !== undefined && isFinite(Number(v)) && Number(v) >= 20 && Number(v) <= 40;
 // Kay, 5 Oct 2026: clarity comes first on the card, with "Pool cloudy? Ask for the weekend dose" right under it.
@@ -3640,11 +3646,11 @@ function nrFieldsHtml(key, w){
         <span class="num"><input type="number" inputmode="decimal" min="20" max="40" step="0.1" data-wtin="${key}|temp" value="${esc(w.temp)}" placeholder="e.g. 31.5"><span>°C</span></span></label>`;
 }
 function nrPreviewHtml(poolKey, w, dose, pt){
-  if(!dose || !w.clarity || !nrTempOk(w.temp)) return `<div class="wt-src" style="margin-top:6px">📨 Saving sends the night report to the ${esc(poolKey)} Telegram group — fill in clarity and temperature first.</div>`;
+  if(!dose || !w.clarity || !nrTempOk(w.temp)) return `<div class="wt-src" style="margin-top:6px">📨 Saving sends the night report to the ${esc(NR_TITLE[poolKey] || poolKey)} Telegram group — fill in clarity and temperature first.</div>`;
   const txt = nightReportText({pool:poolKey, clarity:w.clarity, fc:w.fc, ph:w.ph, chlorinator:(pt && pt.chlorinator) || w.chlorinator, pump:(pt && pt.pump) || "", temp:w.temp,
     chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit, takenBy:state.me}, pt);
   return `<details class="panel" open><summary>📨 Night report that will be sent</summary><pre style="white-space:pre-wrap;margin:6px 0 0;font-size:13px;line-height:1.4">${esc(txt.replace("Circulation pump: -", "Circulation pump: (from the Pump panel job)"))}</pre>
-    <div class="wt-src">Saving sends it to the ${esc(poolKey)} Telegram group within a minute.</div></details>`;
+    <div class="wt-src">Saving sends it to the ${esc(NR_TITLE[poolKey] || poolKey)} Telegram group within a minute.</div></details>`;
 }
 // The receipt the logger leaves once the report is in the group.
 function nrStatusHtml(rd){
