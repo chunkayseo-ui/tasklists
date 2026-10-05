@@ -1307,7 +1307,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-05.12";
+const APP_BUILD = "2026-10-05.13";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -3980,8 +3980,11 @@ function panelPhotoSlots(code, t){
   const n = panelPoolOf(t) ? {panels:1, salt:0}
           : (PANEL_PHOTO_SET[code] || {panels:1, salt: SALT_CHLORINATOR.includes(code) ? 1 : 0});
   const out = [];
-  for(let i = 1; i <= n.panels; i++) out.push({id:"panel" + i, label:"Pump panel" + (n.panels > 1 ? " " + i : "")});
-  for(let i = 1; i <= n.salt; i++) out.push({id:"salt" + i, label:"Salt chlorinator" + (n.salt > 1 ? " " + i : "")});
+  // Room by room: Pump panel 1, Salt chlorinator 1, Pump panel 2, Salt chlorinator 2 (Kay, 5 Oct)
+  for(let i = 1; i <= Math.max(n.panels, n.salt); i++){
+    if(i <= n.panels) out.push({id:"panel" + i, label:"Pump panel" + (n.panels > 1 ? " " + i : "")});
+    if(i <= n.salt) out.push({id:"salt" + i, label:"Salt chlorinator" + (n.salt > 1 ? " " + i : "")});
+  }
   return out;
 }
 const ppScope = (code, tid, slot) => `pp|${code}|${tid}|${slot}`;
