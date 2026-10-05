@@ -1307,7 +1307,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-05.14";
+const APP_BUILD = "2026-10-05.15";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -3577,10 +3577,14 @@ function wtState(key){
  * format (so the sheet still fills the same way) and leaves a receipt in
  * night_reports/{date}__{pool}. BK first; add more outlets as they're ready.
  * Keep nightReportText() the same as nightReportText_() in the logger script. */
-const APP_NIGHT_REPORT = ["BK", "Tengah", "CC", "DR", "TPY", "WWW"];   // CC, DR, TPY, WWW added 5 Oct (Kay)
+const APP_NIGHT_REPORT = ["BK", "Tengah", "CC", "DR", "TPY", "WWW", "HB", "HS"];   // CC, DR, TPY, WWW, HB, HS added 5 Oct (Kay)
 // The name on the report's first line, where the team calls the outlet something else (Kay, 5 Oct 2026:
 // WWW's report is "Night Report DTE" -- Downtown East). The logger files it by the WWW topic.
-const NR_TITLE = {WWW:"DTE"};
+const NR_TITLE = {WWW:"DTE", HB:"Home@Bedok", HS:"Home@Steven"};
+// Outlets that take two pool temperatures instead of one (Kay, 5 Oct 2026: HB, left and right end -- the
+// sheet's HB tab has a left and a right temperature column). [field, label on the card, line in the report]
+const NR_TEMPS2 = {HB:[["tempL", "Left water temp", "Left Water Temp"], ["tempR", "Right water temp", "Right Water Temp"]]};
+const nrTempsOk = (poolKey, w) => NR_TEMPS2[poolKey] ? NR_TEMPS2[poolKey].every(x => nrTempOk(w[x[0]])) : nrTempOk(w.temp);
 // Outlets whose night report is per pump room (Kay, 5 Oct 2026: Tengah). Asked in the Pump panel job,
 // one block per room, in this order; the report lists them the same way.
 const NR_ROOMS = {
@@ -3628,7 +3632,8 @@ function nightReportText(rd, pt){
     "Free Chlorine: " + rd.fc,
     "pH: " + Number(rd.ph).toFixed(1)]
     .concat(rd.pool === "BK" ? [chlLine, pumpLine] : [pumpLine, chlLine])
-    .concat(["Pool Temperature: " + Number(rd.temp).toFixed(1),
+    .concat(NR_TEMPS2[rd.pool] ? NR_TEMPS2[rd.pool].map(x => x[2] + ": " + Number(rd[x[0]]).toFixed(1)) : ["Pool Temperature: " + Number(rd.temp).toFixed(1)])
+    .concat([
     "",
     "Dosing Amounts",
     "Chlorine: " + nrAmt(rd.chlorine, rd.chlorineUnit),
@@ -3642,13 +3647,15 @@ function nrClarityHtml(key, w){
   const clar = CLARITY_OPTIONS.map(c => `<button class="tog" aria-pressed="${w.clarity===c}" data-wtset="${key}|clarity|${c}">${c}</button>`).join("");
   return `<div><div class="wt-lbl"><span>Water clarity</span></div><div class="wt-chips">${clar}</div></div>`;
 }
-function nrFieldsHtml(key, w){
+function nrFieldsHtml(key, w, poolKey){
+  if(NR_TEMPS2[poolKey]) return NR_TEMPS2[poolKey].map(x => `<label class="wt-field"><span class="wt-lbl">${x[1]}</span>
+        <span class="num"><input type="number" inputmode="decimal" min="20" max="40" step="0.1" data-wtin="${key}|${x[0]}" value="${esc(w[x[0]] || "")}" placeholder="e.g. 31.5"><span>°C</span></span></label>`).join("");
   return `<label class="wt-field"><span class="wt-lbl">Pool temperature</span>
         <span class="num"><input type="number" inputmode="decimal" min="20" max="40" step="0.1" data-wtin="${key}|temp" value="${esc(w.temp)}" placeholder="e.g. 31.5"><span>°C</span></span></label>`;
 }
 function nrPreviewHtml(poolKey, w, dose, pt){
-  if(!dose || !w.clarity || !nrTempOk(w.temp)) return `<div class="wt-src" style="margin-top:6px">📨 Saving sends the night report to the ${esc(NR_TITLE[poolKey] || poolKey)} Telegram group — fill in clarity and temperature first.</div>`;
-  const txt = nightReportText({pool:poolKey, clarity:w.clarity, fc:w.fc, ph:w.ph, chlorinator:(pt && pt.chlorinator) || w.chlorinator, pump:(pt && pt.pump) || "", temp:w.temp,
+  if(!dose || !w.clarity || !nrTempsOk(poolKey, w)) return `<div class="wt-src" style="margin-top:6px">📨 Saving sends the night report to the ${esc(NR_TITLE[poolKey] || poolKey)} Telegram group — fill in clarity and temperature first.</div>`;
+  const txt = nightReportText({pool:poolKey, clarity:w.clarity, fc:w.fc, ph:w.ph, chlorinator:(pt && pt.chlorinator) || w.chlorinator, pump:(pt && pt.pump) || "", temp:w.temp, tempL:w.tempL, tempR:w.tempR,
     chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit, takenBy:state.me}, pt);
   return `<details class="panel" open><summary>📨 Night report that will be sent</summary><pre style="white-space:pre-wrap;margin:6px 0 0;font-size:13px;line-height:1.4">${esc(txt.replace("Circulation pump: -", "Circulation pump: (from the Pump panel job)"))}</pre>
     <div class="wt-src">Saving sends it to the ${esc(NR_TITLE[poolKey] || poolKey)} Telegram group within a minute.</div></details>`;
@@ -3666,7 +3673,8 @@ function fmtClock(iso){ const d = new Date(iso); return isNaN(d) ? "" : pad(d.ge
 function readingSummary(rd){
   const bits = [`FC ${rd.fc}`, `pH ${Number(rd.ph).toFixed(1)}`];
   if(rd.chlorinator) bits.push(`chlorinator ${rd.chlorinator.toUpperCase()}`);
-  if(rd.temp !== undefined && rd.temp !== "") bits.push(`${Number(rd.temp).toFixed(1)} °C`);
+  if(rd.tempL !== undefined && rd.tempR !== undefined) bits.push(`L ${Number(rd.tempL).toFixed(1)} / R ${Number(rd.tempR).toFixed(1)} °C`);
+  else if(rd.temp !== undefined && rd.temp !== "") bits.push(`${Number(rd.temp).toFixed(1)} °C`);
   if(rd.clarity) bits.push(rd.clarity);
   return `${bits.join(" · ")} → <b>${fmtAmt(rd.chlorine, rd.chlorineUnit)} chlorine · ${fmtAmt(rd.acid, rd.acidUnit)} acid</b>${nrStatusHtml(rd)}`;
 }
@@ -4227,15 +4235,15 @@ function waterTestPanel(s, t){
     ${nrOn(poolKey) ? "" : topupBlockHtml(key, poolKey, o, w)}
     <div class="wt-grid">
       ${chlInPanel(s) && panelFor(s, t) ? "" : `<div class="wt-field"><span class="wt-lbl">Salt chlorinator</span>${onoff("chlorinator", w.chlorinator)}</div>`}
-      ${nrOn(poolKey) ? nrFieldsHtml(key, w) : ""}
+      ${nrOn(poolKey) ? nrFieldsHtml(key, w, poolKey) : ""}
     </div>
     ${nrOn(poolKey) ? nrPreviewHtml(poolKey, w, dose, panelFor(s, t)) : ""}
     <details class="panel" data-panel="${kToday}" ${pOpen(kToday)}><summary>Today's earlier readings</summary><div class="wt-ref-body">${state.panelsOpen[kToday] ? wtTodayHtml(poolKey) : ""}</div></details>
     <details class="panel" data-panel="${kHist}" ${pOpen(kHist)}><summary>Past ${DAYNAME_FULL[operationalNow().getDay()]}s</summary><div class="wt-ref-body">${state.panelsOpen[kHist] ? wtHistoryHtml(poolKey) : ""}</div></details>
     <details class="panel" data-panel="${kRoute}" ${pOpen(kRoute)}><summary>Dosing route</summary><div class="wt-ref-body">${state.panelsOpen[kRoute] ? wtRouteHtml(routeCode) : ""}</div></details>
-    ${(() => { const nrNeed = nrOn(poolKey) && dose && (!w.clarity || !nrTempOk(w.temp));
+    ${(() => { const nrNeed = nrOn(poolKey) && dose && (!w.clarity || !nrTempsOk(poolKey, w));
       const ok = dose && !nrNeed;
-      const label = !dose ? "Tap FC and pH first" : nrNeed ? (!w.clarity ? "Tap the water clarity" : "Enter the pool temperature (20–40 °C)") : nrOn(poolKey) ? "Save reading · send night report" : "Save reading · job done";
+      const label = !dose ? "Tap FC and pH first" : nrNeed ? (!w.clarity ? "Tap the water clarity" : (NR_TEMPS2[poolKey] ? "Enter both pool temperatures (20–40 °C)" : "Enter the pool temperature (20–40 °C)")) : nrOn(poolKey) ? "Save reading · send night report" : "Save reading · job done";
       return `<button class="btn primary big" data-wtsave="${key}" ${ok ? "" : "disabled"}>${label}</button>`; })()}
   </div>`;
 }
@@ -4250,7 +4258,7 @@ function finishWaterTest(code, tid){
   const key = code+"|"+tid, w = wtState(key), poolKey = dosingKeyFor(code, t0.pool);
   const dose = doseFor(poolKey, w.schedule, w.fc, w.ph);
   if(!dose){ flash("Tap the FC and pH readings first."); return; }
-  if(nrOn(poolKey) && (!w.clarity || !nrTempOk(w.temp))){ flash("Fill in the water clarity and pool temperature for the night report."); return; }
+  if(nrOn(poolKey) && (!w.clarity || !nrTempsOk(poolKey, w))){ flash("Fill in the water clarity and pool temperature for the night report."); return; }
   const tu = topupFor(poolKey);
   if(autoSchedule() === "weekday" && w.schedule === "weekend" && !(tu && tu.status === "approved")){ flash("The weekend dose on a weekday needs Kay or William's OK first."); return; }
   // Just what confirms the dose: the reading, the chlorinator state, the
@@ -4260,7 +4268,10 @@ function finishWaterTest(code, tid){
     chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit,
     takenAt:new Date().toISOString(), takenBy:state.me};
   { const pt = panelFor(s0, t0); if(pt && pt.chlorinator) reading.chlorinator = pt.chlorinator; }
-  if(nrOn(poolKey)){ reading.clarity = w.clarity; reading.temp = Math.round(Number(w.temp) * 10) / 10; reading.report = "app"; reading.date = todayKey();
+  if(nrOn(poolKey)){ reading.clarity = w.clarity; reading.report = "app"; reading.date = todayKey();
+    if(NR_TEMPS2[poolKey]){ reading.tempL = Math.round(Number(w.tempL) * 10) / 10; reading.tempR = Math.round(Number(w.tempR) * 10) / 10;
+      reading.temp = Math.round((reading.tempL + reading.tempR) * 5) / 10; }   // average, for anything that reads one temperature
+    else reading.temp = Math.round(Number(w.temp) * 10) / 10;
     const pt = panelFor(s0, t0);
     reading.reportText = nightReportText(Object.assign({}, reading, {pump: pt && pt.pump}), pt); }
   if(autoSchedule() === "weekday" && w.schedule === "weekend" && tu) reading.topUp = {id:tu.id || topupId(poolKey), reason:tu.reason, note:tu.note || "", approvedBy:tu.decidedBy, approvedAt:tu.decidedAt};
