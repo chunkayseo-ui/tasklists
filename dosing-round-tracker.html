@@ -1302,7 +1302,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-04.3";
+const APP_BUILD = "2026-10-05.1";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -4080,6 +4080,12 @@ function dmState(key, t){
   if(!d.seeded && pd && !d.touched){
     d.chlorine = String(toGrams(pd.chlorine, pd.chlorineUnit)); d.acid = String(toMl(pd.acid, pd.acidUnit)); d.seeded = true;
   }
+  // The jug count opens on the plan too (Kay, 5 Oct 2026: Guru dosed JEOP1's 2.3 kg plan as 2 jars + a part jar,
+  // photographed all three, but left the part fill at 0 and saved 2 kg). 2300 g -> 2 full jars + 300 ml.
+  if(!d.jugSeeded && pd && !d.jugTouched && !(Number(d.jugFills) > 0) && (d.jugPart === "" || d.jugPart === undefined)){
+    const g = Math.max(0, Math.round(toGrams(Number(pd.chlorine) || 0, pd.chlorineUnit)));
+    d.jugFills = Math.floor(g / JUG_ML); d.jugPart = g % JUG_ML ? String(g % JUG_ML) : ""; d.planG = g; d.jugSeeded = true;
+  }
   return d;
 }
 // Drive's own /view page makes a phone with two Google accounts signed in pick
@@ -4208,7 +4214,8 @@ function jugFieldsHtml(key, d){
     <label class="wt-field" style="grid-column:1/-1"><span class="wt-lbl">Part fill (the jar that isn't full)</span>
       <span class="num"><input type="number" inputmode="numeric" min="0" step="10" data-dmin="${key}|jugPart" value="${esc(d.jugPart)}" placeholder="0"><span>ml</span></span>
       <span class="wt-src">Leave at 0 if every jar was full.</span></label>
-    <div class="jug-total" style="grid-column:1/-1"><span class="sum">${sum}</span><span class="big">${fmtG(total)}</span></div>`;
+    <div class="jug-total" style="grid-column:1/-1"><span class="sum">${sum}</span><span class="big">${fmtG(total)}</span></div>
+    ${d.planG > 0 ? `<div class="wt-src" style="grid-column:1/-1">${total === d.planG ? `Filled in from the plan (${fmtG(d.planG)}). Change it only if you dosed a different amount.` : `⚠ <b>Plan was ${fmtG(d.planG)}</b> — you are saving ${fmtG(total)}. Check the jars and the part fill.`}</div>` : ""}`;
 }
 
 // What the Save button should say/do given the amount and (if a relay is
@@ -8089,14 +8096,14 @@ function wire(){
     const [o,t,f] = i.dataset.dmin.split("|"); const dd = dmState(o+"|"+t); dd[f] = i.value;
     if(f === "chlorine") dd.touched = true;
     // The jug total is shown, not typed, so a part-fill edit has to redraw it.
-    if(f === "jugPart"){ render(); const again = document.querySelector(`[data-dmin="${o}|${t}|jugPart"]`); if(again){ again.focus(); const v = again.value; again.value = ""; again.value = v; } return; }
+    if(f === "jugPart"){ dd.jugTouched = true; render(); const again = document.querySelector(`[data-dmin="${o}|${t}|jugPart"]`); if(again){ again.focus(); const v = again.value; again.value = ""; again.value = v; } return; }
     const btn = document.querySelector(`[data-dmsave="${o}|${t}"]`);
     if(btn){ const st = dmSaveState(dmState(o+"|"+t)); btn.disabled = !st.ok; btn.textContent = st.label; }
   }));
   each("[data-dmset]", b => { const [o,t,f,v] = b.dataset.dmset.split("|"); dmState(o+"|"+t)[f] = v; render(); });
   each("[data-dmjug]", b => {
     const [o,t,delta] = b.dataset.dmjug.split("|"), d = dmState(o+"|"+t);
-    d.jugFills = Math.max(0, (Number(d.jugFills) || 0) + Number(delta)); render();
+    d.jugFills = Math.max(0, (Number(d.jugFills) || 0) + Number(delta)); d.jugTouched = true; render();
   });
   each("[data-dmsave]", b => { const [o,t] = two(b.dataset.dmsave); finishDosing(o,t); });
   each("[data-dmnone]", b => { const [o,t] = two(b.dataset.dmnone); const r0 = myRound(), s0 = r0 && r0.stops.find(x => x.outlet === o), t0 = s0 && s0.tasks.find(x => x.id === t); if(!t0) return;
