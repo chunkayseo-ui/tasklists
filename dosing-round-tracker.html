@@ -1306,7 +1306,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-05.9";
+const APP_BUILD = "2026-10-05.10";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -2873,8 +2873,15 @@ function finishTask(code, tid){
     if(miss.length){ flash("Take the photo" + (miss.length > 1 ? "s" : "") + " first: " + miss.map(x => x.label).join(", ") + "."); return; }
     panelPhotos = slots.map(sl => Object.assign({slot:sl.id, label:sl.label}, fpDone(ppScope(code, tid, sl.id)).slice(-1)[0]));
   }
-  let pump = null, chl = null, plugAtDone = null;
-  if(t0 && t0.claimedBy === state.me && isPanelTask(t0) && !isWaterTestTask(t0) && s0 && (chlInPanel(s0) || nrOn(nrPanelPool(s0, t0)))){
+  let pump = null, chl = null, plugAtDone = null, rooms = null;
+  if(t0 && t0.claimedBy === state.me && isPanelTask(t0) && !isWaterTestTask(t0) && s0 && roomsFor(s0, t0)){
+    const miss = roomsMissing(s0, t0); if(miss){ flash(miss); return; }
+    rooms = roomsFor(s0, t0).map((room, i) => { const r = (state.roomSel[dKey] || [])[i] || {}, o = {room: room.name};
+      room.fields.forEach(f => { o[f] = f === "heat" ? Math.round(Number(r.heat) * 10) / 10 : f === "meter" ? String(r.meter).trim() : r[f]; }); return o; });
+    chl = rooms.some(r => r.chl === "on") ? "on" : "off";
+    pump = rooms.every(r => !("pump" in r) || r.pump === "on") ? "on" : "off";
+  }
+  else if(t0 && t0.claimedBy === state.me && isPanelTask(t0) && !isWaterTestTask(t0) && s0 && (chlInPanel(s0) || nrOn(nrPanelPool(s0, t0)))){
     pump = state.pumpSel[dKey] || null; chl = state.chlSel[dKey] || null;
     if(chlInPanel(s0) && !chl){ flash("Tap Salt chlorinator ON or OFF first."); return; }
     if(nrOn(nrPanelPool(s0, t0)) && !pump){ flash("Tap Circulation pump ON or OFF first — it goes in the night report."); return; }
@@ -2893,6 +2900,7 @@ function finishTask(code, tid){
     if(panelPhotos) t.panelPhotos = panelPhotos;
     if(pump) t.pump = pump;
     if(chl) t.chlorinator = chl;
+    if(rooms) t.rooms = rooms;
     if(chl && plugAtDone) t.plug = plugAtDone;
     if(doneNote) t.doneNote = doneNote;
     finished = {name:t.name, kind:t.kind, pool:t.pool||null, doneAt:t.doneAt};
@@ -2900,8 +2908,8 @@ function finishTask(code, tid){
     issueId = t.issueId || null;
   }, "Couldn't mark that done. Try again.").then(() => {
     if(finished){ delete state.fp[dScope]; delete state.doneNote[dKey]; Object.keys(state.fp).filter(k => k.startsWith("pp|" + code + "|" + tid + "|")).forEach(k => delete state.fp[k]); }
-    if(finished) syncTaskToOtherRounds(stopOutlet, finished, Object.assign({doneAt:finished.doneAt}, donePhotos.length ? {donePhotos} : {}, panelPhotos ? {panelPhotos} : {}, pump ? {pump} : {}, chl ? {chlorinator:chl} : {}, doneNote ? {doneNote} : {}));
-    if(finished && (pump || chl)){ delete state.pumpSel[dKey]; delete state.chlSel[dKey]; }
+    if(finished) syncTaskToOtherRounds(stopOutlet, finished, Object.assign({doneAt:finished.doneAt}, donePhotos.length ? {donePhotos} : {}, panelPhotos ? {panelPhotos} : {}, pump ? {pump} : {}, chl ? {chlorinator:chl} : {}, rooms ? {rooms} : {}, doneNote ? {doneNote} : {}));
+    if(finished && (pump || chl)){ delete state.pumpSel[dKey]; delete state.chlSel[dKey]; delete state.roomSel[dKey]; }
     // A job that started life as a reported issue closes the loop on the
     // Overview board the moment it's actually finished — no separate
     // "mark resolved" step for the supervisor to remember.
@@ -3568,7 +3576,15 @@ function wtState(key){
  * format (so the sheet still fills the same way) and leaves a receipt in
  * night_reports/{date}__{pool}. BK first; add more outlets as they're ready.
  * Keep nightReportText() the same as nightReportText_() in the logger script. */
-const APP_NIGHT_REPORT = ["BK"];
+const APP_NIGHT_REPORT = ["BK", "Tengah"];
+// Outlets whose night report is per pump room (Kay, 5 Oct 2026: Tengah). Asked in the Pump panel job,
+// one block per room, in this order; the report lists them the same way.
+const NR_ROOMS = {
+  Tengah: [
+    {name:"Pump Room 1 (Behind)", fields:["pump", "chl", "meter"]},
+    {name:"Pump Room 2 (Close to counter)", fields:["pump", "heat", "chl"]}
+  ]
+};
 const CLARITY_OPTIONS = ["Crystal Clear", "Clear", "Cloudy"];
 const nrOn = poolKey => APP_NIGHT_REPORT.includes(poolKey);
 function nrAmt(v, unit){
@@ -3578,8 +3594,27 @@ function nrAmt(v, unit){
   if(u === "l") return n + "L";
   return n + "mL";
 }
-function nightReportText(rd){
+function nightReportText(rd, pt){
   const onoff = v => String(v || "").toLowerCase() === "off" ? "OFF" : "ON";
+  if(NR_ROOMS[rd.pool]){
+    // Tengah's template (Kay, 5 Oct 2026)
+    const rooms = (pt && pt.rooms) || [], lines = ["Night Report " + rd.pool,
+      "Water Clarity: " + rd.clarity,
+      "Free Chlorine: " + rd.fc + "ppm",
+      "pH Level: " + Number(rd.ph).toFixed(1),
+      "Pool Temperature: " + Number(rd.temp).toFixed(1) + "c"];
+    NR_ROOMS[rd.pool].forEach((room, i) => {
+      const r = rooms[i] || {}; lines.push("", room.name);
+      room.fields.forEach(f => {
+        if(f === "pump") lines.push("Circulation Pump: " + (r.pump ? onoff(r.pump) : "-"));
+        if(f === "chl") lines.push("Salt Chlorinator: " + (r.chl ? onoff(r.chl) : "-"));
+        if(f === "meter") lines.push("Water Meter: " + (r.meter || "-"));
+        if(f === "heat") lines.push("Heat Pump: " + (r.heat !== undefined && r.heat !== null && r.heat !== "" ? Number(r.heat).toFixed(1) + " °C" : "-"));
+      });
+    });
+    lines.push("", "Dosing Amounts", "Chlorine: " + nrAmt(rd.chlorine, rd.chlorineUnit), "Acid: " + nrAmt(rd.acid, rd.acidUnit), "", "Tester: " + rd.takenBy);
+    return lines.join("\n");
+  }
   return ["Night Report " + rd.pool,
     "Water Clarity: " + rd.clarity,
     "Free Chlorine: " + rd.fc,
@@ -3607,7 +3642,7 @@ function nrFieldsHtml(key, w){
 function nrPreviewHtml(poolKey, w, dose, pt){
   if(!dose || !w.clarity || !nrTempOk(w.temp)) return `<div class="wt-src" style="margin-top:6px">📨 Saving sends the night report to the ${esc(poolKey)} Telegram group — fill in clarity and temperature first.</div>`;
   const txt = nightReportText({pool:poolKey, clarity:w.clarity, fc:w.fc, ph:w.ph, chlorinator:(pt && pt.chlorinator) || w.chlorinator, pump:(pt && pt.pump) || "", temp:w.temp,
-    chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit, takenBy:state.me});
+    chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit, takenBy:state.me}, pt);
   return `<details class="panel" open><summary>📨 Night report that will be sent</summary><pre style="white-space:pre-wrap;margin:6px 0 0;font-size:13px;line-height:1.4">${esc(txt.replace("Circulation pump: -", "Circulation pump: (from the Pump panel job)"))}</pre>
     <div class="wt-src">Saving sends it to the ${esc(poolKey)} Telegram group within a minute.</div></details>`;
 }
@@ -4003,7 +4038,35 @@ function plugLineHtml(ps, picked){
     warn = `<div class="rep-gate bad" style="margin-top:6px">⚠ The smart plug is <b>${ps.on ? "ON" : "OFF"}</b> but you see the chlorinator <b>${picked.toUpperCase()}</b>. ${ps.on ? "Check the chlorinator's own switch, display and flow — if it stays off, tell Kay." : "Someone may have switched it on by hand, or the plug didn't switch — tell Kay."}</div>`;
   return `<div class="wt-src" style="margin:2px 0 6px">🔌 Smart plug (${esc(ps.name)}): ${state_}${when ? ` · checked ${esc(when)}` : ""}${ps.why ? ` · rule: ${esc(ps.why)}` : ""}</div>${warn}`;
 }
+state.roomSel = state.roomSel || {};
+const roomsFor = (s, t) => NR_ROOMS[nrPanelPool(s, t)] || null;
+function roomsHtml(s, t){
+  const key = s.outlet + "|" + t.id, sel = state.roomSel[key] || [];
+  const chips = (i, f, v) => `<div class="wt-chips">
+      <button class="tog" aria-pressed="${v==="on"}" data-roomset="${key}|${i}|${f}|on">ON</button>
+      <button class="tog" aria-pressed="${v==="off"}" data-roomset="${key}|${i}|${f}|off">OFF</button></div>`;
+  return `<div class="wt" style="margin-bottom:8px">${roomsFor(s, t).map((room, i) => { const r = sel[i] || {};
+    return `<div style="${i ? "margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)" : ""}"><div class="wt-lbl" style="font-weight:600">${esc(room.name)}</div><div class="wt-grid">${room.fields.map(f =>
+      f === "pump" ? `<div class="wt-field"><span class="wt-lbl">Circulation pump</span>${chips(i, "pump", r.pump)}</div>`
+      : f === "chl" ? `<div class="wt-field"><span class="wt-lbl">Salt chlorinator</span>${chips(i, "chl", r.chl)}</div>`
+      : f === "meter" ? `<label class="wt-field"><span class="wt-lbl">Water meter</span><span class="num"><input type="text" inputmode="numeric" maxlength="8" data-roomin="${key}|${i}|meter" value="${esc(r.meter || "")}" placeholder="e.g. 00119"></span></label>`
+      : f === "heat" ? `<label class="wt-field"><span class="wt-lbl">Heat pump</span><span class="num"><input type="number" inputmode="decimal" step="0.1" min="10" max="50" data-roomin="${key}|${i}|heat" value="${esc(r.heat === undefined ? "" : r.heat)}" placeholder="e.g. 32.4"><span>°C</span></span></label>` : "").join("")}</div></div>`; }).join("")}
+    <span class="wt-src">Check each pump room — these go into tonight's night report.</span></div>`;
+}
+function roomsMissing(s, t){
+  const sel = state.roomSel[s.outlet + "|" + t.id] || [];
+  for(const [i, room] of roomsFor(s, t).entries()){
+    const r = sel[i] || {};
+    for(const f of room.fields){
+      if((f === "pump" || f === "chl") && !r[f]) return room.name + ": tap " + (f === "pump" ? "Circulation pump" : "Salt chlorinator") + " ON or OFF.";
+      if(f === "meter" && !/^\d{1,8}$/.test(String(r.meter || "").trim())) return room.name + ": enter the water meter reading (numbers only).";
+      if(f === "heat" && !(r.heat !== "" && r.heat !== undefined && isFinite(Number(r.heat)) && Number(r.heat) >= 10 && Number(r.heat) <= 50)) return room.name + ": enter the heat pump temperature (°C).";
+    }
+  }
+  return "";
+}
 function pumpChipsHtml(s, t){
+  if(roomsFor(s, t)) return roomsHtml(s, t);
   const askPump = nrOn(nrPanelPool(s, t)), askChl = chlInPanel(s);
   if(!askPump && !askChl) return "";
   const key = s.outlet + "|" + t.id, v = state.pumpSel[key] || "", c = state.chlSel[key] || "";
@@ -4187,7 +4250,9 @@ function finishWaterTest(code, tid){
     chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit,
     takenAt:new Date().toISOString(), takenBy:state.me};
   { const pt = panelFor(s0, t0); if(pt && pt.chlorinator) reading.chlorinator = pt.chlorinator; }
-  if(nrOn(poolKey)){ reading.clarity = w.clarity; reading.temp = Math.round(Number(w.temp) * 10) / 10; reading.report = "app"; reading.date = todayKey(); }
+  if(nrOn(poolKey)){ reading.clarity = w.clarity; reading.temp = Math.round(Number(w.temp) * 10) / 10; reading.report = "app"; reading.date = todayKey();
+    const pt = panelFor(s0, t0);
+    reading.reportText = nightReportText(Object.assign({}, reading, {pump: pt && pt.pump}), pt); }
   if(autoSchedule() === "weekday" && w.schedule === "weekend" && tu) reading.topUp = {id:tu.id || topupId(poolKey), reason:tu.reason, note:tu.note || "", approvedBy:tu.decidedBy, approvedAt:tu.decidedAt};
   let finished = null, dosingSync = null;
   withRound(r => {
@@ -8263,6 +8328,12 @@ function wire(){
   each("[data-wtfc]",  b => { const [o,t,v] = b.dataset.wtfc.split("|"); wtState(o+"|"+t).fc = parseFloat(v); render(); });
   each("[data-wtph]",  b => { const [o,t,v] = b.dataset.wtph.split("|"); wtState(o+"|"+t).ph = parseFloat(v); render(); });
   each("[data-wtneg]", b => { const w = wtState(b.dataset.wtneg); w.showNeg = !w.showNeg; render(); });
+  each("[data-roomset]", b => { const p = b.dataset.roomset.split("|"), v = p.pop(), f = p.pop(), i = Number(p.pop()), k = p.join("|");
+    const arr = state.roomSel[k] = state.roomSel[k] || []; arr[i] = Object.assign({}, arr[i], {[f]: v}); render(); });
+  // Typing keeps the field focused across the redraw (so the next tap -- Done / Save -- isn't swallowed by a blur redraw).
+  const keepFocus = sel => { const again = document.querySelector(sel); if(again){ again.focus(); const v = again.value; try{ again.value = ""; again.value = v; }catch(e){} } };
+  document.querySelectorAll("[data-roomin]").forEach(inp => inp.addEventListener("input", () => { const p = inp.dataset.roomin.split("|"), f = p.pop(), i = Number(p.pop()), k = p.join("|");
+    const arr = state.roomSel[k] = state.roomSel[k] || []; arr[i] = Object.assign({}, arr[i], {[f]: inp.value.trim()}); render(); keepFocus(`[data-roomin="${inp.dataset.roomin}"]`); }));
   each("[data-chlset]", b => { const v = b.dataset.chlset, k = v.lastIndexOf("|"); state.chlSel[v.slice(0, k)] = v.slice(k + 1); render(); });
   each("[data-pumpset]", b => { const v = b.dataset.pumpset, k = v.lastIndexOf("|"); state.pumpSel[v.slice(0, k)] = v.slice(k + 1); render(); });
   each("[data-wtset]", b => { const [o,t,f,v] = b.dataset.wtset.split("|"); wtState(o+"|"+t)[f] = v;
@@ -8272,7 +8343,8 @@ function wire(){
       if(pk && !tu && !state.tuForm[o+"|"+t]) state.tuForm[o+"|"+t] = {reason:"Water cloudy", note:""};
     }
     render(); });
-  document.querySelectorAll("[data-wtin]").forEach(i => i.addEventListener("change", () => { const [o,t,f] = i.dataset.wtin.split("|"); wtState(o+"|"+t)[f] = i.value.trim(); render(); }));
+  document.querySelectorAll("[data-wtin]").forEach(i => i.addEventListener("input", () => { const [o,t,f] = i.dataset.wtin.split("|"); wtState(o+"|"+t)[f] = i.value.trim(); render();
+    const again = document.querySelector(`[data-wtin="${i.dataset.wtin}"]`); if(again){ again.focus(); const v = again.value; try{ again.value = ""; again.value = v; }catch(e){} } }));
   each("[data-wtsave]", b => { const [o,t] = two(b.dataset.wtsave); finishWaterTest(o,t); });
   each("[data-wtretry]", () => { dosingData.tablesErr = false; loadDosingTables(); render(); });
   each("[data-wthistretry]", b => { loadPoolHistory(b.dataset.wthistretry, true); render(); });
