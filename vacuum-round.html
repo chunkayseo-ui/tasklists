@@ -1307,7 +1307,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-05.7";
+const APP_BUILD = "2026-10-05.8";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -3574,8 +3574,8 @@ const CLARITY_OPTIONS = ["Crystal Clear", "Clear", "Cloudy"];
 const nrOn = poolKey => APP_NIGHT_REPORT.includes(poolKey);
 function nrAmt(v, unit){
   const u = String(unit || "").toLowerCase(), n = Number(v);
-  if(u === "kg") return n + "L";      // the team's jug convention: 1 kg = 1 L
-  if(u === "g") return n + "mL";
+  if(u === "kg") return n + "kg";     // chlorine in g / kg, acid in mL / L (Kay, 5 Oct 2026)
+  if(u === "g") return n + "g";
   if(u === "l") return n + "L";
   return n + "mL";
 }
