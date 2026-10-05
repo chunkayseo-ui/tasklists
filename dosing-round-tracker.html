@@ -1302,7 +1302,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-05.2";
+const APP_BUILD = "2026-10-05.3";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -3580,10 +3580,13 @@ function nightReportText(rd){
     "Tester: " + rd.takenBy].join("\n");
 }
 const nrTempOk = v => v !== "" && v !== null && v !== undefined && isFinite(Number(v)) && Number(v) >= 20 && Number(v) <= 40;
-function nrFieldsHtml(key, w){
+// Kay, 5 Oct 2026: clarity comes first on the card, with "Pool cloudy? Ask for the weekend dose" right under it.
+function nrClarityHtml(key, w){
   const clar = CLARITY_OPTIONS.map(c => `<button class="tog" aria-pressed="${w.clarity===c}" data-wtset="${key}|clarity|${c}">${c}</button>`).join("");
-  return `<div class="wt-field" style="grid-column:1/-1"><span class="wt-lbl">Water clarity</span><div class="wt-chips">${clar}</div></div>
-      <label class="wt-field"><span class="wt-lbl">Pool temperature</span>
+  return `<div><div class="wt-lbl"><span>Water clarity</span></div><div class="wt-chips">${clar}</div></div>`;
+}
+function nrFieldsHtml(key, w){
+  return `<label class="wt-field"><span class="wt-lbl">Pool temperature</span>
         <span class="num"><input type="number" inputmode="decimal" min="20" max="40" step="0.1" data-wtin="${key}|temp" value="${esc(w.temp)}" placeholder="e.g. 31.5"><span>°C</span></span></label>`;
 }
 function nrPreviewHtml(poolKey, w, dose){
@@ -4054,6 +4057,7 @@ function waterTestPanel(s, t){
         ${o.weekend && (autoSchedule() === "weekend" || (topupFor(poolKey) || {}).status === "approved") ? `<button aria-pressed="${w.schedule==="weekend"}" data-wtsched="${key}|weekend">Weekend</button>` : ""}
       </div>
     </div>
+    ${nrOn(poolKey) ? nrClarityHtml(key, w) + topupBlockHtml(key, poolKey, o, w) : ""}
     <div>
       <div class="wt-lbl"><span>Free chlorine</span>${hasNeg ? `<button class="link" data-wtneg="${key}">${w.showNeg ? "Hide below 0" : "Show below 0"}</button>` : ""}</div>
       <div class="wt-chips">${fcChips}</div>
@@ -4063,7 +4067,7 @@ function waterTestPanel(s, t){
       <div class="wt-chips">${phChips}</div>
     </div>
     ${doseHtml}
-    ${topupBlockHtml(key, poolKey, o, w)}
+    ${nrOn(poolKey) ? "" : topupBlockHtml(key, poolKey, o, w)}
     <div class="wt-grid">
       <div class="wt-field"><span class="wt-lbl">Salt chlorinator</span>${onoff("chlorinator", w.chlorinator)}</div>
       ${nrOn(poolKey) ? nrFieldsHtml(key, w) : ""}
@@ -8175,7 +8179,13 @@ function wire(){
   each("[data-wtph]",  b => { const [o,t,v] = b.dataset.wtph.split("|"); wtState(o+"|"+t).ph = parseFloat(v); render(); });
   each("[data-wtneg]", b => { const w = wtState(b.dataset.wtneg); w.showNeg = !w.showNeg; render(); });
   each("[data-pumpset]", b => { const v = b.dataset.pumpset, k = v.lastIndexOf("|"); state.pumpSel[v.slice(0, k)] = v.slice(k + 1); render(); });
-  each("[data-wtset]", b => { const [o,t,f,v] = b.dataset.wtset.split("|"); wtState(o+"|"+t)[f] = v; render(); });
+  each("[data-wtset]", b => { const [o,t,f,v] = b.dataset.wtset.split("|"); wtState(o+"|"+t)[f] = v;
+    if(f === "clarity" && v === "Cloudy" && autoSchedule() === "weekday"){
+      const r0 = myRound(), s0 = r0 && r0.stops.find(x => x.outlet === o), t0 = s0 && s0.tasks.find(x => x.id === t), pk = t0 ? dosingKeyFor(o, t0.pool) : "";
+      const tu = pk && topupFor(pk);
+      if(pk && !tu && !state.tuForm[o+"|"+t]) state.tuForm[o+"|"+t] = {reason:"Water cloudy", note:""};
+    }
+    render(); });
   document.querySelectorAll("[data-wtin]").forEach(i => i.addEventListener("change", () => { const [o,t,f] = i.dataset.wtin.split("|"); wtState(o+"|"+t)[f] = i.value.trim(); render(); }));
   each("[data-wtsave]", b => { const [o,t] = two(b.dataset.wtsave); finishWaterTest(o,t); });
   each("[data-wtretry]", () => { dosingData.tablesErr = false; loadDosingTables(); render(); });
