@@ -1307,7 +1307,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-05.11";
+const APP_BUILD = "2026-10-05.12";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -3582,7 +3582,7 @@ const APP_NIGHT_REPORT = ["BK", "Tengah"];
 // one block per room, in this order; the report lists them the same way.
 const NR_ROOMS = {
   Tengah: [
-    {name:"Pump Room 1 (Behind)", fields:["pump", "chl", "meter"]},
+    {name:"Pump Room 1 (Behind)", fields:["pump", "chl"]},   // no water meter (Kay, 5 Oct)
     {name:"Pump Room 2 (Close to counter)", fields:["pump", "chl"]}   // no heat pump reading: pool temperature is the thermometer reading in the water test (Kay, 5 Oct)
   ]
 };
