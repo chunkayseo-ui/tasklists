@@ -1312,7 +1312,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-05.17";
+const APP_BUILD = "2026-10-05.18";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -3682,9 +3682,9 @@ function nrClarityHtml(key, w){
 }
 function nrFieldsHtml(key, w, poolKey){
   if(NR_TEMPS2[poolKey]) return NR_TEMPS2[poolKey].map(x => `<label class="wt-field"><span class="wt-lbl">${x[1]}</span>
-        <span class="num"><input type="number" inputmode="decimal" min="20" max="40" step="0.1" data-wtin="${key}|${x[0]}" value="${esc(w[x[0]] || "")}" placeholder="e.g. 31.5"><span>°C</span></span></label>`).join("");
+        <span class="num"><input type="text" inputmode="decimal" autocomplete="off" data-wtin="${key}|${x[0]}" value="${esc(w[x[0]] || "")}" placeholder="e.g. 31.5"><span>°C</span></span></label>`).join("");
   return `<label class="wt-field"><span class="wt-lbl">Pool temperature</span>
-        <span class="num"><input type="number" inputmode="decimal" min="20" max="40" step="0.1" data-wtin="${key}|temp" value="${esc(w.temp)}" placeholder="e.g. 31.5"><span>°C</span></span></label>`;
+        <span class="num"><input type="text" inputmode="decimal" autocomplete="off" data-wtin="${key}|temp" value="${esc(w.temp)}" placeholder="e.g. 31.5"><span>°C</span></span></label>`;
 }
 function nrPreviewHtml(poolKey, w, dose, pt, s){
   const g = nrGroupOf(poolKey);
@@ -4127,7 +4127,7 @@ function roomsHtml(s, t){
       f === "pump" ? `<div class="wt-field"><span class="wt-lbl">Circulation pump</span>${chips(i, "pump", r.pump)}</div>`
       : f === "chl" ? `<div class="wt-field"><span class="wt-lbl">Salt chlorinator</span>${chips(i, "chl", r.chl)}</div>`
       : f === "meter" ? `<label class="wt-field"><span class="wt-lbl">Water meter</span><span class="num"><input type="text" inputmode="numeric" maxlength="8" data-roomin="${key}|${i}|meter" value="${esc(r.meter || "")}" placeholder="e.g. 00119"></span></label>`
-      : f === "heat" ? `<label class="wt-field"><span class="wt-lbl">Heat pump</span><span class="num"><input type="number" inputmode="decimal" step="0.1" min="10" max="50" data-roomin="${key}|${i}|heat" value="${esc(r.heat === undefined ? "" : r.heat)}" placeholder="e.g. 32.4"><span>°C</span></span></label>` : "").join("")}</div></div>`; }).join("")}
+      : f === "heat" ? `<label class="wt-field"><span class="wt-lbl">Heat pump</span><span class="num"><input type="text" inputmode="decimal" autocomplete="off" data-roomin="${key}|${i}|heat" value="${esc(r.heat === undefined ? "" : r.heat)}" placeholder="e.g. 32.4"><span>°C</span></span></label>` : "").join("")}</div></div>`; }).join("")}
     <span class="wt-src">Check each pump room — these go into tonight's night report.</span></div>`;
 }
 function roomsMissing(s, t){
@@ -8449,7 +8449,7 @@ function wire(){
       if(pk && !tu && !state.tuForm[o+"|"+t]) state.tuForm[o+"|"+t] = {reason:"Water cloudy", note:""};
     }
     render(); });
-  document.querySelectorAll("[data-wtin]").forEach(i => i.addEventListener("input", () => { const [o,t,f] = i.dataset.wtin.split("|"); wtState(o+"|"+t)[f] = i.value.trim(); render();
+  document.querySelectorAll("[data-wtin]").forEach(i => i.addEventListener("input", () => { const [o,t,f] = i.dataset.wtin.split("|"); wtState(o+"|"+t)[f] = i.value.trim().replace(/,/g, "."); render();   // text field (5 Oct): keeps "34." while typing 34.7; a comma counts as the decimal point
     const again = document.querySelector(`[data-wtin="${i.dataset.wtin}"]`); if(again){ again.focus(); const v = again.value; try{ again.value = ""; again.value = v; }catch(e){} } }));
   each("[data-wtsave]", b => { const [o,t] = two(b.dataset.wtsave); finishWaterTest(o,t); });
   each("[data-wtretry]", () => { dosingData.tablesErr = false; loadDosingTables(); render(); });
