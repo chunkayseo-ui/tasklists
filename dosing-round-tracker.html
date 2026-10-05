@@ -1306,7 +1306,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-05.8";
+const APP_BUILD = "2026-10-05.9";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -3614,7 +3614,8 @@ function nrPreviewHtml(poolKey, w, dose, pt){
 // The receipt the logger leaves once the report is in the group.
 function nrStatusHtml(rd){
   if(!rd || !rd.report) return "";
-  const r = (state.nightReports || {})[rd.date + "__" + rd.pool];
+  let r = (state.nightReports || {})[rd.date + "__" + rd.pool];
+  if(r && r.takenAt !== undefined && rd.takenAt && r.takenAt !== rd.takenAt) r = null;   // a receipt for an earlier (test) reading
   if(r && r.sentAt) return ` <span class="wt-src">· 📨 night report sent ${esc(fmtClock(r.sentAt))}</span>`;
   if(r && r.error) return ` <span class="wt-src" style="color:#b42318">· ⚠ night report not sent (${esc(r.error)}) — tell Kay</span>`;
   return ` <span class="wt-src">· 📨 night report sending (within a minute)…</span>`;
