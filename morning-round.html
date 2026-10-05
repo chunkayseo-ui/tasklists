@@ -1303,7 +1303,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-05.4";
+const APP_BUILD = "2026-10-05.5";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -2788,7 +2788,7 @@ function reopenStop(code){
 // job they could also claim.
 function claimTask(code, tid){
   { const r0 = myRound(), s0 = r0 && r0.stops.find(x => x.outlet === code), t0 = s0 && s0.tasks.find(x => x.id === tid);
-    if(s0 && t0 && panelFirstGate(s0, t0).locked){ flash("Do the Pump panel & salt chlorinator check first."); render(); return; }
+    if(s0 && t0 && panelFirstGate(s0, t0).locked){ flash("Do “" + panelFor(s0, t0).name + "” first."); render(); return; }
     if(s0 && t0){ const g = reportGate(s0, t0);
       if(g.locked){ if(g.why !== "wt") checkReport(s0, t0, true);
         flash(g.why === "wt" ? "Do the Water Test and Night Report first." : g.why === "mismatch" ? "Your night report doesn't match the water test — fix it first (see the job)." : "Send the night report in the group first — dosing opens once it's in the sheet.");
@@ -2867,10 +2867,10 @@ function finishTask(code, tid){
     panelPhotos = slots.map(sl => Object.assign({slot:sl.id, label:sl.label}, fpDone(ppScope(code, tid, sl.id)).slice(-1)[0]));
   }
   let pump = null, chl = null;
-  if(t0 && t0.claimedBy === state.me && isPanelTask(t0) && s0 && nrOn(nrPanelPool(s0, t0))){
+  if(t0 && t0.claimedBy === state.me && isPanelTask(t0) && !isWaterTestTask(t0) && s0 && (chlInPanel(s0) || nrOn(nrPanelPool(s0, t0)))){
     pump = state.pumpSel[dKey] || null; chl = state.chlSel[dKey] || null;
-    if(!chl){ flash("Tap Salt chlorinator ON or OFF first — it goes in the night report."); return; }
-    if(!pump){ flash("Tap Circulation pump ON or OFF first — it goes in the night report."); return; }
+    if(chlInPanel(s0) && !chl){ flash("Tap Salt chlorinator ON or OFF first."); return; }
+    if(nrOn(nrPanelPool(s0, t0)) && !pump){ flash("Tap Circulation pump ON or OFF first — it goes in the night report."); return; }
   }
   const donePhotos = fpDone(dScope), doneNote = (state.doneNote[dKey] || "").trim().slice(0, 500);
   let finished = null, stopOutlet = null, issueId = null;
@@ -2891,7 +2891,7 @@ function finishTask(code, tid){
   }, "Couldn't mark that done. Try again.").then(() => {
     if(finished){ delete state.fp[dScope]; delete state.doneNote[dKey]; Object.keys(state.fp).filter(k => k.startsWith("pp|" + code + "|" + tid + "|")).forEach(k => delete state.fp[k]); }
     if(finished) syncTaskToOtherRounds(stopOutlet, finished, Object.assign({doneAt:finished.doneAt}, donePhotos.length ? {donePhotos} : {}, panelPhotos ? {panelPhotos} : {}, pump ? {pump} : {}, chl ? {chlorinator:chl} : {}, doneNote ? {doneNote} : {}));
-    if(finished && pump){ delete state.pumpSel[dKey]; delete state.chlSel[dKey]; }
+    if(finished && (pump || chl)){ delete state.pumpSel[dKey]; delete state.chlSel[dKey]; }
     // A job that started life as a reported issue closes the loop on the
     // Overview board the moment it's actually finished — no separate
     // "mark resolved" step for the supervisor to remember.
@@ -3652,24 +3652,29 @@ function reportGate(s, t){
     return {locked:true, why:"mismatch", poolKey, mine, st};
   return {locked:false, ok:true, poolKey, st};
 }
-/* BK and the other app-report outlets (Kay, 5 Oct 2026): the Pump panel & salt chlorinator check comes
- * FIRST -- it answers Salt chlorinator and Circulation pump ON/OFF -- then the Water Test and Night Report,
- * whose Save sends the report straight away, then dosing. */
+/* Every outlet (Kay, 5 Oct 2026): the "Check Salt Chlorinator and Pump panel" job comes FIRST -- it
+ * answers Salt chlorinator ON/OFF (outlets with one) and, for app-report outlets like BK, Circulation pump
+ * ON/OFF -- then the Water Test and Night Report (which takes the salt chlorinator answer from it), then dosing. */
 function panelFor(s, t){
-  return (s.tasks || []).find(x => x !== t && isPanelTask(x) && !isWaterTestTask(x) && (x.pool || null) === (t.pool || null)) || null;
+  const ps = (s.tasks || []).filter(x => x !== t && isPanelTask(x) && !isWaterTestTask(x));
+  return ps.find(x => (x.pool || null) === (t.pool || null)) || ps.find(x => !x.pool) || null;
 }
+const chlInPanel = s => SALT_CHLORINATOR.includes(String(s.outlet || "").toUpperCase()) || nrOn(dosingKeyFor(s.outlet, null));
 function panelFirstGate(s, t){
   if(isTestMe() || !isWaterTestTask(t) || t.startedAt || t.doneAt || s.departAt || isQuick(s)) return {locked:false};
-  if(!nrOn(dosingKeyFor(s.outlet, t.pool))) return {locked:false};
   const p = panelFor(s, t);
-  return p && !p.doneAt ? {locked:true, why:"panel"} : {locked:false};
+  return p && !p.doneAt && p.kind === "required" ? {locked:true, why:"panel"} : {locked:false};
 }
-function orderedTasks(s){
-  if(!nrOn(dosingKeyFor(s.outlet, null))) return s.tasks;
-  const list = s.tasks.slice(), wi = list.findIndex(x => isWaterTestTask(x) && !x.pool), pi = list.findIndex(x => isPanelTask(x) && !isWaterTestTask(x) && !x.pool);
-  if(wi >= 0 && pi > wi){ const [p] = list.splice(pi, 1); list.splice(wi, 0, p); }
-  return list;
+// Shows each pool's panel job just above its water test (display order only).
+function panelFirstOrder(list){
+  const out = list.slice();
+  out.filter(isWaterTestTask).forEach(w => {
+    const wi = out.indexOf(w), pi = out.findIndex(x => x !== w && isPanelTask(x) && !isWaterTestTask(x) && (x.pool || null) === (w.pool || null));
+    if(pi > wi){ const [p] = out.splice(pi, 1); out.splice(wi, 0, p); }
+  });
+  return out;
 }
+function orderedTasks(s){ return panelFirstOrder(s.tasks); }
 function checkReport(s, t, force){
   const poolKey = dosingKeyFor(s.outlet, t.pool), day = todayKey(), k = day + "|" + poolKey;
   const cur = state.report[k];
@@ -3949,16 +3954,17 @@ state.pumpSel = state.pumpSel || {};
 const nrPanelPool = (s, t) => { try{ return dosingKeyFor(s.outlet, t.pool); }catch(e){ return String(s.outlet || "").toUpperCase(); } };
 state.chlSel = state.chlSel || {};
 function pumpChipsHtml(s, t){
-  if(!nrOn(nrPanelPool(s, t))) return "";
+  const askPump = nrOn(nrPanelPool(s, t)), askChl = chlInPanel(s);
+  if(!askPump && !askChl) return "";
   const key = s.outlet + "|" + t.id, v = state.pumpSel[key] || "", c = state.chlSel[key] || "";
   return `<div class="wt" style="margin-bottom:8px"><div class="wt-grid">
-    <div class="wt-field"><span class="wt-lbl">Salt chlorinator</span><div class="wt-chips">
+    ${askChl ? `<div class="wt-field"><span class="wt-lbl">Salt chlorinator</span><div class="wt-chips">
       <button class="tog" aria-pressed="${c==="on"}" data-chlset="${key}|on">ON</button>
-      <button class="tog" aria-pressed="${c==="off"}" data-chlset="${key}|off">OFF</button></div></div>
-    <div class="wt-field"><span class="wt-lbl">Circulation pump</span><div class="wt-chips">
+      <button class="tog" aria-pressed="${c==="off"}" data-chlset="${key}|off">OFF</button></div></div>` : ""}
+    ${askPump ? `<div class="wt-field"><span class="wt-lbl">Circulation pump</span><div class="wt-chips">
       <button class="tog" aria-pressed="${v==="on"}" data-pumpset="${key}|on">ON</button>
-      <button class="tog" aria-pressed="${v==="off"}" data-pumpset="${key}|off">OFF</button></div></div></div>
-    <span class="wt-src">Check both on the panel — they go into tonight's night report.</span></div>`;
+      <button class="tog" aria-pressed="${v==="off"}" data-pumpset="${key}|off">OFF</button></div></div>` : ""}</div>
+    <span class="wt-src">${askPump ? "Check both on the panel — they go into tonight's night report." : "Check it on the panel — the water test uses this answer."}</span></div>`;
 }
 function panelTaskBlock(s, t){ return pumpChipsHtml(s, t) + panelTaskBlockInner(s, t); }
 function panelTaskBlockInner(s, t){
@@ -4096,7 +4102,7 @@ function waterTestPanel(s, t){
     ${doseHtml}
     ${nrOn(poolKey) ? "" : topupBlockHtml(key, poolKey, o, w)}
     <div class="wt-grid">
-      ${nrOn(poolKey) ? "" : `<div class="wt-field"><span class="wt-lbl">Salt chlorinator</span>${onoff("chlorinator", w.chlorinator)}</div>`}
+      ${chlInPanel(s) && panelFor(s, t) ? "" : `<div class="wt-field"><span class="wt-lbl">Salt chlorinator</span>${onoff("chlorinator", w.chlorinator)}</div>`}
       ${nrOn(poolKey) ? nrFieldsHtml(key, w) : ""}
     </div>
     ${nrOn(poolKey) ? nrPreviewHtml(poolKey, w, dose, panelFor(s, t)) : ""}
@@ -4129,7 +4135,8 @@ function finishWaterTest(code, tid){
   const reading = {pool:poolKey, schedule:w.schedule, fc:w.fc, ph:w.ph, chlorinator:w.chlorinator,
     chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit,
     takenAt:new Date().toISOString(), takenBy:state.me};
-  if(nrOn(poolKey)){ const pt = panelFor(s0, t0); if(pt && pt.chlorinator) reading.chlorinator = pt.chlorinator; reading.clarity = w.clarity; reading.temp = Math.round(Number(w.temp) * 10) / 10; reading.report = "app"; reading.date = todayKey(); }
+  { const pt = panelFor(s0, t0); if(pt && pt.chlorinator) reading.chlorinator = pt.chlorinator; }
+  if(nrOn(poolKey)){ reading.clarity = w.clarity; reading.temp = Math.round(Number(w.temp) * 10) / 10; reading.report = "app"; reading.date = todayKey(); }
   if(autoSchedule() === "weekday" && w.schedule === "weekend" && tu) reading.topUp = {id:tu.id || topupId(poolKey), reason:tu.reason, note:tu.note || "", approvedBy:tu.decidedBy, approvedAt:tu.decidedAt};
   let finished = null, dosingSync = null;
   withRound(r => {
@@ -5902,11 +5909,11 @@ function taskListHtml(s){
   // Each pool gets one of 4 colors, cycled in the order its jobs first show up,
   // so a technician can tell "am I still under JEIP1 or did I move to JEIP2"
   // at a glance instead of re-reading the heading text every time.
-  let out = whole.map(t => taskRow(s,t)).join("");
+  let out = panelFirstOrder(whole).map(t => taskRow(s,t)).join("");
   let ix = 0;
   for(const [pool, tasks] of byPool){
     out += `<div class="pool-head pool-c${(ix++ % 4) + 1}">${esc(pool)}</div>`;
-    out += tasks.map(t => taskRow(s,t)).join("");
+    out += panelFirstOrder(tasks).map(t => taskRow(s,t)).join("");
   }
   return out;
 }
@@ -6009,11 +6016,11 @@ function taskRow(s, t){
   const panel = (running && mine && vacSpec(s.outlet, t)) ? vacuumPanel(s, t)
               : (running && mine && isWaterTestTask(t)) ? waterTestPanel(s, t)
               : (running && mine && isDosingTask(t)) ? dosingPanel(s, t)
-              : (running && mine && isPanelTask(t) && (hasPanel(s.outlet) || panelPhotosOn(t))) ? panelTaskBlock(s, t)
+              : (running && mine && isPanelTask(t) && !isWaterTestTask(t) && (hasPanel(s.outlet) || panelPhotosOn(t) || chlInPanel(s))) ? panelTaskBlock(s, t)
               : (running && mine) ? jobDonePanel(s, t)
               : "";
 
-  const gateHtml = (state.role !== "tech") ? "" : (!finished && !running && panelFirstGate(s, t).locked) ? `<div class="rep-gate">🔒 Do the Pump panel & salt chlorinator check first — the water test and night report open after it.</div>` : (!finished && !running && isDosingTask(t)) ? (ensureReportChecks(s, t), reportGateHtml(s, t)) : (running && t.reportOverride && isDosingTask(t)) ? reportGateHtml(s, t) : "";
+  const gateHtml = (state.role !== "tech") ? "" : (!finished && !running && panelFirstGate(s, t).locked) ? `<div class="rep-gate">🔒 Do “${esc(panelFor(s, t).name)}” first — the water test opens after it.</div>` : (!finished && !running && isDosingTask(t)) ? (ensureReportChecks(s, t), reportGateHtml(s, t)) : (running && t.reportOverride && isDosingTask(t)) ? reportGateHtml(s, t) : "";
   return `<div class="task ${running?"running":""} ${finished?"finished":""}">
     <span class="task-main">
       <span class="task-name">${esc(t.name)}</span>
