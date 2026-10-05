@@ -1307,7 +1307,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-05.6";
+const APP_BUILD = "2026-10-05.7";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -1627,6 +1627,10 @@ async function initDb(){
   db.doc("dosing_config/roster").onSnapshot(
     s => { if(state.pending["dosing_config/roster"]) return;
       const d = s.exists ? s.data() : null; state.roster = (d && Array.isArray(d.members)) ? clone(d.members) : []; externalUpdate(); }, ()=>{});
+  // The salt chlorinator smart plugs (hfpools.com/plugs): which outlet has one and what the timer last saw.
+  db.doc("dosing_config/plugs").onSnapshot(
+    s => { const d = s.exists ? s.data() : null; state.plugCfg = d ? {plugs: d.plugs || [], seen: (d.autoState || {}).seen || {}, why: (d.autoState || {}).plugs || {}} : null;
+      if(state.role === "tech") externalUpdate(); }, ()=>{});
   db.doc("dosing_config/versions").onSnapshot(
     s => { const d = s.exists ? s.data() : null; state.versions = (d && d.people && typeof d.people === "object") ? clone(d.people) : {};
       if(state.role === "team" || state.role === "overview") externalUpdate(); }, ()=>{});
@@ -2870,11 +2874,13 @@ function finishTask(code, tid){
     if(miss.length){ flash("Take the photo" + (miss.length > 1 ? "s" : "") + " first: " + miss.map(x => x.label).join(", ") + "."); return; }
     panelPhotos = slots.map(sl => Object.assign({slot:sl.id, label:sl.label}, fpDone(ppScope(code, tid, sl.id)).slice(-1)[0]));
   }
-  let pump = null, chl = null;
+  let pump = null, chl = null, plugAtDone = null;
   if(t0 && t0.claimedBy === state.me && isPanelTask(t0) && !isWaterTestTask(t0) && s0 && (chlInPanel(s0) || nrOn(nrPanelPool(s0, t0)))){
     pump = state.pumpSel[dKey] || null; chl = state.chlSel[dKey] || null;
     if(chlInPanel(s0) && !chl){ flash("Tap Salt chlorinator ON or OFF first."); return; }
     if(nrOn(nrPanelPool(s0, t0)) && !pump){ flash("Tap Circulation pump ON or OFF first — it goes in the night report."); return; }
+    const ps = plugStatusFor(s0.outlet);
+    if(ps) plugAtDone = {on: ps.on, online: ps.online, at: ps.at || null, matches: ps.online && chl ? ((chl === "on") === ps.on) : null};
   }
   const donePhotos = fpDone(dScope), doneNote = (state.doneNote[dKey] || "").trim().slice(0, 500);
   let finished = null, stopOutlet = null, issueId = null;
@@ -2888,6 +2894,7 @@ function finishTask(code, tid){
     if(panelPhotos) t.panelPhotos = panelPhotos;
     if(pump) t.pump = pump;
     if(chl) t.chlorinator = chl;
+    if(chl && plugAtDone) t.plug = plugAtDone;
     if(doneNote) t.doneNote = doneNote;
     finished = {name:t.name, kind:t.kind, pool:t.pool||null, doneAt:t.doneAt};
     stopOutlet = s.outlet;
@@ -3977,12 +3984,31 @@ function panelPhotosHtml(s, t){
 state.pumpSel = state.pumpSel || {};
 const nrPanelPool = (s, t) => { try{ return dosingKeyFor(s.outlet, t.pool); }catch(e){ return String(s.outlet || "").toUpperCase(); } };
 state.chlSel = state.chlSel || {};
+// The outlet's smart plug, as the plugs timer last saw it (checked every 5 minutes). Kay, 5 Oct 2026:
+// show it next to the Salt chlorinator question, so a chlorinator that is OFF while its plug is ON
+// (a fault, or a tripped switch) gets noticed on the spot.
+function plugStatusFor(outlet){
+  const c = state.plugCfg; if(!c) return null;
+  const p = (c.plugs || []).find(x => x && x.pool && String(x.pool).toUpperCase() === String(outlet || "").toUpperCase());
+  if(!p) return null;
+  const seen = (c.seen || {})[p.id] || null, auto = (c.why || {})[p.id] || {};
+  return {name: p.name || p.pool, on: seen && seen.online ? seen.on : null, online: !!(seen && seen.online), at: seen && seen.at, why: auto.why || ""};
+}
+function plugLineHtml(ps, picked){
+  if(!ps) return "";
+  const when = ps.at ? clockOf(ps.at) : "";
+  const state_ = !ps.online ? `<b style="color:#b42318">offline</b>` : `<b>${ps.on ? "ON" : "OFF"}</b>`;
+  let warn = "";
+  if(ps.online && picked && (picked === "on") !== ps.on)
+    warn = `<div class="rep-gate bad" style="margin-top:6px">⚠ The smart plug is <b>${ps.on ? "ON" : "OFF"}</b> but you see the chlorinator <b>${picked.toUpperCase()}</b>. ${ps.on ? "Check the chlorinator's own switch, display and flow — if it stays off, tell Kay." : "Someone may have switched it on by hand, or the plug didn't switch — tell Kay."}</div>`;
+  return `<div class="wt-src" style="margin:2px 0 6px">🔌 Smart plug (${esc(ps.name)}): ${state_}${when ? ` · checked ${esc(when)}` : ""}${ps.why ? ` · rule: ${esc(ps.why)}` : ""}</div>${warn}`;
+}
 function pumpChipsHtml(s, t){
   const askPump = nrOn(nrPanelPool(s, t)), askChl = chlInPanel(s);
   if(!askPump && !askChl) return "";
   const key = s.outlet + "|" + t.id, v = state.pumpSel[key] || "", c = state.chlSel[key] || "";
   return `<div class="wt" style="margin-bottom:8px"><div class="wt-grid">
-    ${askChl ? `<div class="wt-field"><span class="wt-lbl">Salt chlorinator</span><div class="wt-chips">
+    ${askChl ? `<div class="wt-field" style="grid-column:1/-1"><span class="wt-lbl">Salt chlorinator</span>${plugLineHtml(plugStatusFor(s.outlet), c)}<div class="wt-chips">
       <button class="tog" aria-pressed="${c==="on"}" data-chlset="${key}|on">ON</button>
       <button class="tog" aria-pressed="${c==="off"}" data-chlset="${key}|off">OFF</button></div></div>` : ""}
     ${askPump ? `<div class="wt-field"><span class="wt-lbl">Circulation pump</span><div class="wt-chips">
