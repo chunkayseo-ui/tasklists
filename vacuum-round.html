@@ -1312,7 +1312,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-06.2";
+const APP_BUILD = "2026-10-06.3";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -4397,6 +4397,14 @@ function finishWaterTest(code, tid){
     if(d){
       d.plannedDose = {chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit, fc:w.fc, ph:w.ph};
       dosingSync = {match:{name:d.name, kind:d.kind, pool:d.pool||null}, patch:{plannedDose:d.plannedDose}};
+      // Nothing to dose (Kay, 6 Oct 2026: Guru left Tengah's dosing job open on 5 Oct when the plan was 0 / 0, so the
+      // dashboard said "Chlorine not in the tracker"): the dosing job is closed as "no dosing needed", 0 g and 0 mL.
+      if(Number(dose.cl) === 0 && Number(dose.acid) === 0 && !d.startedAt && !d.doneAt){
+        const at = new Date().toISOString();
+        Object.assign(d, {claimedBy:state.me, startedAt:at, doneAt:at, doneNote:"No dosing needed — the water test plan was 0 chlorine and 0 acid",
+          dosed:{chlorineG:0, acidMl:0, noChlorine:true, none:true, auto:true, plannedChlorineG:0, plannedAcidMl:0, at, by:state.me}});
+        Object.assign(dosingSync.patch, {claimedBy:d.claimedBy, startedAt:at, doneAt:at, doneNote:d.doneNote, dosed:d.dosed});
+      }
     }
   }, "Couldn't save the reading. Try again.").then(() => {
     if(!finished) return;
