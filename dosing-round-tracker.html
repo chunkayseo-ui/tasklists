@@ -1311,7 +1311,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-06.1";
+const APP_BUILD = "2026-10-06.2";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -2885,6 +2885,9 @@ function finishTask(code, tid){
       room.fields.forEach(f => { o[f] = f === "heat" ? Math.round(Number(r.heat) * 10) / 10 : f === "meter" ? String(r.meter).trim() : r[f]; }); return o; });
     chl = rooms.some(r => r.chl === "on") ? "on" : "off";
     pump = rooms.every(r => !("pump" in r) || r.pump === "on") ? "on" : "off";
+    // The room whose chlorinator is on the smart plug (Tengah: Pump Room 1) is the one checked against the plug.
+    const pi = roomsFor(s0, t0).findIndex(room => room.plug), ps = pi >= 0 ? plugStatusFor(s0.outlet) : null;
+    if(ps){ const c = rooms[pi].chl; plugAtDone = {room: rooms[pi].room, on: ps.on, online: ps.online, at: ps.at || null, matches: ps.online && c ? ((c === "on") === ps.on) : null}; }
   }
   else if(t0 && t0.claimedBy === state.me && isPanelTask(t0) && !isWaterTestTask(t0) && s0 && (chlInPanel(s0) || nrOn(nrPanelPool(s0, t0)))){
     pump = state.pumpSel[dKey] || null; chl = state.chlSel[dKey] || null;
@@ -3659,7 +3662,7 @@ const nrTempsOk = (poolKey, w) => NR_TEMPS2[poolKey] ? NR_TEMPS2[poolKey].every(
 // one block per room, in this order; the report lists them the same way.
 const NR_ROOMS = {
   Tengah: [
-    {name:"Pump Room 1 (Behind)", fields:["pump", "chl"]},   // no water meter (Kay, 5 Oct)
+    {name:"Pump Room 1 (Behind)", fields:["pump", "chl"], plug:true},   // no water meter (Kay, 5 Oct); its salt chlorinator is on the smart plug (Kay, 6 Oct)
     {name:"Pump Room 2 (Close to counter)", fields:["pump", "chl"]}   // no heat pump reading: pool temperature is the thermometer reading in the water test (Kay, 5 Oct)
   ]
 };
@@ -4163,7 +4166,7 @@ function roomsHtml(s, t){
   return `<div class="wt" style="margin-bottom:8px">${roomsFor(s, t).map((room, i) => { const r = sel[i] || {};
     return `<div style="${i ? "margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)" : ""}"><div class="wt-lbl" style="font-weight:600">${esc(room.name)}</div><div class="wt-grid">${room.fields.map(f =>
       f === "pump" ? `<div class="wt-field"><span class="wt-lbl">Circulation pump</span>${chips(i, "pump", r.pump)}</div>`
-      : f === "chl" ? `<div class="wt-field"><span class="wt-lbl">Salt chlorinator</span>${chips(i, "chl", r.chl)}</div>`
+      : f === "chl" ? `<div class="wt-field"><span class="wt-lbl">Salt chlorinator</span>${room.plug ? plugLineHtml(plugStatusFor(s.outlet), r.chl) : ""}${chips(i, "chl", r.chl)}</div>`
       : f === "meter" ? `<label class="wt-field"><span class="wt-lbl">Water meter</span><span class="num"><input type="text" inputmode="numeric" maxlength="8" data-roomin="${key}|${i}|meter" value="${esc(r.meter || "")}" placeholder="e.g. 00119"></span></label>`
       : f === "heat" ? `<label class="wt-field"><span class="wt-lbl">Heat pump</span><span class="num"><input type="text" inputmode="decimal" autocomplete="off" data-roomin="${key}|${i}|heat" value="${esc(r.heat === undefined ? "" : r.heat)}" placeholder="e.g. 32.4"><span>°C</span></span></label>` : "").join("")}</div></div>`; }).join("")}
     <span class="wt-src">Check each pump room — these go into tonight's night report.</span></div>`;
