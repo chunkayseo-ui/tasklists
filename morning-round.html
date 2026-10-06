@@ -1312,7 +1312,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-05.18";
+const APP_BUILD = "2026-10-06.1";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -3598,6 +3598,44 @@ const NR_NO_CHL_LINE = ["Lentor"];
  * every pool. The report puts a blank line after "Night Report JE" -- without it the logger's parser drops
  * the first pool (checked against Kay's sample). */
 const NR_GROUP = {JE:{title:"JE", pools:["JEIP1", "JEIP2", "JEOP1", "JEOP2"]}};
+/* TA & salt test (Kay, 6 Oct 2026): usually done on maintenance day, but the button is there every night.
+ * The technician types the bicarb / salt to add until Kay's lookup tables exist. Report lines use the words the
+ * logger already reads into the sheet's TA / Salt / Bicarb / Salt-dosing columns: "TA:", "Salt:" above
+ * "Dosing Amounts", and "Bicarb:" / "Salt:" under it. */
+const tsBlank = v => v === "" || v === null || v === undefined;
+const tsNum = (v, lo, hi) => !tsBlank(v) && isFinite(Number(v)) && Number(v) >= lo && Number(v) <= hi;
+const taSaltOn = w => w.taOn === "on";
+function taSaltProblem(w){
+  if(!taSaltOn(w)) return "";
+  if(tsBlank(w.ta) && tsBlank(w.salt)) return "Enter the TA or salt reading (or tap Not tested today)";
+  if(!tsBlank(w.ta) && !tsNum(w.ta, 0, 400)) return "TA should be 0–400 ppm";
+  if(!tsBlank(w.ta) && !tsNum(w.bicarb, 0, 1000)) return "Enter the bicarb to add (0 if none)";
+  if(!tsBlank(w.salt) && !tsNum(w.salt, 0, 10000)) return "Salt should be 0–10000 ppm";
+  if(!tsBlank(w.salt) && !tsNum(w.saltDose, 0, 1000)) return "Enter the salt to add (0 if none)";
+  return "";
+}
+function taSaltFields(w){
+  if(!taSaltOn(w)) return {};
+  const o = {};
+  if(!tsBlank(w.ta)){ o.ta = Number(w.ta); o.bicarb = Number(w.bicarb) || 0; o.bicarbUnit = w.bicarbUnit || "kg"; }
+  if(!tsBlank(w.salt)){ o.salt = Number(w.salt); o.saltDose = Number(w.saltDose) || 0; o.saltUnit = w.saltUnit || "kg"; }
+  return o;
+}
+const tsHas = v => v !== undefined && v !== null && v !== "";
+const taSaltReadLines = rd => [].concat(tsHas(rd.ta) ? ["TA: " + rd.ta] : [], tsHas(rd.salt) ? ["Salt: " + rd.salt] : []);
+const taSaltDoseLines = rd => [].concat(tsHas(rd.ta) ? ["Bicarb: " + nrAmt(rd.bicarb, rd.bicarbUnit)] : [], tsHas(rd.salt) ? ["Salt: " + nrAmt(rd.saltDose, rd.saltUnit)] : []);
+function taSaltHtml(key, w){
+  if(!taSaltOn(w)) return `<div style="margin-top:6px"><button class="btn sm" data-wtset="${key}|taOn|on">＋ TA & salt test done today</button></div>`;
+  const unit = (f, v) => `<div class="wt-chips">${["g", "kg"].map(u => `<button class="tog" aria-pressed="${(v || "kg") === u}" data-wtset="${key}|${f}|${u}">${u}</button>`).join("")}</div>`;
+  const inp = (f, ph) => `<input type="text" inputmode="decimal" autocomplete="off" data-wtin="${key}|${f}" value="${esc(w[f] || "")}" placeholder="${ph}">`;
+  return `<div style="margin-top:8px"><div class="wt-lbl"><span>TA & salt test</span><button class="link" data-wtset="${key}|taOn|">Not tested today</button></div>
+    <div class="wt-grid">
+      <div class="wt-field"><span class="wt-lbl">TA</span><span class="num">${inp("ta", "e.g. 90")}<span>ppm</span></span></div>
+      <div class="wt-field"><span class="wt-lbl">Bicarb to add</span><span class="num">${inp("bicarb", "0 if none")}</span>${unit("bicarbUnit", w.bicarbUnit)}</div>
+      <div class="wt-field"><span class="wt-lbl">Salt</span><span class="num">${inp("salt", "e.g. 3200")}<span>ppm</span></span></div>
+      <div class="wt-field"><span class="wt-lbl">Salt to add</span><span class="num">${inp("saltDose", "0 if none")}</span>${unit("saltUnit", w.saltUnit)}</div>
+    </div><span class="wt-src">Leave TA or Salt empty if you didn't test it. Both go into the night report and the sheet.</span></div>`;
+}
 const nrGroupOf = poolKey => { for(const g in NR_GROUP) if(NR_GROUP[g].pools.includes(poolKey)) return g; return null; };
 const stageGroup = s => { const c = String((s && s.outlet) || "").toUpperCase(); return NR_GROUP[c] ? c : null; };
 const groupWaterTests = (s, g) => (s.tasks || []).filter(x => isWaterTestTask(x) && NR_GROUP[g].pools.includes(x.pool));
@@ -3609,11 +3647,11 @@ function nrGroupText(g, rds){
     "pH: " + Number(rd.ph).toFixed(1),
     "Circulation pump: " + (rd.pump ? onoff(rd.pump) : "-"),
     "Salt Chlorinator: " + onoff(rd.chlorinator),
-    "Pool Temperature: " + Number(rd.temp).toFixed(1),
+    "Pool Temperature: " + Number(rd.temp).toFixed(1)].concat(taSaltReadLines(rd), [
     "",
     "Dosing Amounts",
     "Chlorine: " + nrAmt(rd.chlorine, rd.chlorineUnit),
-    "Acid: " + nrAmt(rd.acid, rd.acidUnit)].join("\n"));
+    "Acid: " + nrAmt(rd.acid, rd.acidUnit)], taSaltDoseLines(rd)).join("\n"));
   const testers = [...new Set(rds.map(rd => rd.takenBy).filter(Boolean))].join(" & ");
   return ["Night Report " + NR_GROUP[g].title, ""].concat(blocks.join("\n\n"), "", "Tester: " + testers).join("\n");
 }
@@ -3645,7 +3683,7 @@ function nightReportText(rd, pt){
       "Water Clarity: " + rd.clarity,
       "Free Chlorine: " + rd.fc + "ppm",
       "pH Level: " + Number(rd.ph).toFixed(1),
-      "Pool Temperature: " + Number(rd.temp).toFixed(1) + "c"];
+      "Pool Temperature: " + Number(rd.temp).toFixed(1) + "c"].concat(taSaltReadLines(rd));
     NR_ROOMS[rd.pool].forEach((room, i) => {
       const r = rooms[i] || {}; lines.push("", room.name);
       room.fields.forEach(f => {
@@ -3655,7 +3693,7 @@ function nightReportText(rd, pt){
         if(f === "heat") lines.push("Heat Pump: " + (r.heat !== undefined && r.heat !== null && r.heat !== "" ? Number(r.heat).toFixed(1) + " °C" : "-"));
       });
     });
-    lines.push("", "Dosing Amounts", "Chlorine: " + nrAmt(rd.chlorine, rd.chlorineUnit), "Acid: " + nrAmt(rd.acid, rd.acidUnit), "", "Tester: " + rd.takenBy);
+    lines.push("", "Dosing Amounts", "Chlorine: " + nrAmt(rd.chlorine, rd.chlorineUnit), "Acid: " + nrAmt(rd.acid, rd.acidUnit), ...taSaltDoseLines(rd), "", "Tester: " + rd.takenBy);
     return lines.join("\n");
   }
   // BK's template has the salt chlorinator first; CC, DR, TPY and DTE (Kay, 5 Oct 2026) the pump first.
@@ -3666,11 +3704,12 @@ function nightReportText(rd, pt){
     "pH: " + Number(rd.ph).toFixed(1)]
     .concat(NR_NO_CHL_LINE.includes(rd.pool) ? [pumpLine] : rd.pool === "BK" ? [chlLine, pumpLine] : [pumpLine, chlLine])
     .concat(NR_TEMPS2[rd.pool] ? NR_TEMPS2[rd.pool].map(x => x[2] + ": " + Number(rd[x[0]]).toFixed(1)) : ["Pool Temperature: " + Number(rd.temp).toFixed(1)])
+    .concat(taSaltReadLines(rd))
     .concat([
     "",
     "Dosing Amounts",
     "Chlorine: " + nrAmt(rd.chlorine, rd.chlorineUnit),
-    "Acid: " + nrAmt(rd.acid, rd.acidUnit),
+    "Acid: " + nrAmt(rd.acid, rd.acidUnit)], taSaltDoseLines(rd), [
     "",
     "Tester: " + rd.takenBy]).join("\n");
 }
@@ -3691,16 +3730,16 @@ function nrPreviewHtml(poolKey, w, dose, pt, s){
   if(g && s){
     const wts = groupWaterTests(s, g), done = wts.filter(x => x.doneAt).length, title = NR_GROUP[g].title;
     if(done < wts.length - 1) return `<div class="wt-src" style="margin-top:6px">📨 ${esc(poolKey)} goes into the one ${esc(title)} night report. It's sent when the last pool's water test is saved (${done} of ${wts.length} done).</div>`;
-    if(!dose || !w.clarity || !nrTempsOk(poolKey, w)) return `<div class="wt-src" style="margin-top:6px">📨 This is the last pool: saving sends the ${esc(title)} night report for all ${wts.length} pools — fill in clarity and temperature first.</div>`;
+    if(!dose || !w.clarity || !nrTempsOk(poolKey, w) || taSaltProblem(w)) return `<div class="wt-src" style="margin-top:6px">📨 This is the last pool: saving sends the ${esc(title)} night report for all ${wts.length} pools — fill in clarity and temperature first.</div>`;
     const cur = {pool:poolKey, clarity:w.clarity, fc:w.fc, ph:w.ph, chlorinator:(pt && pt.chlorinator) || w.chlorinator, pump:(pt && pt.pump) || "", temp:w.temp,
-      chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit, takenBy:state.me};
+      chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit, takenBy:state.me, ...taSaltFields(w)};
     const rds = NR_GROUP[g].pools.map(p => { const x = wts.find(y => y.pool === p); return !x ? null : (x.doneAt ? x.reading : p === poolKey ? cur : null); }).filter(Boolean);
     return `<details class="panel" open><summary>📨 ${esc(title)} night report that will be sent (all ${wts.length} pools)</summary><pre style="white-space:pre-wrap;margin:6px 0 0;font-size:13px;line-height:1.4">${esc(nrGroupText(g, rds))}</pre>
     <div class="wt-src">Saving sends it to the ${esc(title)} Telegram topic within a minute. Then the dosing jobs open.</div></details>`;
   }
-  if(!dose || !w.clarity || !nrTempsOk(poolKey, w)) return `<div class="wt-src" style="margin-top:6px">📨 Saving sends the night report to the ${esc(NR_TITLE[poolKey] || poolKey)} Telegram group — fill in clarity and temperature first.</div>`;
+  if(!dose || !w.clarity || !nrTempsOk(poolKey, w) || taSaltProblem(w)) return `<div class="wt-src" style="margin-top:6px">📨 Saving sends the night report to the ${esc(NR_TITLE[poolKey] || poolKey)} Telegram group — fill in clarity and temperature first.</div>`;
   const txt = nightReportText({pool:poolKey, clarity:w.clarity, fc:w.fc, ph:w.ph, chlorinator:(pt && pt.chlorinator) || w.chlorinator, pump:(pt && pt.pump) || "", temp:w.temp, tempL:w.tempL, tempR:w.tempR,
-    chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit, takenBy:state.me}, pt);
+    chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit, takenBy:state.me, ...taSaltFields(w)}, pt);
   return `<details class="panel" open><summary>📨 Night report that will be sent</summary><pre style="white-space:pre-wrap;margin:6px 0 0;font-size:13px;line-height:1.4">${esc(txt.replace("Circulation pump: -", "Circulation pump: (from the Pump panel job)"))}</pre>
     <div class="wt-src">Saving sends it to the ${esc(NR_TITLE[poolKey] || poolKey)} Telegram group within a minute.</div></details>`;
 }
@@ -4296,13 +4335,14 @@ function waterTestPanel(s, t){
       ${chlInPanel(s) && panelFor(s, t) ? "" : `<div class="wt-field"><span class="wt-lbl">Salt chlorinator</span>${onoff("chlorinator", w.chlorinator)}</div>`}
       ${nrOn(poolKey) ? nrFieldsHtml(key, w, poolKey) : ""}
     </div>
+    ${nrOn(poolKey) ? taSaltHtml(key, w) : ""}
     ${nrOn(poolKey) ? nrPreviewHtml(poolKey, w, dose, panelFor(s, t), s) : ""}
     <details class="panel" data-panel="${kToday}" ${pOpen(kToday)}><summary>Today's earlier readings</summary><div class="wt-ref-body">${state.panelsOpen[kToday] ? wtTodayHtml(poolKey) : ""}</div></details>
     <details class="panel" data-panel="${kHist}" ${pOpen(kHist)}><summary>Past ${DAYNAME_FULL[operationalNow().getDay()]}s</summary><div class="wt-ref-body">${state.panelsOpen[kHist] ? wtHistoryHtml(poolKey) : ""}</div></details>
     <details class="panel" data-panel="${kRoute}" ${pOpen(kRoute)}><summary>Dosing route</summary><div class="wt-ref-body">${state.panelsOpen[kRoute] ? wtRouteHtml(routeCode) : ""}</div></details>
-    ${(() => { const nrNeed = nrOn(poolKey) && dose && (!w.clarity || !nrTempsOk(poolKey, w));
+    ${(() => { const tsWhy = nrOn(poolKey) && dose ? taSaltProblem(w) : "", nrNeed = nrOn(poolKey) && dose && (!w.clarity || !nrTempsOk(poolKey, w) || !!tsWhy);
       const ok = dose && !nrNeed;
-      const label = !dose ? "Tap FC and pH first" : nrNeed ? (!w.clarity ? "Tap the water clarity" : (NR_TEMPS2[poolKey] ? "Enter both pool temperatures (20–40 °C)" : "Enter the pool temperature (20–40 °C)")) : nrOn(poolKey) ? (nrGroupOf(poolKey) ? (groupWaterTests(s, nrGroupOf(poolKey)).filter(x => !x.doneAt).length > 1 ? "Save reading · next pool" : "Save reading · send " + NR_GROUP[nrGroupOf(poolKey)].title + " night report") : "Save reading · send night report") : "Save reading · job done";
+      const label = !dose ? "Tap FC and pH first" : nrNeed ? (!w.clarity ? "Tap the water clarity" : tsWhy && nrTempsOk(poolKey, w) ? tsWhy : (NR_TEMPS2[poolKey] ? "Enter both pool temperatures (20–40 °C)" : "Enter the pool temperature (20–40 °C)")) : nrOn(poolKey) ? (nrGroupOf(poolKey) ? (groupWaterTests(s, nrGroupOf(poolKey)).filter(x => !x.doneAt).length > 1 ? "Save reading · next pool" : "Save reading · send " + NR_GROUP[nrGroupOf(poolKey)].title + " night report") : "Save reading · send night report") : "Save reading · job done";
       return `<button class="btn primary big" data-wtsave="${key}" ${ok ? "" : "disabled"}>${label}</button>`; })()}
   </div>`;
 }
@@ -4318,6 +4358,7 @@ function finishWaterTest(code, tid){
   const dose = doseFor(poolKey, w.schedule, w.fc, w.ph);
   if(!dose){ flash("Tap the FC and pH readings first."); return; }
   if(nrOn(poolKey) && (!w.clarity || !nrTempsOk(poolKey, w))){ flash("Fill in the water clarity and pool temperature for the night report."); return; }
+  if(nrOn(poolKey) && taSaltProblem(w)){ flash(taSaltProblem(w) + "."); return; }
   const tu = topupFor(poolKey);
   if(autoSchedule() === "weekday" && w.schedule === "weekend" && !(tu && tu.status === "approved")){ flash("The weekend dose on a weekday needs Kay or William's OK first."); return; }
   // Just what confirms the dose: the reading, the chlorinator state, the
@@ -4327,7 +4368,7 @@ function finishWaterTest(code, tid){
     chlorine:dose.cl, chlorineUnit:dose.clUnit, acid:dose.acid, acidUnit:dose.acidUnit,
     takenAt:new Date().toISOString(), takenBy:state.me};
   { const pt = panelFor(s0, t0); if(pt && pt.chlorinator) reading.chlorinator = pt.chlorinator; }
-  if(nrOn(poolKey)){ reading.clarity = w.clarity; reading.report = "app"; reading.date = todayKey();
+  if(nrOn(poolKey)){ reading.clarity = w.clarity; reading.report = "app"; reading.date = todayKey(); Object.assign(reading, taSaltFields(w));
     if(NR_TEMPS2[poolKey]){ reading.tempL = Math.round(Number(w.tempL) * 10) / 10; reading.tempR = Math.round(Number(w.tempR) * 10) / 10;
       reading.temp = Math.round((reading.tempL + reading.tempR) * 5) / 10; }   // average, for anything that reads one temperature
     else reading.temp = Math.round(Number(w.temp) * 10) / 10;
