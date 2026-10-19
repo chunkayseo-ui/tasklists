@@ -1312,14 +1312,16 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-19.1";
+const APP_BUILD = "2026-10-19.2";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
 // (Sun=0 .. Sat=6) -- Fik, Monday to Friday (Chun Kay, 27 Sep). On
 // those days the normal page opens straight into it for them (add ?mode=night
 // to the address to get the night round instead).
-const VAC_STAFF = {fik:[1,2,3,4,5]};
+// Kay, 19 Oct 2026: Fik now does night dosing on Sunday and Monday nights, morning shift Tue–Fri (Sat off),
+// so Monday is no longer a Morning Round day for him.
+const VAC_STAFF = {fik:[2,3,4,5]};
 // ...but only in the morning (4am-2pm). From 2pm, or after midnight, the normal link stays on the night round, so
 // Fik can help with night dosing (Kay, 19 Oct 2026: Fik couldn't open the night round when helping out).
 const MORNING_JUMP_UNTIL = 14;
