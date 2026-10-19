@@ -1312,7 +1312,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-13.1";
+const APP_BUILD = "2026-10-19.1";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -1320,6 +1320,9 @@ const isVacRound = r => !!r && r.kind === "vacuum";
 // those days the normal page opens straight into it for them (add ?mode=night
 // to the address to get the night round instead).
 const VAC_STAFF = {fik:[1,2,3,4,5]};
+// ...but only in the morning (4am-2pm). From 2pm, or after midnight, the normal link stays on the night round, so
+// Fik can help with night dosing (Kay, 19 Oct 2026: Fik couldn't open the night round when helping out).
+const MORNING_JUMP_UNTIL = 14;
 // Which weekday it is for the morning staff: the night pages keep "yesterday"
 // until 6:30am (night rounds run past midnight), but Fik starts at 6am, so
 // for him the new day begins at 4am.
@@ -5928,14 +5931,17 @@ function vacSummaryHtml(code, t){
 /* ---------- technician ---------- */
 function techView(){
   if(!state.me) return pickPerson();
-  if(!VAC_MODE && vacDayFor(state.me) && !myRound() && !/[?&]mode=night\b/.test(location.search)){
+  const hr = new Date().getHours();
+  if(!VAC_MODE && vacDayFor(state.me) && !myRound() && !/[?&]mode=night\b/.test(location.search) && hr >= MORNING_CUTOFF_HOUR && hr < MORNING_JUMP_UNTIL){
     setTimeout(() => location.replace("morning-round.html"), 0);
     return `<div class="card" style="padding:20px"><b>Opening your Morning Round…</b> <a href="morning-round.html">Tap here if it doesn't open</a></div>`;
   }
+  // Morning-round people can always get to the night round from the Morning Round page.
+  const toNight = VAC_MODE && VAC_STAFF[slug(state.me || "")] ? `<div class="card" style="padding:10px 14px;margin-bottom:12px">🌙 Helping with night dosing tonight? <a href="dosing-round-tracker.html?mode=night"><b>Open the night round →</b></a></div>` : "";
   const r = myRound();
   if(r) setTimeout(autoAddAssigned, 0);
   const banner = isTestMe() ? `<div class="card" style="padding:12px 14px;margin-bottom:12px;border:2px dashed var(--warn);background:#FFF8E6"><strong>🧪 Practice mode.</strong> This round is marked TEST — it isn't counted and doesn't change anyone else's jobs. <strong>Reset today's round</strong> clears it completely.</div>` : "";
-  return banner + (r ? runRound(r) : buildRound());
+  return toNight + banner + (r ? runRound(r) : buildRound());
 }
 
 function pickPerson(){
