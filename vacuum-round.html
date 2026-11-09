@@ -1312,7 +1312,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-10-19.2";
+const APP_BUILD = "2026-11-09.1";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -1525,7 +1525,7 @@ const localIssues = {
 //    wins over the progress it is undoing.
 const taskRank = t => t.doneAt ? 2 : t.startedAt ? 1 : 0;
 const taskEvidence = t => (t.panelPhotos||[]).length + (t.donePhotos||[]).length + Object.keys((t.vac && t.vac.photos) || {}).length
-  + ((t.dosed && t.dosed.photos) || []).length + (t.reading ? 1 : 0) + (t.dosed ? 1 : 0) + (t.cantHistory || []).length + (t.photos || []).length;
+  + ((t.dosed && t.dosed.photos) || []).length + (t.dosePhotos || []).length + (t.reading ? 1 : 0) + (t.dosed ? 1 : 0) + (t.cantHistory || []).length + (t.photos || []).length;
 const progressAt = t => [t.startedAt, t.doneAt, t.reading && t.reading.takenAt, t.dosed && t.dosed.at].filter(Boolean).sort().pop() || "";
 function pickTask(mine, theirs){
   const rm = taskRank(mine), rt = taskRank(theirs);
@@ -4480,7 +4480,43 @@ function dmState(key, t){
     const g = Math.max(0, Math.round(toGrams(Number(pd.chlorine) || 0, pd.chlorineUnit)));
     d.jugFills = Math.floor(g / JUG_ML); d.jugPart = g % JUG_ML ? String(g % JUG_ML) : ""; d.planG = g; d.jugSeeded = true;
   }
+  // Photos already uploaded are kept on the job itself (t.dosePhotos), so they come back even if this
+  // phone lost them -- the page reloaded behind the camera, or the phone's storage was full.
+  if(t && !t.doneAt && Array.isArray(t.dosePhotos) && t.dosePhotos.length){
+    d.photos = d.photos || [];
+    const gone = d.removedPhotos || [];
+    let added = false;
+    t.dosePhotos.forEach(rec => {
+      if(!rec || !rec.fileId || gone.includes(rec.fileId)) return;
+      if(d.photos.some(p => p.id === rec.id || p.fileId === rec.fileId)) return;
+      d.photos.push({id: rec.id || uid(), n: 0, status:"done", fileId:rec.fileId, url:rec.url || null, thumb:rec.thumb || null,
+        takenAt:rec.takenAt || null, reading:rec.reading || null, dataUrl: rec.thumb || driveImg(rec.fileId, 400)});
+      added = true;
+    });
+    if(added){
+      d.photos.sort((a, b) => String(a.takenAt || "9").localeCompare(String(b.takenAt || "9")));
+      d.photos.forEach((x, i) => x.n = i + 1);
+      applyReading(d);
+    }
+  }
   return d;
+}
+// Writes the uploaded dosing photos onto the job in the round straight away (Kay, 9 Nov 2026: William's
+// JEIP2 chlorine photos showed "uploaded", but were gone when he came back to Save -- until now they only
+// lived on the phone until Save). Same idea as the vacuum photos.
+function dosePhotoRec(ph){
+  return JSON.parse(JSON.stringify({id:ph.id, fileId:ph.fileId, url:ph.url || null, thumb:ph.thumb || null, takenAt:ph.takenAt || null,
+    reading: ph.reading ? {status:ph.reading.status || null, grams:(ph.reading.grams === undefined ? null : ph.reading.grams), confidence:ph.reading.confidence || null} : null}));
+}
+function saveDosePhotosToJob(key){
+  const [code, tid] = String(key).split("|"); const d = state.dm[key]; if(!d) return Promise.resolve();
+  const list = (d.photos || []).filter(p => p.status === "done" && p.fileId).map(dosePhotoRec);
+  return withRound(r => {
+    const s = r.stops.find(x => x.outlet === code); const t = s && s.tasks.find(x => x.id === tid);
+    if(!t || t.doneAt || t.claimedBy !== state.me) return false;
+    if(JSON.stringify(t.dosePhotos || []) === JSON.stringify(list)) return false;
+    t.dosePhotos = list;
+  }, "Couldn't put the photo on the job yet -- it is still on this phone. Save as normal.");
 }
 // Drive's own /view page makes a phone with two Google accounts signed in pick
 // one before it shows anything -- which is what a technician hit when they just
@@ -4678,7 +4714,7 @@ function finishDosing(code, tid){
     const s = r.stops.find(x => x.outlet === code); if(!s) return false;
     const t = s.tasks.find(x => x.id === tid); if(!t || !t.startedAt || t.doneAt) return false;
     if(t.claimedBy !== state.me) return false;
-    t.doneAt = new Date().toISOString(); t.dosed = dosed;
+    t.doneAt = new Date().toISOString(); t.dosed = dosed; delete t.dosePhotos;
     finished = {name:t.name, kind:t.kind, pool:t.pool||null, doneAt:t.doneAt};
   }, "Couldn't save the amounts. Try again.").then(() => {
     if(!finished) return;
@@ -5021,6 +5057,7 @@ async function uploadDosingPhoto(key, d, ph, meta){
       date: todayKey(), tool: meta.tool, wantReading: meta.tool !== "jug" && readerOn(), imageBase64: ph.base64, photoNo: ph.n});
     Object.assign(ph, {status:"done", fileId:j.fileId, url:j.url, thumb:j.thumb || null, reading:j.reading || null});
     applyReading(d);
+    saveDosePhotosToJob(key);
     const reads = photoReadings(d);
     if(j.reading && j.reading.status === "ok" && !d.touched) flash(reads.length > 1 ? `Read ${reads.join(" + ")} = ${reads.reduce((a,b)=>a+b,0)} g off the scale — check it, then Save.` : `Read ${Math.round(j.reading.grams)} g off the scale — check it, then Save.`);
   }catch(e){
@@ -8572,7 +8609,9 @@ function wire(){
   });
   each("[data-dmphotorm]", b => {
     const [o,t,pid] = b.dataset.dmphotorm.split("|"), key = o+"|"+t; const d = dmState(key);
+    const rmd = (d.photos || []).find(x => x.id === pid); if(rmd && rmd.fileId) d.removedPhotos = (d.removedPhotos || []).concat([rmd.fileId]);
     d.photos = (d.photos || []).filter(x => x.id !== pid); d.photos.forEach((x,i) => x.n = i+1);
+    saveDosePhotosToJob(key);
     if(!d.touched){ d.chlorine = ""; d.chlorineSource = null; d.readG = null; applyReading(d); if(!photoReadings(d).length && d.seeded){ /* back to the plan */ d.seeded = false; } }
     render();
   });
