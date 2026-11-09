@@ -1311,7 +1311,7 @@ function assignedFor(outlet, dayIdx){
 // mirrored between the two kinds of round.
 // Bump APP_BUILD on EVERY deploy (date + number, e.g. "2026-09-28.1"). Phones
 // compare it with the copy on the site and reload themselves when theirs is older.
-const APP_BUILD = "2026-11-09.1";
+const APP_BUILD = "2026-11-09.2";
 const VAC_MODE = /[?&]mode=vacuum\b/.test(location.search) || window.DRT_MODE === "vacuum";
 const isVacRound = r => !!r && r.kind === "vacuum";
 // Who does the Morning Round (was "Friday Vacuum Round"), and on which days
@@ -1524,7 +1524,7 @@ const localIssues = {
 //    wins over the progress it is undoing.
 const taskRank = t => t.doneAt ? 2 : t.startedAt ? 1 : 0;
 const taskEvidence = t => (t.panelPhotos||[]).length + (t.donePhotos||[]).length + Object.keys((t.vac && t.vac.photos) || {}).length
-  + ((t.dosed && t.dosed.photos) || []).length + (t.dosePhotos || []).length + (t.reading ? 1 : 0) + (t.dosed ? 1 : 0) + (t.cantHistory || []).length + (t.photos || []).length;
+  + ((t.dosed && t.dosed.photos) || []).length + (t.dosePhotos || []).length + Object.values(t.photoDrafts || {}).reduce((a, l) => a + (l || []).length, 0) + (t.reading ? 1 : 0) + (t.dosed ? 1 : 0) + (t.cantHistory || []).length + (t.photos || []).length;
 const progressAt = t => [t.startedAt, t.doneAt, t.reading && t.reading.takenAt, t.dosed && t.dosed.at].filter(Boolean).sort().pop() || "";
 function pickTask(mine, theirs){
   const rm = taskRank(mine), rt = taskRank(theirs);
@@ -2362,7 +2362,7 @@ function cantFinishTask(code, tid, reason, note, photos){
     rec = {reason, note:(note || "").trim().slice(0, 300), photos:(photos || []).filter(x => x && x.fileId), by:state.me, at:new Date().toISOString(), date:todayKey(), startedAt:t.startedAt || null};
     if(t.startedAt && vacSpec(code, t)){ const vq = vacLeftUnfinished(code, t, r.id); if(vq){ t.vac = vq.vac; vac = vq.vac; vacQ = vq.queued; } }
     t.cantHistory = (t.cantHistory || []).concat([rec]);
-    t.cantFinish = rec; t.startedAt = null; t.claimedBy = null; t.resetAt = rec.at; hist = t.cantHistory;
+    t.cantFinish = rec; t.startedAt = null; t.claimedBy = null; t.resetAt = rec.at; hist = t.cantHistory; delete t.photoDrafts; delete t.dosePhotos;
     key = {name:t.name, kind:t.kind, pool:t.pool || null};
     extra = t.extraId ? {outlet:s.outlet, id:t.extraId} : null;
   }, "Couldn't save that. Try again.").then(() => {
@@ -2845,7 +2845,7 @@ function cancelClaim(code, tid){
     const s = r.stops.find(x=>x.outlet===code); if(!s || s.departAt) return false;
     const t = s.tasks.find(x=>x.id===tid); if(!t || !t.startedAt || t.doneAt) return false;
     if(t.claimedBy !== state.me) return false;
-    t.startedAt = null; t.claimedBy = null; t.resetAt = new Date().toISOString();
+    t.startedAt = null; t.claimedBy = null; t.resetAt = new Date().toISOString(); delete t.photoDrafts; delete t.dosePhotos;
     reset = {name:t.name, kind:t.kind, pool:t.pool||null, at:t.resetAt};
     stopOutlet = s.outlet;
   }, "Couldn't undo that. Try again.").then(() => {
@@ -2913,6 +2913,7 @@ function finishTask(code, tid){
     if(t.extraId){ const e = ((state.cfg.extra || {})[s.outlet] || []).find(x => x.id === t.extraId); if(e && e.history && e.history.length) t.stuckHistory = e.history.slice(); }
     if(donePhotos.length) t.donePhotos = donePhotos;
     if(panelPhotos) t.panelPhotos = panelPhotos;
+    delete t.photoDrafts;
     if(pump) t.pump = pump;
     if(chl) t.chlorinator = chl;
     if(rooms) t.rooms = rooms;
@@ -4759,7 +4760,42 @@ const readerOn = () => !!(relayCfg() && state.cfg.photo.read);
 // through the same relay into Drive, stamped with outlet, what it is, who
 // and when, and show on the issue card and the job row afterwards.
 state.fp = state.fp || {};
-const fpList = scope => (state.fp[scope] = state.fp[scope] || []);
+// Job photos (pump panel / salt chlorinator, and the work photos on Done) are written onto the job in the
+// round the moment each one uploads -- t.photoDrafts {"pp_panel1": [...], "done": [...]} -- and come back from
+// there if the phone loses them (page reloaded behind the camera, phone storage full). Kay, 9 Nov 2026:
+// "all things that require take photo with stamp" work like this. Done moves them to panelPhotos/donePhotos.
+const fpRemoved = {};
+function fpJobSlot(scope){
+  let m = /^pp\|([^|]+)\|([^|]+)\|(.+)$/.exec(scope); if(m) return {code:m[1], tid:m[2], key:"pp_" + m[3]};
+  m = /^done\|([^|]+)\|([^|]+)$/.exec(scope); if(m) return {code:m[1], tid:m[2], key:"done"};
+  return null;
+}
+function fpRestoreFromJob(scope){
+  const js = fpJobSlot(scope); if(!js) return;
+  const r = myRound(), s = r && (r.stops || []).find(x => x.outlet === js.code), t = s && (s.tasks || []).find(x => x.id === js.tid);
+  if(!t || t.doneAt || t.claimedBy !== state.me || !t.photoDrafts) return;
+  const gone = fpRemoved[scope] || [];
+  ((t.photoDrafts || {})[js.key] || []).filter(x => x && x.fileId && !gone.includes(x.fileId)).forEach((x, i) =>
+    state.fp[scope].push({id: x.id || uid(), n: i + 1, status:"done", fileId:x.fileId, url:x.url || null, thumb:x.thumb || null, at:x.at || null,
+      dataUrl: x.thumb || driveImg(x.fileId, 400)}));
+}
+const fpList = scope => {
+  if(!state.fp[scope]) state.fp[scope] = [];
+  if(!state.fp[scope].length) fpRestoreFromJob(scope);
+  return state.fp[scope];
+};
+function fpSaveToJob(scope){
+  const js = fpJobSlot(scope); if(!js) return;
+  let recs = (state.fp[scope] || []).filter(p => p.status === "done" && p.fileId)
+    .map(p => JSON.parse(JSON.stringify({id:p.id, fileId:p.fileId, url:p.url || null, thumb:p.thumb || null, at:p.at || null})));
+  if(js.key.startsWith("pp_")) recs = recs.slice(-1);   // one photo per panel: the latest
+  withRoundKeepingForm(r => {
+    const s = r.stops.find(x => x.outlet === js.code), t = s && s.tasks.find(x => x.id === js.tid);
+    if(!t || t.doneAt || t.claimedBy !== state.me) return false;
+    if(JSON.stringify((t.photoDrafts || {})[js.key] || []) === JSON.stringify(recs)) return false;
+    t.photoDrafts = Object.assign({}, t.photoDrafts || {}, {[js.key]: recs});
+  });
+}
 function formPhotosHtml(scope, what, hint){
   if(!relayCfg()) return "";
   const photos = fpList(scope);
@@ -4822,8 +4858,9 @@ async function uploadFormPhoto(scope, ph, meta){
   try{
     const j = await relayUpload({kind: meta.kind, outlet: meta.code, pool: meta.code, job: meta.what, person: state.me,
       date: todayKey(), tool:"none", wantReading:false, imageBase64: ph.base64, photoNo: ph.n});
-    Object.assign(ph, {status:"done", fileId:j.fileId, url:j.url, thumb:j.thumb || null});
-    if(scope.startsWith("quick|") && attachQuickPhoto(scope, ph)) return;   // already on the record; withRound re-renders
+    Object.assign(ph, {status:"done", fileId:j.fileId, url:j.url, thumb:j.thumb || null, at: new Date().toISOString()});
+    if(scope.startsWith("quick|") && attachQuickPhoto(scope, ph)) return;
+    if(fpJobSlot(scope)) fpSaveToJob(scope);   // already on the record; withRound re-renders
   }catch(e){
     ph.status = "failed";
     ph.error = (e && e.relay && !e.transient) ? String(e.message) : "Upload didn't go through. Retry, or send without it.";
@@ -8521,7 +8558,11 @@ function wire(){
     if(f) onFormPhotoPicked(scope, f, fpMeta(scope));
   }));
   each("[data-fpretry]", b => { const [scope, pid] = b.dataset.fpretry.split(/\|(?=[^|]*$)/); const ph = fpList(scope).find(x => x.id === pid); if(!ph || !ph.base64) return; ph.status = "uploading"; renderKeepingForm(); uploadFormPhoto(scope, ph, fpMeta(scope)); });
-  each("[data-fprm]", b => { const [scope, pid] = b.dataset.fprm.split(/\|(?=[^|]*$)/); state.fp[scope] = fpList(scope).filter(x => x.id !== pid); state.fp[scope].forEach((x, i) => x.n = i+1); renderKeepingForm(); });
+  each("[data-fprm]", b => { const [scope, pid] = b.dataset.fprm.split(/\|(?=[^|]*$)/);
+    const gone = fpList(scope).find(x => x.id === pid); if(gone && gone.fileId) fpRemoved[scope] = (fpRemoved[scope] || []).concat([gone.fileId]);
+    state.fp[scope] = fpList(scope).filter(x => x.id !== pid); state.fp[scope].forEach((x, i) => x.n = i+1);
+    if(fpJobSlot(scope)) fpSaveToJob(scope);
+    renderKeepingForm(); });
   each("[data-sugg]",   b => { const i=$("#newtask"); if(i){ i.value = b.dataset.sugg; i.focus(); } });
   each("[data-addtask]",b => { const i=$("#newtask"); const scope = "job|"+b.dataset.addtask; if(fpBusy(scope)) return; tryAddTask(b.dataset.addtask, i ? i.value : "", fpDone(scope)); delete state.fp[scope]; });
   each("[data-addpool]", b => { const a = state.askPool; if(!a) return; state.askPool = null; addTask(a.code, a.name, a.photos, b.dataset.addpool); });
